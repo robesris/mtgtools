@@ -364,12 +364,12 @@ def process_condition(page, product_url, condition, request_id)
       response = page.goto(filtered_url, wait_until: 'networkidle0')
       $logger.info("Request #{request_id}: Product page response status: #{response.status}")
       
-      # Wait for either price element to appear
+      # Wait for the regular listing price element to appear
       begin
-        page.wait_for_selector('.listing-item__listing-data__info__price, .spotlight__price', timeout: 10000)
-        $logger.info("Request #{request_id}: Price elements found")
+        page.wait_for_selector('.listing-item__listing-data__info__price', timeout: 10000)
+        $logger.info("Request #{request_id}: Price element found")
       rescue => e
-        $logger.error("Request #{request_id}: Timeout waiting for price elements: #{e.message}")
+        $logger.error("Request #{request_id}: Timeout waiting for price element: #{e.message}")
         # Take a screenshot for debugging
         screenshot_path = "price_error_#{condition}_#{Time.now.to_i}.png"
         page.screenshot(path: screenshot_path)
@@ -380,7 +380,7 @@ def process_condition(page, product_url, condition, request_id)
       # Give extra time for dynamic content to stabilize
       sleep(2)
       
-      # Try to get price with updated selectors and more robust extraction
+      # Try to get price with simplified extraction
       price_data = page.evaluate(<<~'JS')
         function() {
           function extractNumericPrice(text) {
@@ -392,63 +392,43 @@ def process_condition(page, product_url, condition, request_id)
           }
 
           function getShippingPrice() {
-            // Try multiple shipping price selectors
-            const shippingSelectors = [
-              '.shipping-messages__price',
-              '.spotlight__shipping',
-              '.listing-item__shipping',
-              '[data-testid="shipping-price"]'
-            ];
-            
-            for (const selector of shippingSelectors) {
-              const element = document.querySelector(selector);
-              if (element) {
-                const text = element.textContent.trim();
-                if (text.toLowerCase().includes('free shipping')) {
-                  return 0;
-                }
-                const price = extractNumericPrice(text);
-                if (price !== null) {
-                  return price;
-                }
+            // Try to get shipping price from regular listings
+            const shippingElement = document.querySelector('.shipping-messages__price');
+            if (shippingElement) {
+              const text = shippingElement.textContent.trim();
+              if (text.toLowerCase().includes('free shipping')) {
+                return 0;
+              }
+              const price = extractNumericPrice(text);
+              if (price !== null) {
+                return price;
               }
             }
-            
             return 0; // Default to 0 if no shipping price found
           }
 
-          // Try multiple price selectors
-          const priceSelectors = [
-            '.listing-item__listing-data__info__price',
-            '.spotlight__price',
-            '[data-testid="price"]',
-            '.price-point__price',
-            '.product-price'
-          ];
-          
-          for (const selector of priceSelectors) {
-            const element = document.querySelector(selector);
-            if (element) {
-              const basePrice = extractNumericPrice(element.textContent);
-              if (basePrice !== null) {
-                const shippingPrice = getShippingPrice();
-                const totalPrice = basePrice + shippingPrice;
-                return {
-                  price: `$${totalPrice.toFixed(2)}`,
-                  url: window.location.href,
-                  debug: {
-                    basePrice,
-                    shippingPrice,
-                    totalPrice,
-                    source: selector,
-                    rawText: element.textContent.trim()
-                  }
-                };
-              }
+          // Get the first regular listing price
+          const priceElement = document.querySelector('.listing-item__listing-data__info__price');
+          if (priceElement) {
+            const basePrice = extractNumericPrice(priceElement.textContent);
+            if (basePrice !== null) {
+              const shippingPrice = getShippingPrice();
+              const totalPrice = basePrice + shippingPrice;
+              return {
+                price: `$${totalPrice.toFixed(2)}`,
+                url: window.location.href,
+                debug: {
+                  basePrice,
+                  shippingPrice,
+                  totalPrice,
+                  source: 'regular_listing',
+                  rawText: priceElement.textContent.trim()
+                }
+              };
             }
           }
           
-          // If no price found, try to get any price-like text on the page
+          // If no price found, try to get any price-like text on the page as fallback
           const allText = document.body.innerText;
           const priceMatch = allText.match(/\$[\d,]+(\.\d{2})?/);
           if (priceMatch) {

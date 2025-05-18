@@ -236,57 +236,8 @@ def get_browser
     ensure
       test_page.close
     end
-  puts "Launching new browser instance..."
-  
-  browser = Puppeteer.launch(
-    headless: true,
-    args: %w[
-      --no-sandbox
-      --disable-setuid-sandbox
-      --disable-dev-shm-usage
-      --disable-accelerated-2d-canvas
-      --disable-gpu
-      --disable-blink-features=AutomationControlled
-      --disable-automation
-      --disable-infobars
-      --lang=en-US,en
-      --user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36
-    ],
-    ignore_default_args: ['--enable-automation']
-  )
-  
-  # Create a test page to resize the browser
-  test_page = browser.new_page
-  begin
-    # Use CDP to set a large viewport
-    test_page.client.send_message('Emulation.setDeviceMetricsOverride', {
-      width: 3000,
-      height: 2000,
-      deviceScaleFactor: 1,
-      mobile: false
-    })
-    
-    # Verify the viewport size
-    actual_viewport = test_page.evaluate(<<~JS)
-      function() {
-        return {
-          windowWidth: window.innerWidth,
-          windowHeight: window.innerHeight,
-          devicePixelRatio: window.devicePixelRatio,
-          screenWidth: window.screen.width,
-          screenHeight: window.screen.height,
-          viewportWidth: document.documentElement.clientWidth,
-          viewportHeight: document.documentElement.clientHeight
-        };
-      }
-    JS
-    puts "Browser viewport after resize: #{actual_viewport.inspect}"
-  ensure
-    test_page.close
   end
-  
-  puts "Browser launched and resized"
-  browser
+  $browser
 end
 
 # Add a method to create a new context with proper tracking

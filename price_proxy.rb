@@ -1277,14 +1277,16 @@ def process_condition(page, product_url, condition, request_id, card_name)
                 $logger.info("=== END OF LISTINGS INFO ===")
               end
 
-              # If we found a valid price, return it immediately
+              # If we found a valid price, return it immediately and break out of the loop
               if listings_html.is_a?(Hash) && listings_html['success'] && listings_html['priceData'] && listings_html['priceData']['success']
                 $logger.info("Request #{request_id}: Found valid price: $#{listings_html['priceData']['price']}")
-                return {
+                result = {
                   'success' => true,
                   'price' => "$#{listings_html['priceData']['price']}",
                   'url' => listings_html['priceData']['url']
                 }
+                $logger.info("Request #{request_id}: Breaking out of screenshot loop with price: #{result.inspect}")
+                return result  # This will exit both the loop and the process_condition method
               end
             rescue => e
               $logger.error("Request #{request_id}: Error evaluating listings HTML: #{e.message}")
@@ -1302,30 +1304,7 @@ def process_condition(page, product_url, condition, request_id, card_name)
         sleep(0.1)
       end
 
-      # After all screenshots are taken, log the entire HTML
-      begin
-        full_html = page.evaluate(<<~'JS')
-          function() {
-            return {
-              url: window.location.href,
-              title: document.title,
-              html: document.documentElement.outerHTML
-            };
-          }
-        JS
-
-        $logger.info("Request #{request_id}: === FULL PAGE HTML ===")
-        $logger.info("  URL: #{full_html['url']}")
-        $logger.info("  Title: #{full_html['title']}")
-        $logger.info("  === HTML CONTENT ===")
-        $logger.info(full_html['html'])
-        $logger.info("=== END OF FULL PAGE HTML ===")
-      rescue => e
-        $logger.error("Request #{request_id}: Error capturing full page HTML: #{e.message}")
-        $logger.error(e.backtrace.join("\n"))
-      end
-
-      # If we haven't found any listings with prices, return failure
+      # If we get here, we didn't find a valid price in any screenshot
       $logger.error("Request #{request_id}: No valid listings found after all screenshots")
       return {
         'success' => false,

@@ -835,7 +835,7 @@
         priceInfo.innerHTML = '<span class="loading">Loading prices...</span>';
 
         try {
-          const response = await fetch(`http://localhost:4567/card_info?name=${encodeURIComponent(cardName)}`);
+          const response = await fetch(`http://localhost:4567/prices?card=${encodeURIComponent(cardName)}`);
           const data = await response.json();
 
           if (data.error) {
@@ -845,28 +845,16 @@
           let priceHtml = '';
           const prices = data.prices;
 
-          if (prices['near mint']) {
-            priceHtml += `<a href="${data.tcgplayer_url}" target="_blank">TCGPlayer (NM): $${prices['near mint']}</a><br>`;
+          if (prices['Near Mint']) {
+            priceHtml += `<a href="${prices['Near Mint'].url}" target="_blank">TCGPlayer (NM): ${prices['Near Mint'].total}</a><br>`;
           }
-          if (prices['lightly played']) {
-            priceHtml += `<a href="${data.tcgplayer_url}" target="_blank">TCGPlayer (LP): $${prices['lightly played']}</a><br>`;
-          }
-          if (prices['moderately played']) {
-            priceHtml += `<a href="${data.tcgplayer_url}" target="_blank">TCGPlayer (MP): $${prices['moderately played']}</a><br>`;
-          }
-          if (prices['heavily played']) {
-            priceHtml += `<a href="${data.tcgplayer_url}" target="_blank">TCGPlayer (HP): $${prices['heavily played']}</a>`;
+          if (prices['Lightly Played']) {
+            priceHtml += `<a href="${prices['Lightly Played'].url}" target="_blank">TCGPlayer (LP): ${prices['Lightly Played'].total}</a>`;
           }
 
           if (priceHtml) {
             priceInfo.innerHTML = priceHtml;
-            const isLegal = data.legality === 'legal';
-            if (!isLegal) {
-              priceInfo.classList.add('illegal');
-              priceInfo.innerHTML += `<div class="illegal-notice">Not legal in Commander (${data.legality})</div>`;
-            } else {
-              priceInfo.classList.remove('illegal');
-            }
+            priceInfo.classList.remove('illegal');
           } else {
             priceInfo.textContent = 'No price data available';
           }

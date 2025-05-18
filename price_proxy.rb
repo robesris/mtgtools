@@ -106,7 +106,7 @@ def launch_browser
   )
   
   # Set a realistic user agent and headers for all new pages
-  browser.on('targetcreated', ->(target) {
+  browser.on('targetcreated') do |target|
     if target.type == 'page'
       page = target.page
       page.set_user_agent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
@@ -180,7 +180,7 @@ def launch_browser
         path: '/'
       })
     end
-  })
+  end
   
   puts "Browser launched successfully"
   browser

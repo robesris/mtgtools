@@ -1116,6 +1116,7 @@ def process_condition(page, product_url, condition, request_id, card_name)
       found_listings = false
       screenshot_interval = 2  # Take a screenshot every 2 seconds
       last_screenshot_time = start_time
+      max_screenshots = 3  # Only take 3 screenshots
 
       # Take initial screenshot immediately after page load
       screenshot_path = "loading_sequence_#{condition}_#{screenshot_count}_#{Time.now.to_i}.png"
@@ -1124,8 +1125,21 @@ def process_condition(page, product_url, condition, request_id, card_name)
       screenshot_count += 1
       last_screenshot_time = Time.now
 
-      # Main loop - continue until we find listings or hit timeout
-      while (Time.now - start_time) < max_wait_time
+      # Log our current selectors
+      $logger.info("Request #{request_id}: Current listing selectors:")
+      $logger.info("  - .listing-item")
+      $logger.info("  - .price-point")
+      $logger.info("  - [class*='listing']")
+      $logger.info("  - [class*='price']")
+      $logger.info("  - .inventory__price")
+      $logger.info("  - .inventory__price-with-shipping")
+      $logger.info("  - .product-listing")
+      $logger.info("  - .product-listing__price")
+      $logger.info("  - [class*='inventory']")
+      $logger.info("  - [class*='product-listing']")
+
+      # Main loop - continue until we find listings or hit max screenshots
+      while (Time.now - start_time) < max_wait_time && screenshot_count < max_screenshots
         current_time = Time.now
         elapsed = current_time - start_time
 
@@ -1136,6 +1150,61 @@ def process_condition(page, product_url, condition, request_id, card_name)
           $logger.info("Request #{request_id}: Saved screenshot #{screenshot_count} at #{elapsed.round(1)}s")
           screenshot_count += 1
           last_screenshot_time = current_time
+
+          # After taking screenshot, log the listings HTML
+          listings_html = page.evaluate(<<~JS)
+            function() {
+              // Find the "18 listings" text
+              const listingsHeader = Array.from(document.querySelectorAll('*')).find(el => 
+                el.textContent.includes('listings')
+              );
+              
+              if (!listingsHeader) {
+                return { found: false, message: 'No listings header found' };
+              }
+
+              // Get all content between the header and first "Add to Cart" button
+              let current = listingsHeader;
+              let html = '';
+              let foundAddToCart = false;
+              
+              while (current && !foundAddToCart) {
+                // Move to next element
+                current = current.nextElementSibling;
+                if (!current) break;
+                
+                // Check if we hit an "Add to Cart" button
+                if (current.textContent.includes('Add to Cart')) {
+                  foundAddToCart = true;
+                  break;
+                }
+                
+                // Add this element's HTML
+                html += current.outerHTML + '\n';
+              }
+
+              return {
+                found: true,
+                headerText: listingsHeader.textContent,
+                html: html,
+                elementCount: html.split('<').length - 1,
+                classes: Array.from(document.querySelectorAll('*'))
+                  .filter(el => el.textContent.includes('$'))
+                  .map(el => el.className)
+                  .filter(Boolean)
+              };
+            }
+          JS
+
+          $logger.info("Request #{request_id}: Listings HTML at screenshot #{screenshot_count}:")
+          $logger.info("  Found listings header: #{listings_html['found']}")
+          if listings_html['found']
+            $logger.info("  Header text: #{listings_html['headerText']}")
+            $logger.info("  Number of elements: #{listings_html['elementCount']}")
+            $logger.info("  Classes found with prices: #{listings_html['classes'].inspect}")
+            $logger.info("  HTML content:")
+            $logger.info(listings_html['html'])
+          end
         end
 
         # Check for listings with expanded selectors
@@ -1172,10 +1241,6 @@ def process_condition(page, product_url, condition, request_id, card_name)
         if listings_result['hasListings'] && listings_result['hasContent']
           found_listings = true
           $logger.info("Request #{request_id}: Found listings with content after #{elapsed.round(1)}s")
-          # Take one final screenshot with the listings
-          screenshot_path = "loading_sequence_#{condition}_#{screenshot_count}_#{Time.now.to_i}.png"
-          page.screenshot(path: screenshot_path, full_page: true)
-          $logger.info("Request #{request_id}: Saved final screenshot with listings to #{screenshot_path}")
           break
         end
 

@@ -145,6 +145,9 @@ def get_browser
             deviceScaleFactor: 1,
             mobile: false
           })
+
+          # Dispatch a window resize event to trigger layout reflow
+          page.evaluate('window.dispatchEvent(new Event("resize"))')
           
           # Disable frame handling for this page
           page.evaluate(<<~JS)
@@ -1105,481 +1108,143 @@ def process_condition(page, product_url, condition, request_id, card_name)
           timeout: 30000
         )
       end
-      
-      # Take immediate screenshot of the listings area before any redirects
-      immediate_screenshot = "immediate_listings_#{condition}_#{Time.now.to_i}.png"
-      page.evaluate(<<~JS)
-        function() {
-          // Try to find the listings container
-          const listingsContainer = document.querySelector('.listing-items, .price-points, [class*="listings"], [class*="prices"]');
-          if (listingsContainer) {
-            listingsContainer.scrollIntoView({ behavior: 'instant', block: 'center' });
-          }
-        }
-      JS
-      page.screenshot(path: immediate_screenshot, full_page: true)
-      $logger.info("Request #{request_id}: Saved immediate listings screenshot to #{immediate_screenshot}")
-      
-      # Check if we were redirected despite prevention
-      current_url = page.evaluate('window.location.href')
-      if current_url.include?('uhoh')
-        $logger.error("Request #{request_id}: Redirect to error page occurred despite prevention")
-        screenshot_path = "redirect_error_#{condition}_#{Time.now.to_i}.png"
-        page.screenshot(path: screenshot_path)
-        $logger.info("Request #{request_id}: Saved redirect error screenshot to #{screenshot_path}")
-        return nil
-      end
-      
-      $logger.info("Request #{request_id}: Product page response status: #{response.status}")
-      
-      # Wait a moment for initial content to load
-      sleep(2)
-      
-      # Scroll to where listings would be and log what we find
-      page.evaluate(<<~JS)
-        function() {
-          // Try to find the listings container or price section
-          const listingsContainer = document.querySelector('.listing-items, .price-points, [class*="listings"], [class*="prices"]');
-          if (listingsContainer) {
-            console.log('Found listings container, scrolling to it');
-            listingsContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            return {
-              foundContainer: true,
-              containerClass: listingsContainer.className,
-              containerHTML: listingsContainer.innerHTML.substring(0, 500),
-              containerRect: listingsContainer.getBoundingClientRect()
-            };
-          } else {
-            // If no specific container found, scroll to main content
-            const mainContent = document.querySelector('main') || document.querySelector('#main-content');
-            if (mainContent) {
-              console.log('No listings container found, scrolling to main content');
-              mainContent.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              return {
-                foundContainer: false,
-                mainContentHTML: mainContent.innerHTML.substring(0, 500),
-                mainContentRect: mainContent.getBoundingClientRect()
-              };
-            }
-            return { foundContainer: false, error: 'No content found to scroll to' };
-          }
-        }
-      JS
-      
-      # Log what we found after scrolling
-      page_content = page.evaluate(<<~JS)
-        function() {
-          return {
-            url: window.location.href,
-            title: document.title,
-            readyState: document.readyState,
-            viewportHeight: window.innerHeight,
-            scrollY: window.scrollY,
-            elements: {
-              listings: document.querySelectorAll('.listing-item, .price-point').length,
-              containers: document.querySelectorAll('[class*="listing"], [class*="price"]').length,
-              mainContent: document.querySelector('main') ? 'exists' : 'missing',
-              appContent: document.querySelector('#app') ? 'exists' : 'missing'
-            },
-            // Get all elements that might be related to listings
-            possibleElements: {
-              'listing-item': document.querySelectorAll('.listing-item').length,
-              'price-point': document.querySelectorAll('.price-point').length,
-              'product-listing': document.querySelectorAll('.product-listing').length,
-              'inventory-item': document.querySelectorAll('.inventory-item').length,
-              'product-price': document.querySelectorAll('.product-price').length,
-              'inventory__price': document.querySelectorAll('.inventory__price').length,
-              'inventory__price-with-shipping': document.querySelectorAll('.inventory__price-with-shipping').length
-            },
-            // Check for loading states
-            loadingStates: {
-              'loading-spinner': document.querySelectorAll('.loading-spinner, .spinner, [class*="loading"]').length,
-              'skeleton': document.querySelectorAll('[class*="skeleton"]').length,
-              'placeholder': document.querySelectorAll('[class*="placeholder"]').length
-            }
-          };
-        }
-      JS
-      $logger.info("Request #{request_id}: Page content after scroll: #{page_content.inspect}")
-      
-      # Take screenshot of the scrolled page state
-      pre_load_screenshot = "pre_load_#{condition}_#{Time.now.to_i}.png"
-      page.screenshot(path: pre_load_screenshot, full_page: true)  # Take full page screenshot
-      $logger.info("Request #{request_id}: Saved pre-load screenshot to #{pre_load_screenshot}")
-      
-      # Wait for key elements to be present, regardless of redirect status
-      begin
-        # Wait for either the product content or a no-results message
-        page.wait_for_selector('.product-details, .no-results-message, .listing-item, [class*="product"]', 
-          timeout: 15000,
-          visible: true
-        )
-        
-        # Log what we found
-        element_state = page.evaluate(<<~JS)
-          function() {
-            return {
-              hasProductDetails: !!document.querySelector('.product-details'),
-              hasNoResults: !!document.querySelector('.no-results-message'),
-              hasListings: !!document.querySelector('.listing-item'),
-              hasProductClass: !!document.querySelector('[class*="product"]'),
-              url: window.location.href,
-              title: document.title,
-              readyState: document.readyState
-            };
-          }
-        JS
-        $logger.info("Request #{request_id}: Initial element state: #{element_state.inspect}")
-        
-        # If we have a no-results message, return early
-        if element_state['hasNoResults']
-          $logger.info("Request #{request_id}: No results message found")
-          return nil
-        end
-        
-        # Take another screenshot after elements are found
-        post_load_screenshot = "post_load_#{condition}_#{Time.now.to_i}.png"
-        page.screenshot(path: post_load_screenshot)
-        $logger.info("Request #{request_id}: Saved post-load screenshot to #{post_load_screenshot}")
-        
-        # Give extra time for dynamic content
+
+      # Start screenshot loop and price pattern search
+      max_wait_time = 30  # Maximum wait time in seconds
+      start_time = Time.now
+      screenshot_count = 0
+      found_listings = false
+
+      # Take initial screenshot immediately after page load
+      screenshot_path = "loading_sequence_#{condition}_#{screenshot_count}_#{Time.now.to_i}.png"
+      page.screenshot(path: screenshot_path, full_page: true)
+      $logger.info("Request #{request_id}: Saved initial screenshot to #{screenshot_path}")
+      screenshot_count += 1
+
+      # Main loop - take screenshots every 2 seconds for up to 30 seconds
+      15.times do |i|
+        # Sleep for 2 seconds
         sleep(2)
         
-      rescue => e
-        $logger.error("Request #{request_id}: Error waiting for elements: #{e.message}")
-        # Take error screenshot
-        error_screenshot = "element_error_#{condition}_#{Time.now.to_i}.png"
-        page.screenshot(path: error_screenshot)
-        $logger.info("Request #{request_id}: Saved error screenshot to #{error_screenshot}")
-        return nil
-      end
-      
-      # Log initial page state
-      initial_state = page.evaluate(<<~JS)
-        function() {
-          return {
-            url: window.location.href,
-            title: document.title,
-            readyState: document.readyState,
-            hasApp: !!document.querySelector('#app'),
-            hasContent: !!document.querySelector('main'),
-            scripts: Array.from(document.scripts).map(s => s.src || 'inline'),
-            bodyContent: document.body.innerHTML.substring(0, 1000),
-            networkRequests: performance.getEntriesByType('resource').map(r => ({
-              url: r.name,
-              type: r.initiatorType,
-              status: r.responseStatus
-            }))
-          };
-        }
-      JS
-      $logger.info("Request #{request_id}: Initial page state: #{initial_state.inspect}")
-      
-      # Wait for any dynamic content to load
-      sleep(2)
-      
-      # Log page state after initial load
-      post_load_state = page.evaluate(<<~JS)
-        function() {
-          const app = document.querySelector('#app');
-          const main = document.querySelector('main');
-          return {
-            url: window.location.href,
-            title: document.title,
-            readyState: document.readyState,
-            appContent: app ? app.innerHTML.substring(0, 500) : 'No app element',
-            mainContent: main ? main.innerHTML.substring(0, 500) : 'No main element',
-            hasListings: !!document.querySelector('.listing-item'),
-            hasNoResults: !!document.querySelector('.no-results-message'),
-            dynamicContent: {
-              listings: document.querySelectorAll('.listing-item').length,
-              prices: document.querySelectorAll('[class*="price"]').length,
-              containers: document.querySelectorAll('[class*="container"]').length
-            }
-          };
-        }
-      JS
-      $logger.info("Request #{request_id}: Post-load page state: #{post_load_state.inspect}")
-      
-      # Take a screenshot before any scrolling
-      screenshot_path = "pre_scroll_#{condition}_#{Time.now.to_i}.png"
-      
-      # First scroll down just enough to see the listing area
-      page.evaluate(<<~JS)
-        function() {
-          // Scroll down a fixed amount that we know will show the card properly
-          window.scrollTo(0, 300);  // Scroll down 300px
-          // Wait a moment for any dynamic content to load
-          return new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      JS
-      
-      # Now take the screenshot after scrolling
-      page.screenshot(path: screenshot_path)
-      $logger.info("Request #{request_id}: Saved pre-scroll screenshot to #{screenshot_path}")
-      
-      # Execute the scroll function with proper error handling
-      begin
-        scroll_result = page.evaluate(<<~JS)
+        # Take screenshot
+        screenshot_path = "loading_sequence_#{condition}_#{screenshot_count}_#{Time.now.to_i}.png"
+        page.screenshot(path: screenshot_path, full_page: true)
+        $logger.info("Request #{request_id}: Saved screenshot #{screenshot_count} at #{Time.now - start_time}s")
+        screenshot_count += 1
+
+        # Search for price patterns in the current HTML
+        price_patterns = page.evaluate(<<~JS)
           function() {
-            return new Promise(async (resolve) => {
-              try {
-                console.log('Starting simplified scroll operation');
-                
-                // Get page height
-                const height = document.documentElement.scrollHeight;
-                console.log('Page height:', height);
-                
-                // Scroll to bottom and back to top to trigger any lazy loading
-                window.scrollTo(0, height);
-                await new Promise(r => setTimeout(r, 1000));
-                window.scrollTo(0, 0);
-                await new Promise(r => setTimeout(r, 1000));
-                window.scrollTo(0, height);
-                
-                // Log what we find
-                const listings = document.querySelectorAll('.listing-item, .price-point, [class*="listing"], [class*="price"]');
-                console.log('Found listings after scroll:', listings.length);
-                
-                resolve({
-                  success: true,
-                  finalScroll: window.scrollY,
-                  contentHeight: height,
-                  hasListings: listings.length > 0,
-                  listingCount: listings.length,
-                  listingTexts: Array.from(listings).map(el => el.textContent.trim())
-                });
-              } catch(e) {
-                console.error('Scroll error:', e);
-                resolve({
-                  success: false,
-                  error: e.message,
-                  stack: e.stack
-                });
+            // Helper function to check if element is in spotlight section
+            function isInSpotlight(element) {
+              let current = element;
+              while (current) {
+                if (current.classList && 
+                    (current.classList.contains('spotlight') || 
+                     current.classList.contains('product-spotlight') ||
+                     current.id === 'spotlight')) {
+                  return true;
+                }
+                current = current.parentElement;
               }
-            });
-          }
-        JS
-        $logger.info("Request #{request_id}: Scroll operation result: #{scroll_result.inspect}")
-        
-        # Take a screenshot after scrolling
-        screenshot_path = "post_scroll_#{condition}_#{Time.now.to_i}.png"
-        page.screenshot(path: screenshot_path)
-        $logger.info("Request #{request_id}: Saved post-scroll screenshot to #{screenshot_path}")
-        
-        # Wait for scroll to complete
-        sleep(3)
-      rescue => e
-        $logger.error("Request #{request_id}: Error during scroll: #{e.message}")
-        $logger.error("Request #{request_id}: Scroll error details: #{e.backtrace.join("\n")}")
-      end
-      
-      # Wait specifically for listing items with increased timeout and retry logic
-      begin
-        max_retries = 3
-        retry_count = 0
-        found_listings = false
-        
-        while retry_count < max_retries && !found_listings
-          begin
-            # Wait for either listing items or a "no results" message
-            found_listings = page.wait_for_selector('.listing-item, .no-results-message', timeout: 15000)
-            if found_listings
-              # Check if we got the no results message
-              no_results = page.evaluate(<<~JS)
-                document.querySelector('.no-results-message') !== null
-              JS
-              if no_results
-                $logger.info("Request #{request_id}: No listings found for this condition")
-                return nil
-              end
-              break
-            end
-          rescue => e
-            retry_count += 1
-            if retry_count < max_retries
-              $logger.info("Request #{request_id}: Retry #{retry_count} waiting for listings...")
-              sleep(2)
-              # Try refreshing the page on retry
-              page.reload(wait_until: 'networkidle0')
-            else
-              raise e
-            end
-          end
-        end
-        
-        if !found_listings
-          raise "Failed to find listings after #{max_retries} retries"
-        end
-        
-        $logger.info("Request #{request_id}: Listing items found")
-        
-        # Get all listings and their prices
-        price_data = page.evaluate(<<~'JS')
-          function() {
-            // Helper function to safely extract numeric price
-            function extractNumericPrice(text) {
-              if (!text) return null;
-              try {
-                // Match price patterns like $1.23, $1,234.56
-                const match = text.match(/\$[\d,]+(\.\d{2})?/);
-                if (!match) return null;
-                // Remove $ and commas, then parse as float
-                return parseFloat(match[0].replace(/[$,]/g, ''));
-              } catch (e) {
-                console.error('Error extracting price:', e);
-                return null;
-              }
+              return false;
             }
 
-            try {
-              // Get all listing items with a more specific selector
-              const listings = Array.from(document.querySelectorAll('.listing-item:not(.listing-item--sold-out)'));
-              console.log('Found', listings.length, 'active listings');
+            // Get all text nodes in the document
+            const walker = document.createTreeWalker(
+              document.body,
+              NodeFilter.SHOW_TEXT,
+              null,
+              false
+            );
 
-              if (!listings.length) {
-                console.log('No active listings found');
-                return null;
-              }
-
-              // Process each listing with error handling
-              const validListings = listings.map(listing => {
-                try {
-                  // Get price element with fallback selectors
-                  const priceElement = listing.querySelector('.listing-item__listing-data__info__price') || 
-                                     listing.querySelector('[class*="price"]');
-                  const shippingElement = listing.querySelector('.shipping-messages__price') ||
-                                        listing.querySelector('[class*="shipping"]');
-
-                  if (!priceElement) {
-                    console.log('No price element found in listing');
-                    return null;
-                  }
-
-                  // Extract base price
-                  const basePrice = extractNumericPrice(priceElement.textContent);
-                  if (basePrice === null) {
-                    console.log('Invalid base price:', priceElement.textContent);
-                    return null;
-                  }
-
-                  // Calculate shipping price
-                  let shippingPrice = 0;
-                  if (shippingElement) {
-                    const shippingText = shippingElement.textContent.trim();
-                    if (!shippingText.toLowerCase().includes('free shipping')) {
-                      const price = extractNumericPrice(shippingText);
-                      if (price !== null) {
-                        shippingPrice = price;
-                      }
-                    }
-                  }
-
-                  const totalPrice = basePrice + shippingPrice;
+            const pricePatterns = [];
+            let node;
+            while (node = walker.nextNode()) {
+              const text = node.textContent.trim();
+              // Look for price patterns like $XX.XX or $X,XXX.XX
+              const priceRegex = /\$\d{1,3}(,\d{3})*(\.\d{2})?/g;
+              let match;
+              
+              while ((match = priceRegex.exec(text)) !== null) {
+                const element = node.parentElement;
+                if (!isInSpotlight(element)) {
+                  // Get some context around the price
+                  const context = text.substring(
+                    Math.max(0, match.index - 20),
+                    Math.min(text.length, match.index + match[0].length + 20)
+                  );
                   
-                  // Only return listings with valid total price
-                  if (isNaN(totalPrice) || totalPrice <= 0) {
-                    console.log('Invalid total price:', totalPrice);
-                    return null;
-                  }
-
-                  return {
-                    basePrice,
-                    shippingPrice,
-                    totalPrice,
-                    priceText: priceElement.textContent.trim(),
-                    shippingText: shippingElement ? shippingElement.textContent.trim() : 'free shipping'
-                  };
-                } catch (e) {
-                  console.error('Error processing listing:', e);
-                  return null;
+                  pricePatterns.push({
+                    price: match[0],
+                    context: context,
+                    elementType: element.tagName,
+                    elementClass: element.className,
+                    elementId: element.id,
+                    path: getElementPath(element)
+                  });
                 }
-              }).filter(Boolean)  // Remove null entries
-                .sort((a, b) => a.totalPrice - b.totalPrice);
-
-              if (!validListings.length) {
-                console.log('No valid listings after processing');
-                return null;
               }
-
-              // Get the lowest priced listing
-              const lowestListing = validListings[0];
-              console.log('Selected lowest listing:', lowestListing);
-
-              return {
-                price: `$${lowestListing.totalPrice.toFixed(2)}`,
-                url: window.location.href,
-                debug: {
-                  basePrice: lowestListing.basePrice,
-                  shippingPrice: lowestListing.shippingPrice,
-                  totalPrice: lowestListing.totalPrice,
-                  source: 'lowest_valid_listing',
-                  rawText: {
-                    price: lowestListing.priceText,
-                    shipping: lowestListing.shippingText
-                  }
-                }
-              };
-            } catch (e) {
-              console.error('Error in price extraction:', e);
-              return null;
             }
-          }
-        JS
-        
-        if price_data
-          $logger.info("Request #{request_id}: Found price data: #{price_data.inspect}")
-          return price_data
-        else
-          $logger.error("Request #{request_id}: No price data found")
-          return nil
-        end
-        
-      rescue => e
-        $logger.error("Request #{request_id}: Timeout waiting for listing items: #{e.message}")
-        
-        # Log detailed page content for debugging
-        page_content = page.evaluate(<<~'JS')
-          function() {
-            // Get all elements that might be related to listings
-            const possibleListingElements = {
-              'listing-item': document.querySelectorAll('.listing-item').length,
-              'product-listing': document.querySelectorAll('.product-listing').length,
-              'inventory-item': document.querySelectorAll('.inventory-item').length,
-              'price-point': document.querySelectorAll('.price-point').length,
-              'product-price': document.querySelectorAll('.product-price').length,
-              'inventory__price': document.querySelectorAll('.inventory__price').length,
-              'inventory__price-with-shipping': document.querySelectorAll('.inventory__price-with-shipping').length
-            };
-            
-            // Get the main content area
-            const mainContent = document.querySelector('main') || document.querySelector('#main-content') || document.body;
-            
-            return {
-              url: window.location.href,
-              title: document.title,
-              possibleListingElements,
-              mainContentHTML: mainContent ? mainContent.innerHTML.substring(0, 2000) : 'No main content found',
-              bodyClasses: document.body.className,
-              readyState: document.readyState,
-              // Check for any loading indicators
-              loadingIndicators: {
-                'loading-spinner': document.querySelectorAll('.loading-spinner, .spinner, [class*="loading"]').length,
-                'skeleton': document.querySelectorAll('[class*="skeleton"]').length
+
+            // Helper function to get element path
+            function getElementPath(element) {
+              const path = [];
+              while (element && element.nodeType === Node.ELEMENT_NODE) {
+                let selector = element.nodeName.toLowerCase();
+                if (element.id) {
+                  selector += '#' + element.id;
+                } else if (element.className) {
+                  selector += '.' + Array.from(element.classList).join('.');
+                }
+                path.unshift(selector);
+                element = element.parentNode;
               }
+              return path.join(' > ');
+            }
+
+            return {
+              pricePatterns,
+              timestamp: new Date().toISOString(),
+              url: window.location.href,
+              readyState: document.readyState,
+              elapsedTime: (new Date() - window.performance.timing.navigationStart) / 1000
             };
           }
         JS
-        
-        $logger.info("Request #{request_id}: Page content at timeout: #{page_content.inspect}")
-        
-        # Take a screenshot for debugging
-        screenshot_path = "price_error_#{condition}_#{Time.now.to_i}.png"
-        page.screenshot(path: screenshot_path)
-        $logger.info("Request #{request_id}: Saved error screenshot to #{screenshot_path}")
+
+        $logger.info("Request #{request_id}: Price pattern search results at #{Time.now - start_time}s: #{price_patterns.inspect}")
+
+        # Check if we have listings
+        has_listings = page.evaluate(<<~JS)
+          function() {
+            const listings = document.querySelectorAll('.listing-item, .price-point, [class*="listing"], [class*="price"]');
+            return {
+              hasListings: listings.length > 0,
+              listingCount: listings.length,
+              listingClasses: Array.from(listings).map(el => el.className),
+              listingHTML: Array.from(listings).map(el => el.outerHTML.substring(0, 200)),
+              elapsedTime: (new Date() - window.performance.timing.navigationStart) / 1000
+            };
+          }
+        JS
+
+        if has_listings['hasListings']
+          found_listings = true
+          $logger.info("Request #{request_id}: Found listings after #{Time.now - start_time}s: #{has_listings.inspect}")
+          break
+        else
+          $logger.info("Request #{request_id}: No listings found at #{Time.now - start_time}s")
+        end
+      end
+
+      if !found_listings
+        $logger.error("Request #{request_id}: Timed out waiting for listings after #{screenshot_count} screenshots (#{Time.now - start_time}s)")
         return nil
       end
-      
+
+      # Continue with existing price extraction logic...
+
     rescue => e
       $logger.error("Request #{request_id}: Error processing condition: #{e.message}")
       $logger.error(e.backtrace.join("\n"))

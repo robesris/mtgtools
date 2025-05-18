@@ -1114,113 +1114,50 @@ def process_condition(page, product_url, condition, request_id, card_name)
       start_time = Time.now
       screenshot_count = 0
       found_listings = false
+      screenshot_interval = 2  # Take a screenshot every 2 seconds
+      last_screenshot_time = start_time
 
       # Take initial screenshot immediately after page load
       screenshot_path = "loading_sequence_#{condition}_#{screenshot_count}_#{Time.now.to_i}.png"
       page.screenshot(path: screenshot_path, full_page: true)
       $logger.info("Request #{request_id}: Saved initial screenshot to #{screenshot_path}")
       screenshot_count += 1
+      last_screenshot_time = Time.now
 
-      # Main loop - take screenshots every 2 seconds for up to 30 seconds
-      15.times do |i|
-        # Sleep for 2 seconds
-        sleep(2)
-        
-        # Take screenshot
-        screenshot_path = "loading_sequence_#{condition}_#{screenshot_count}_#{Time.now.to_i}.png"
-        page.screenshot(path: screenshot_path, full_page: true)
-        $logger.info("Request #{request_id}: Saved screenshot #{screenshot_count} at #{Time.now - start_time}s")
-        screenshot_count += 1
+      # Main loop - continue until we find listings or hit timeout
+      while (Time.now - start_time) < max_wait_time
+        current_time = Time.now
+        elapsed = current_time - start_time
 
-        # Search for price patterns in the current HTML
-        price_patterns = page.evaluate(<<~JS)
+        # Take screenshot every 2 seconds
+        if (current_time - last_screenshot_time) >= screenshot_interval
+          screenshot_path = "loading_sequence_#{condition}_#{screenshot_count}_#{Time.now.to_i}.png"
+          page.screenshot(path: screenshot_path, full_page: true)
+          $logger.info("Request #{request_id}: Saved screenshot #{screenshot_count} at #{elapsed.round(1)}s")
+          screenshot_count += 1
+          last_screenshot_time = current_time
+        end
+
+        # Check for listings with expanded selectors
+        listings_result = page.evaluate(<<~JS)
           function() {
-            // Helper function to check if element is in spotlight section
-            function isInSpotlight(element) {
-              let current = element;
-              while (current) {
-                if (current.classList && 
-                    (current.classList.contains('spotlight') || 
-                     current.classList.contains('product-spotlight') ||
-                     current.id === 'spotlight')) {
-                  return true;
-                }
-                current = current.parentElement;
-              }
-              return false;
-            }
-
-            // Get all text nodes in the document
-            const walker = document.createTreeWalker(
-              document.body,
-              NodeFilter.SHOW_TEXT,
-              null,
-              false
+            // Get all possible listing elements with expanded selectors
+            const listings = document.querySelectorAll(
+              '.listing-item, .price-point, [class*="listing"], [class*="price"], ' +
+              '.inventory__price, .inventory__price-with-shipping, ' +
+              '.product-listing, .product-listing__price, ' +
+              '[class*="inventory"], [class*="product-listing"]'
             );
+            
+            // Check if any listing has actual content
+            const hasContent = Array.from(listings).some(listing => {
+              const priceText = listing.textContent.trim();
+              return priceText && priceText.includes('$') && priceText.match(/\$\d+\.\d{2}/);
+            });
 
-            const pricePatterns = [];
-            let node;
-            while (node = walker.nextNode()) {
-              const text = node.textContent.trim();
-              // Look for price patterns like $XX.XX or $X,XXX.XX
-              const priceRegex = /\$\d{1,3}(,\d{3})*(\.\d{2})?/g;
-              let match;
-              
-              while ((match = priceRegex.exec(text)) !== null) {
-                const element = node.parentElement;
-                if (!isInSpotlight(element)) {
-                  // Get some context around the price
-                  const context = text.substring(
-                    Math.max(0, match.index - 20),
-                    Math.min(text.length, match.index + match[0].length + 20)
-                  );
-                  
-                  pricePatterns.push({
-                    price: match[0],
-                    context: context,
-                    elementType: element.tagName,
-                    elementClass: element.className,
-                    elementId: element.id,
-                    path: getElementPath(element)
-                  });
-                }
-              }
-            }
-
-            // Helper function to get element path
-            function getElementPath(element) {
-              const path = [];
-              while (element && element.nodeType === Node.ELEMENT_NODE) {
-                let selector = element.nodeName.toLowerCase();
-                if (element.id) {
-                  selector += '#' + element.id;
-                } else if (element.className) {
-                  selector += '.' + Array.from(element.classList).join('.');
-                }
-                path.unshift(selector);
-                element = element.parentNode;
-              }
-              return path.join(' > ');
-            }
-
-            return {
-              pricePatterns,
-              timestamp: new Date().toISOString(),
-              url: window.location.href,
-              readyState: document.readyState,
-              elapsedTime: (new Date() - window.performance.timing.navigationStart) / 1000
-            };
-          }
-        JS
-
-        $logger.info("Request #{request_id}: Price pattern search results at #{Time.now - start_time}s: #{price_patterns.inspect}")
-
-        # Check if we have listings
-        has_listings = page.evaluate(<<~JS)
-          function() {
-            const listings = document.querySelectorAll('.listing-item, .price-point, [class*="listing"], [class*="price"]');
             return {
               hasListings: listings.length > 0,
+              hasContent: hasContent,
               listingCount: listings.length,
               listingClasses: Array.from(listings).map(el => el.className),
               listingHTML: Array.from(listings).map(el => el.outerHTML.substring(0, 200)),
@@ -1229,13 +1166,21 @@ def process_condition(page, product_url, condition, request_id, card_name)
           }
         JS
 
-        if has_listings['hasListings']
+        $logger.info("Request #{request_id}: Listings check at #{elapsed.round(1)}s: #{listings_result.inspect}")
+
+        # Only consider it found if we have listings WITH content
+        if listings_result['hasListings'] && listings_result['hasContent']
           found_listings = true
-          $logger.info("Request #{request_id}: Found listings after #{Time.now - start_time}s: #{has_listings.inspect}")
+          $logger.info("Request #{request_id}: Found listings with content after #{elapsed.round(1)}s")
+          # Take one final screenshot with the listings
+          screenshot_path = "loading_sequence_#{condition}_#{screenshot_count}_#{Time.now.to_i}.png"
+          page.screenshot(path: screenshot_path, full_page: true)
+          $logger.info("Request #{request_id}: Saved final screenshot with listings to #{screenshot_path}")
           break
-        else
-          $logger.info("Request #{request_id}: No listings found at #{Time.now - start_time}s")
         end
+
+        # Small sleep to prevent tight loop
+        sleep(0.1)
       end
 
       if !found_listings

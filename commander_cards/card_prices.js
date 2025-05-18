@@ -7,7 +7,7 @@ async function updateCardPrices(cardElement) {
   const cardName = cardElement.querySelector('.card-name').textContent;
   const priceInfo = cardElement.querySelector('.price-info');
   
-  priceInfo.innerHTML = '<span class="loading">Loading prices...</span>';
+  priceInfo.innerHTML = '<span class="loading">Loading prices</span>';
 
   try {
     const response = await fetch(`http://localhost:4567/card_info?card=${encodeURIComponent(cardName)}`);

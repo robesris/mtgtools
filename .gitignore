@@ -44,8 +44,14 @@ ehthumbs.db
 Thumbs.db
 
 # Project specific
+# Image directories
 card_images/
+commander_card_images/
 commander_cards/card_images/
+commander_cards/*.jpg
+commander_cards/processed_debug.jpg
+
+# Generated files
 debug_search.html
 full_transcript.txt
 mtg_cards.html

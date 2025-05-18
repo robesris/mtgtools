@@ -19,240 +19,388 @@ set :public_folder, 'commander_cards'
 LOG_FILE = 'price_proxy.log'
 File.delete(LOG_FILE) if File.exist?(LOG_FILE)  # Clear log at start
 $logger = Logger.new(LOG_FILE)
-$logger.level = Logger::INFO
+$logger.level = Logger::INFO  # Only show INFO and above
 $logger.formatter = proc do |severity, datetime, progname, msg|
-  "#{datetime.strftime('%Y-%m-%d %H:%M:%S')} [#{severity}] #{msg}\n"
+  # Skip certain non-critical warnings
+  if severity == 'WARN' && msg.is_a?(String)
+    # List of warning messages we want to suppress
+    suppressed_warnings = [
+      'Frame not found during evaluation',
+      'Protocol error',
+      'Target closed',
+      'Target destroyed',
+      'No target with given id found',
+      'Frame was detached',
+      'Frame was removed',
+      'Frame was not found'
+    ]
+    
+    # Skip if this is a suppressed warning
+    return nil if suppressed_warnings.any? { |w| msg.include?(w) }
+  end
+  
+  # Truncate everything after the error message when it contains a Ruby object dump
+  formatted_msg = if msg.is_a?(String)
+    if msg.include?('#<')
+      # Keep everything up to and including the error message, then add truncation
+      msg.split(/#</).first.strip + " ...truncated..."
+    else
+      msg
+    end
+  else
+    msg.to_s.split(/#</).first.strip + " ...truncated..."
+  end
+  
+  # Only log if we haven't suppressed the message
+  "#{datetime.strftime('%Y-%m-%d %H:%M:%S')} [#{severity}] #{formatted_msg}\n" if formatted_msg
 end
 $logger.info("=== Starting new price proxy server session ===")
 $logger.info("Log file cleared and initialized")
 
-# Global browser instance
+# Global browser instance and context tracking
 $browser = nil
+$browser_contexts = Concurrent::Hash.new  # Track active contexts
 $browser_mutex = Mutex.new
 $browser_retry_count = 0
 MAX_RETRIES = 3
+SESSION_TIMEOUT = 1800  # 30 minutes
 
 # Add request tracking with concurrent handling
 $active_requests = Concurrent::Hash.new
 $request_mutex = Mutex.new
 
-# Get or initialize browser
-def get_browser
-  $browser_mutex.synchronize do
-    # Always cleanup any existing browser instance first
-    cleanup_browser if $browser
-    
-    if $browser.nil?
-      $logger.info("Initializing browser...")
-      begin
-        $browser = Puppeteer.launch(
-          headless: true,
-          args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--disable-gpu',
-            '--window-size=1920,1080',
-            '--disable-blink-features=AutomationControlled',
-            '--disable-features=IsolateOrigins,site-per-process',
-            '--disable-site-isolation-trials'
-          ],
-          default_viewport: Puppeteer::Viewport.new(
-            width: 1920,
-            height: 1080,
-            device_scale_factor: 1.0,
-            is_mobile: false,
-            has_touch: false
-          )
-        )
-        
-        page = $browser.new_page
-        
-        # Set user agent
-        page.set_user_agent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36')
-
-        # Add more sophisticated anti-detection scripts
-        page.add_script_tag(content: <<~JS)
-          // Override navigator properties
-          Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-          Object.defineProperty(navigator, 'plugins', { 
-            get: () => [
-              { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
-              { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: 'Portable Document Format' },
-              { name: 'Native Client', filename: 'internal-nacl-plugin', description: 'Native Client Executable' }
-            ]
-          });
-          Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-          
-          // Add Chrome-specific properties with more realistic values
-          window.chrome = {
-            runtime: {
-              OnInstalledReason: { INSTALL: 'install', UPDATE: 'update', CHROME_UPDATE: 'chrome_update', SHARED_MODULE_UPDATE: 'shared_module_update' },
-              OnRestartRequiredReason: { APP_UPDATE: 'app_update', OS_UPDATE: 'os_update', PERIODIC: 'periodic' },
-              PlatformArch: { ARM: 'arm', ARM64: 'arm64', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
-              PlatformNaclArch: { ARM: 'arm', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
-              PlatformOs: { ANDROID: 'android', CROS: 'cros', LINUX: 'linux', MAC: 'mac', OPENBSD: 'openbsd', WIN: 'win' },
-              RequestUpdateCheckStatus: { THROTTLED: 'throttled', NO_UPDATE: 'no_update', UPDATE_AVAILABLE: 'update_available' }
-            },
-            loadTimes: function() {
-              return {
-                commitLoadTime: 0,
-                connectionInfo: 'h2',
-                finishDocumentLoadTime: 0,
-                finishLoadTime: 0,
-                firstPaintAfterLoadTime: 0,
-                navigationType: 'Other',
-                npnNegotiatedProtocol: 'h2',
-                requestTime: 0,
-                startLoadTime: 0,
-                wasAlternateProtocolAvailable: false,
-                wasFetchedViaSpdy: true,
-                wasNpnNegotiated: true
-              };
-            },
-            csi: function() {
-              return {
-                onloadT: 0,
-                pageT: 0,
-                startE: 0,
-                tran: 15
-              };
-            },
-            app: {
-              InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' },
-              RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' }
-            }
-          };
-          
-          // Override permissions with more realistic behavior
-          const originalQuery = window.navigator.permissions.query;
-          window.navigator.permissions.query = (parameters) => (
-            parameters.name === 'notifications' ?
-              Promise.resolve({ state: Notification.permission, onchange: null }) :
-              originalQuery(parameters)
-          );
-          
-          // Add missing properties that real browsers have
-          Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' });
-          Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
-          Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
-          Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 0 });
-          Object.defineProperty(navigator, 'vendor', { get: () => 'Google Inc.' });
-          Object.defineProperty(navigator, 'userAgentData', {
-            get: () => ({
-              brands: [
-                { brand: 'Chromium', version: '123' },
-                { brand: 'Google Chrome', version: '123' },
-                { brand: 'Not(A:Brand', version: '24' }
-              ],
-              mobile: false,
-              platform: 'macOS'
-            })
-          });
-          
-          // Override WebGL to appear more realistic
-          const getParameter = WebGLRenderingContext.prototype.getParameter;
-          WebGLRenderingContext.prototype.getParameter = function(parameter) {
-            if (parameter === 37445) {
-              return 'Intel Inc.';
-            }
-            if (parameter === 37446) {
-              return 'Intel Iris OpenGL Engine';
-            }
-            return getParameter.apply(this, arguments);
-          };
-
-          // Add human-like mouse movement
-          const originalMouseMove = MouseEvent.prototype.initMouseEvent;
-          MouseEvent.prototype.initMouseEvent = function(type, ...args) {
-            const event = originalMouseMove.apply(this, [type, ...args]);
-            Object.defineProperty(event, 'movementX', { get: () => Math.floor(Math.random() * 10) - 5 });
-            Object.defineProperty(event, 'movementY', { get: () => Math.floor(Math.random() * 10) - 5 });
-            return event;
-          };
-
-          // Add random delays to network requests
-          const originalFetch = window.fetch;
-          window.fetch = async function(...args) {
-            await new Promise(resolve => setTimeout(resolve, Math.random() * 1000 + 500));
-            return originalFetch.apply(this, args);
-          };
-
-          // Add random scroll behavior
-          const originalScroll = window.scroll;
-          window.scroll = function(...args) {
-            setTimeout(() => originalScroll.apply(this, args), Math.random() * 500);
-          };
-        JS
-
-        # Add human-like behavior to page interactions
-        page.evaluate_on_new_document(<<~JS)
-          // Random delays between actions
-          window.humanDelay = async () => {
-            const delay = Math.random() * 2000 + 1000;  // 1-3 seconds
-            await new Promise(resolve => setTimeout(resolve, delay));
-          };
-
-          // Random mouse movements
-          window.humanMouseMove = async (element) => {
-            const rect = element.getBoundingClientRect();
-            const x = rect.left + rect.width / 2 + (Math.random() * 10 - 5);
-            const y = rect.top + rect.height / 2 + (Math.random() * 10 - 5);
-            
-            // Create and dispatch mouse events
-            ['mouseover', 'mouseenter', 'mousemove', 'mousedown', 'mouseup', 'click'].forEach(eventType => {
-              const event = new MouseEvent(eventType, {
-                view: window,
-                bubbles: true,
-                cancelable: true,
-                clientX: x,
-                clientY: y
-              });
-              element.dispatchEvent(event);
-              await humanDelay();
-            });
-          };
-        JS
-        
-        # Close the setup page
-        page.close
-        
-        $logger.info("Browser initialized successfully with enhanced anti-detection measures")
-      rescue => e
-        $logger.error("Failed to initialize browser: #{e.message}")
-        $logger.error(e.backtrace.join("\n"))
-        cleanup_browser  # Ensure cleanup on error
-        raise
-      end
+# Cleanup browser without mutex lock
+def cleanup_browser_internal
+  # Clean up all active contexts
+  $browser_contexts.each do |request_id, context_data|
+    begin
+      $logger.info("Cleaning up browser context for request #{request_id}")
+      context_data[:context].close if context_data[:context]
+    rescue => e
+      $logger.error("Error closing browser context for request #{request_id}: #{e.message}")
+    ensure
+      $browser_contexts.delete(request_id)
     end
-    $browser
+  end
+  
+  if $browser
+    begin
+      $logger.info("Cleaning up browser...")
+      $browser.close
+    rescue => e
+      $logger.error("Error closing browser: #{e.message}")
+    ensure
+      $browser = nil
+      # Force garbage collection
+      GC.start
+    end
   end
 end
 
-# Cleanup browser
+# Cleanup browser with mutex lock
 def cleanup_browser
   $browser_mutex.synchronize do
-    if $browser
-      begin
-        $logger.info("Cleaning up browser...")
-        $browser.close
-      rescue => e
-        $logger.error("Error closing browser: #{e.message}")
-      ensure
-        $browser = nil
-        # Force garbage collection to ensure browser is fully cleaned up
-        GC.start
+    cleanup_browser_internal
+  end
+end
+
+# Get or initialize browser
+def get_browser
+  if $browser.nil? || !$browser.connected?
+    $logger.info("Initializing new browser instance")
+    $browser = Puppeteer.launch(
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--disable-gpu',
+        '--window-size=1920,1080',
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins,site-per-process',
+        '--disable-features=site-per-process',  # Disable site isolation
+        '--disable-features=IsolateOrigins',    # Disable origin isolation
+        '--disable-features=CrossSiteDocumentBlocking',  # Disable cross-site blocking
+        '--disable-features=CrossSiteDocumentBlockingAlways'        # Disable cross-site blocking
+      ],
+      ignore_default_args: ['--enable-automation']
+    )
+    
+    # Set up global browser settings
+    $browser.on('targetcreated') do |target|
+      if target.type == 'page'
+        begin
+          page = target.page
+          
+          # Disable frame handling for this page
+          page.evaluate(<<~JS)
+            function() {
+              // Disable iframe creation
+              const originalCreateElement = document.createElement;
+              document.createElement = function(tagName) {
+                if (tagName.toLowerCase() === 'iframe') {
+                  console.log('Prevented iframe creation');
+                  return null;
+                }
+                return originalCreateElement.apply(this, arguments);
+              };
+              
+              // Block frame navigation
+              window.addEventListener('beforeunload', (event) => {
+                if (window !== window.top) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  return false;
+                }
+              }, true);
+              
+              // Block frame creation via innerHTML
+              const originalInnerHTML = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+              Object.defineProperty(Element.prototype, 'innerHTML', {
+                set: function(value) {
+                  if (typeof value === 'string' && value.includes('<iframe')) {
+                    console.log('Prevented iframe creation via innerHTML');
+                    return;
+                  }
+                  originalInnerHTML.set.call(this, value);
+                },
+                get: originalInnerHTML.get
+              });
+            }
+          JS
+          
+          # Set viewport for each new page
+          page.viewport = Puppeteer::Viewport.new(
+            width: 1920,
+            height: 1080,
+            device_scale_factor: 1,
+            is_mobile: false,
+            has_touch: false,
+            is_landscape: true
+          )
+          
+          # Set timeouts for each new page
+          page.set_default_navigation_timeout(30000)  # 30 seconds
+          page.set_default_timeout(30000)  # 30 seconds
+          
+          # Add a small random delay before each navigation
+          page.on('request') do |request|
+            if request.navigation_request?
+              # Block iframe requests
+              if request.frame && request.frame.parent_frame
+                $logger.info("Blocking iframe request: #{request.url}")
+                request.abort
+                next
+              end
+              sleep(rand(1..3))
+            end
+          end
+
+          # Add error handling for page crashes
+          page.on('error') do |err|
+            $logger.error("Page error: #{err.message}")
+          end
+
+          # Add console logging
+          page.on('console') do |msg|
+            $logger.debug("Browser console: #{msg.text}")
+          end
+        rescue => e
+          $logger.error("Error setting up new page: #{e.message}")
+        end
       end
     end
   end
+  $browser
+end
+
+# Add a method to create a new context with proper tracking
+def create_browser_context(request_id)
+  browser = get_browser
+  context = browser.create_incognito_browser_context
+  
+  # Track the context
+  $browser_contexts[request_id] = {
+    context: context,
+    created_at: Time.now,
+    pages: []
+  }
+  
+  # Listen for target destruction to track when pages are closed
+  context.on('targetdestroyed') do |target|
+    if target.type == 'page'
+      $logger.info("Request #{request_id}: Page destroyed in context")
+      # Remove the page from our tracking if it exists
+      if $browser_contexts[request_id]
+        $browser_contexts[request_id][:pages].delete_if { |page| page.target == target }
+      end
+    end
+  end
+  
+  # Listen for target creation to track new pages
+  context.on('targetcreated') do |target|
+    if target.type == 'page'
+      begin
+        page = target.page
+        if $browser_contexts[request_id]
+          $browser_contexts[request_id][:pages] << page
+          $logger.info("Request #{request_id}: New page created in context")
+        end
+      rescue => e
+        $logger.error("Request #{request_id}: Error handling new page: #{e.message}")
+      end
+    end
+  end
+  
+  context
+end
+
+# Add a method to create a new page with proper settings
+def create_page
+  browser = get_browser
+  page = browser.new_page
+  
+  # Disable frame handling for this page
+  page.evaluate(<<~JS)
+    function() {
+      // Disable iframe creation
+      const originalCreateElement = document.createElement;
+      document.createElement = function(tagName) {
+        if (tagName.toLowerCase() === 'iframe') {
+          console.log('Prevented iframe creation');
+          return null;
+        }
+        return originalCreateElement.apply(this, arguments);
+      };
+      
+      // Block frame navigation
+      window.addEventListener('beforeunload', (event) => {
+        if (window !== window.top) {
+          event.preventDefault();
+          event.stopPropagation();
+          return false;
+        }
+      }, true);
+    }
+  JS
+  
+  # Set viewport for the new page
+  page.viewport = Puppeteer::Viewport.new(
+    width: 1920,
+    height: 1080,
+    device_scale_factor: 1,
+    is_mobile: false,
+    has_touch: false,
+    is_landscape: true
+  )
+  
+  # Set up page-specific settings
+  page.set_default_navigation_timeout(30000)
+  page.set_default_timeout(30000)
+  
+  # Set up request interception
+  page.request_interception = true
+  
+  # Add proper headers for TCGPlayer
+  page.on('request') do |request|
+    # Block iframe requests
+    if request.frame && request.frame.parent_frame
+      $logger.info("Blocking iframe request: #{request.url}")
+      request.abort
+      next
+    end
+    
+    headers = request.headers.merge({
+      'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+      'Accept-Language' => 'en-US,en;q=0.9',
+      'Accept-Encoding' => 'gzip, deflate, br',
+      'Connection' => 'keep-alive',
+      'Upgrade-Insecure-Requests' => '1',
+      'Sec-Fetch-Dest' => 'document',
+      'Sec-Fetch-Mode' => 'navigate',
+      'Sec-Fetch-Site' => 'none',
+      'Sec-Fetch-User' => '?1',
+      'Cache-Control' => 'max-age=0'
+    })
+
+    if request.navigation_request? && !request.redirect_chain.empty?
+      # Only prevent redirects to error pages
+      if request.url.include?('uhoh')
+        $logger.info("Request #{request_id}: Preventing redirect to error page: #{request.url}")
+        request.abort
+      else
+        $logger.info("Request #{request_id}: Allowing redirect to: #{request.url}")
+        request.continue(headers: headers)
+      end
+    else
+      # Allow all other requests, including API calls
+      request.continue(headers: headers)
+    end
+  end
+
+  # Add error handling
+  page.on('error') do |err|
+    $logger.error("Page error: #{err.message}")
+  end
+
+  # Add console logging
+  page.on('console') do |msg|
+    $logger.debug("Browser console: #{msg.text}")
+  end
+
+  page
+end
+
+# Add a method to handle rate limiting
+def handle_rate_limit(page, request_id)
+  begin
+    # Check if we're being rate limited using valid DOM selectors
+    rate_limit_check = page.evaluate(<<~JS)
+      function() {
+        // Get all error messages
+        const errorMessages = Array.from(document.querySelectorAll('.error-message, .rate-limit-message, [class*="error"], [class*="rate-limit"]'));
+        
+        // Check if any error message contains rate limit text
+        const hasRateLimit = errorMessages.some(element => {
+          const text = element.textContent.toLowerCase();
+          return text.includes('rate limit') || text.includes('too many requests');
+        });
+        
+        // Check for error pages
+        const hasErrorPage = document.querySelector('.error-page, .uhoh-page, [class*="error-page"]') !== null;
+        
+        return {
+          hasRateLimit,
+          hasErrorPage,
+          currentUrl: window.location.href,
+          errorMessages: errorMessages.map(el => el.textContent.trim())
+        };
+      }
+    JS
+    
+    if rate_limit_check['hasRateLimit'] || rate_limit_check['hasErrorPage']
+      $logger.warn("Request #{request_id}: Rate limit detected, waiting...")
+      $logger.info("Request #{request_id}: Error messages found: #{rate_limit_check['errorMessages'].inspect}")
+      # Take a longer break if we hit rate limiting
+      sleep(rand(10..15))
+      # Try refreshing the page
+      page.reload(wait_until: 'networkidle0')
+      return true
+    end
+  rescue => e
+    $logger.error("Request #{request_id}: Error checking rate limit: #{e.message}")
+    $logger.error("Request #{request_id}: Rate limit check error details: #{e.backtrace.join("\n")}")
+  end
+  false
 end
 
 # Handle shutdown signals
 ['INT', 'TERM'].each do |signal|
   Signal.trap(signal) do
     $logger.info("\nShutting down gracefully...")
-    cleanup_browser
+    cleanup_browser  # This is fine as it's not called from within a mutex lock
     exit
   end
 end
@@ -323,19 +471,47 @@ get '/card_info' do
       legality = 'unknown'
     end
 
-    # Get or initialize browser
+    # Get or initialize browser and create context
     browser = get_browser
-    context = nil
+    context = create_browser_context(request_id)
     
     begin
-      # Create a new incognito context for this request
-      context = browser.create_incognito_browser_context
-      $logger.info("Created new browser context for request #{request_id}")
-      
       # Create a new page for the search
       search_page = context.new_page
-      search_page.default_navigation_timeout = 15000  # 15 seconds for navigation
-      search_page.default_timeout = 10000  # 10 seconds for other operations
+      $browser_contexts[request_id][:pages] << search_page
+      
+      # Enable request interception to prevent redirects
+      search_page.request_interception = true
+      search_page.on('request') do |request|
+        # Add proper headers for TCGPlayer
+        headers = request.headers.merge({
+          'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+          'Accept-Language' => 'en-US,en;q=0.9',
+          'Accept-Encoding' => 'gzip, deflate, br',
+          'Connection' => 'keep-alive',
+          'Upgrade-Insecure-Requests' => '1',
+          'Sec-Fetch-Dest' => 'document',
+          'Sec-Fetch-Mode' => 'navigate',
+          'Sec-Fetch-Site' => 'none',
+          'Sec-Fetch-User' => '?1',
+          'Cache-Control' => 'max-age=0'
+        })
+
+        if request.navigation_request? && !request.redirect_chain.empty?
+          # Only prevent redirects to error pages
+          if request.url.include?('uhoh')
+            $logger.info("Request #{request_id}: Preventing redirect to error page: #{request.url}")
+            request.abort
+          else
+            $logger.info("Request #{request_id}: Allowing redirect to: #{request.url}")
+            request.continue(headers: headers)
+          end
+        else
+          # Allow all other requests, including API calls
+          request.continue(headers: headers)
+        end
+      end
       
       # Set up console log capture
       search_page.on('console') do |msg|
@@ -645,6 +821,39 @@ get '/card_info' do
           condition_page.default_navigation_timeout = 30000  # 30 seconds
           condition_page.default_timeout = 30000  # 30 seconds
           
+          # Enable request interception for condition page too
+          condition_page.request_interception = true
+          condition_page.on('request') do |request|
+            # Add proper headers for TCGPlayer
+            headers = request.headers.merge({
+              'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+              'Accept-Language' => 'en-US,en;q=0.9',
+              'Accept-Encoding' => 'gzip, deflate, br',
+              'Connection' => 'keep-alive',
+              'Upgrade-Insecure-Requests' => '1',
+              'Sec-Fetch-Dest' => 'document',
+              'Sec-Fetch-Mode' => 'navigate',
+              'Sec-Fetch-Site' => 'none',
+              'Sec-Fetch-User' => '?1',
+              'Cache-Control' => 'max-age=0'
+            })
+
+            if request.navigation_request? && !request.redirect_chain.empty?
+              # Only prevent redirects to error pages
+              if request.url.include?('uhoh')
+                $logger.info("Request #{request_id}: Preventing redirect to error page: #{request.url}")
+                request.abort
+              else
+                $logger.info("Request #{request_id}: Allowing redirect to: #{request.url}")
+                request.continue(headers: headers)
+              end
+            else
+              # Allow all other requests, including API calls
+              request.continue(headers: headers)
+            end
+          end
+          
           begin
             $logger.info("Request #{request_id}: Processing condition: #{condition}")
             result = process_condition(condition_page, lowest_priced_product['url'], condition, request_id, card_name)
@@ -696,13 +905,27 @@ get '/card_info' do
         response
         
       ensure
-        # Clean up the context
+        # Clean up the context and its pages
         if context
           begin
+            # Close all pages in the context
+            if $browser_contexts[request_id]
+              $browser_contexts[request_id][:pages].each do |page|
+                begin
+                  page.close
+                rescue => e
+                  $logger.error("Request #{request_id}: Error closing page: #{e.message}")
+                end
+              end
+            end
+            
+            # Close the context
             context.close
-            $logger.info("Request #{request_id}: Closed browser context")
+            $logger.info("Request #{request_id}: Closed browser context and pages")
           rescue => e
             $logger.error("Request #{request_id}: Error closing browser context: #{e.message}")
+          ensure
+            $browser_contexts.delete(request_id)
           end
         end
       end
@@ -729,6 +952,30 @@ get '/card_info' do
       $active_requests.delete_if do |_, request|
         request[:timestamp] < (Time.now - 300)  # 5 minutes
       end
+      
+      # Clean up old contexts (older than 10 minutes)
+      $browser_contexts.delete_if do |_, context_data|
+        if context_data[:created_at] < (Time.now - 600)  # 10 minutes
+          begin
+            # Close any remaining pages
+            context_data[:pages].each do |page|
+              begin
+                page.close
+              rescue => e
+                $logger.error("Error closing stale page: #{e.message}")
+              end
+            end
+            # Close the context
+            context_data[:context].close
+            true  # Return true to delete the context
+          rescue => e
+            $logger.error("Error cleaning up stale context: #{e.message}")
+            true  # Still return true to delete the context
+          end
+        else
+          false  # Keep contexts that aren't stale
+        end
+      end
     end
   end
 end
@@ -736,6 +983,55 @@ end
 # Process a single condition
 def process_condition(page, product_url, condition, request_id, card_name)
   begin
+    # Add redirect prevention script using safe_evaluate
+    safe_evaluate(page, <<~JS, request_id)
+      function() {
+        // Store original navigation methods
+        const originalPushState = history.pushState;
+        const originalReplaceState = history.replaceState;
+        
+        // Override history methods to prevent redirects to error page
+        history.pushState = function(state, title, url) {
+          if (typeof url === 'string' && url.includes('uhoh')) {
+            console.log('Prevented history push to error page');
+            return;
+          }
+          return originalPushState.apply(this, arguments);
+        };
+
+        history.replaceState = function(state, title, url) {
+          if (typeof url === 'string' && url.includes('uhoh')) {
+            console.log('Prevented history replace to error page');
+            return;
+          }
+          return originalReplaceState.apply(this, arguments);
+        };
+
+        // Add navigation listener
+        window.addEventListener('beforeunload', (event) => {
+          if (window.location.href.includes('uhoh')) {
+            console.log('Prevented navigation to error page');
+            event.preventDefault();
+            event.stopPropagation();
+            return false;
+          }
+        });
+
+        // Add click interceptor for links that might redirect
+        document.addEventListener('click', (event) => {
+          const link = event.target.closest('a');
+          if (link && link.href && link.href.includes('uhoh')) {
+            console.log('Prevented click navigation to error page');
+            event.preventDefault();
+            event.stopPropagation();
+            return false;
+          }
+        }, true);
+
+        console.log('Redirect prevention initialized');
+      }
+    JS
+
     # Navigate to the product page with condition filter
     condition_param = URI.encode_www_form_component(condition)
     filtered_url = "#{product_url}#{product_url.include?('?') ? '&' : '?'}Condition=#{condition_param}&Language=English"
@@ -745,130 +1041,440 @@ def process_condition(page, product_url, condition, request_id, card_name)
       # Add random delay before navigation
       sleep(rand(2..4))
       
-      # Wait for network to be idle and for the page to be fully loaded
-      response = page.goto(filtered_url, wait_until: 'networkidle0')
+      # Navigate to the page with redirect prevention
+      response = page.goto(filtered_url, 
+        wait_until: 'domcontentloaded',
+        timeout: 30000
+      )
+      
+      # Check for rate limiting after navigation
+      if handle_rate_limit(page, request_id)
+        # If we hit rate limiting, try one more time
+        sleep(rand(5..10))
+        response = page.goto(filtered_url, 
+          wait_until: 'domcontentloaded',
+          timeout: 30000
+        )
+      end
+      
+      # Take immediate screenshot of the listings area before any redirects
+      immediate_screenshot = "immediate_listings_#{condition}_#{Time.now.to_i}.png"
+      page.evaluate(<<~JS)
+        function() {
+          // Try to find the listings container
+          const listingsContainer = document.querySelector('.listing-items, .price-points, [class*="listings"], [class*="prices"]');
+          if (listingsContainer) {
+            listingsContainer.scrollIntoView({ behavior: 'instant', block: 'center' });
+          }
+        }
+      JS
+      page.screenshot(path: immediate_screenshot, full_page: true)
+      $logger.info("Request #{request_id}: Saved immediate listings screenshot to #{immediate_screenshot}")
+      
+      # Check if we were redirected despite prevention
+      current_url = page.evaluate('window.location.href')
+      if current_url.include?('uhoh')
+        $logger.error("Request #{request_id}: Redirect to error page occurred despite prevention")
+        screenshot_path = "redirect_error_#{condition}_#{Time.now.to_i}.png"
+        page.screenshot(path: screenshot_path)
+        $logger.info("Request #{request_id}: Saved redirect error screenshot to #{screenshot_path}")
+        return nil
+      end
+      
       $logger.info("Request #{request_id}: Product page response status: #{response.status}")
       
-      # First define the scroll function with proper async/await syntax
+      # Wait a moment for initial content to load
+      sleep(2)
+      
+      # Scroll to where listings would be and log what we find
       page.evaluate(<<~JS)
-        window.humanScroll = async function() {
-          const maxScroll = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-          const steps = Math.floor(Math.random() * 5) + 3;  // 3-7 scroll steps
-          
-          for (let i = 0; i < steps; i++) {
-            const targetScroll = (maxScroll * (i + 1)) / steps;
-            await new Promise(resolve => {
-              window.scrollTo({
-                top: targetScroll,
-                behavior: 'smooth'
-              });
-              setTimeout(resolve, Math.random() * 1000 + 500);
-            });
+        function() {
+          // Try to find the listings container or price section
+          const listingsContainer = document.querySelector('.listing-items, .price-points, [class*="listings"], [class*="prices"]');
+          if (listingsContainer) {
+            console.log('Found listings container, scrolling to it');
+            listingsContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return {
+              foundContainer: true,
+              containerClass: listingsContainer.className,
+              containerHTML: listingsContainer.innerHTML.substring(0, 500),
+              containerRect: listingsContainer.getBoundingClientRect()
+            };
+          } else {
+            // If no specific container found, scroll to main content
+            const mainContent = document.querySelector('main') || document.querySelector('#main-content');
+            if (mainContent) {
+              console.log('No listings container found, scrolling to main content');
+              mainContent.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              return {
+                foundContainer: false,
+                mainContentHTML: mainContent.innerHTML.substring(0, 500),
+                mainContentRect: mainContent.getBoundingClientRect()
+              };
+            }
+            return { foundContainer: false, error: 'No content found to scroll to' };
           }
-        };
+        }
       JS
+      
+      # Log what we found after scrolling
+      page_content = page.evaluate(<<~JS)
+        function() {
+          return {
+            url: window.location.href,
+            title: document.title,
+            readyState: document.readyState,
+            viewportHeight: window.innerHeight,
+            scrollY: window.scrollY,
+            elements: {
+              listings: document.querySelectorAll('.listing-item, .price-point').length,
+              containers: document.querySelectorAll('[class*="listing"], [class*="price"]').length,
+              mainContent: document.querySelector('main') ? 'exists' : 'missing',
+              appContent: document.querySelector('#app') ? 'exists' : 'missing'
+            },
+            // Get all elements that might be related to listings
+            possibleElements: {
+              'listing-item': document.querySelectorAll('.listing-item').length,
+              'price-point': document.querySelectorAll('.price-point').length,
+              'product-listing': document.querySelectorAll('.product-listing').length,
+              'inventory-item': document.querySelectorAll('.inventory-item').length,
+              'product-price': document.querySelectorAll('.product-price').length,
+              'inventory__price': document.querySelectorAll('.inventory__price').length,
+              'inventory__price-with-shipping': document.querySelectorAll('.inventory__price-with-shipping').length
+            },
+            // Check for loading states
+            loadingStates: {
+              'loading-spinner': document.querySelectorAll('.loading-spinner, .spinner, [class*="loading"]').length,
+              'skeleton': document.querySelectorAll('[class*="skeleton"]').length,
+              'placeholder': document.querySelectorAll('[class*="placeholder"]').length
+            }
+          };
+        }
+      JS
+      $logger.info("Request #{request_id}: Page content after scroll: #{page_content.inspect}")
+      
+      # Take screenshot of the scrolled page state
+      pre_load_screenshot = "pre_load_#{condition}_#{Time.now.to_i}.png"
+      page.screenshot(path: pre_load_screenshot, full_page: true)  # Take full page screenshot
+      $logger.info("Request #{request_id}: Saved pre-load screenshot to #{pre_load_screenshot}")
+      
+      # Wait for key elements to be present, regardless of redirect status
+      begin
+        # Wait for either the product content or a no-results message
+        page.wait_for_selector('.product-details, .no-results-message, .listing-item, [class*="product"]', 
+          timeout: 15000,
+          visible: true
+        )
+        
+        # Log what we found
+        element_state = page.evaluate(<<~JS)
+          function() {
+            return {
+              hasProductDetails: !!document.querySelector('.product-details'),
+              hasNoResults: !!document.querySelector('.no-results-message'),
+              hasListings: !!document.querySelector('.listing-item'),
+              hasProductClass: !!document.querySelector('[class*="product"]'),
+              url: window.location.href,
+              title: document.title,
+              readyState: document.readyState
+            };
+          }
+        JS
+        $logger.info("Request #{request_id}: Initial element state: #{element_state.inspect}")
+        
+        # If we have a no-results message, return early
+        if element_state['hasNoResults']
+          $logger.info("Request #{request_id}: No results message found")
+          return nil
+        end
+        
+        # Take another screenshot after elements are found
+        post_load_screenshot = "post_load_#{condition}_#{Time.now.to_i}.png"
+        page.screenshot(path: post_load_screenshot)
+        $logger.info("Request #{request_id}: Saved post-load screenshot to #{post_load_screenshot}")
+        
+        # Give extra time for dynamic content
+        sleep(2)
+        
+      rescue => e
+        $logger.error("Request #{request_id}: Error waiting for elements: #{e.message}")
+        # Take error screenshot
+        error_screenshot = "element_error_#{condition}_#{Time.now.to_i}.png"
+        page.screenshot(path: error_screenshot)
+        $logger.info("Request #{request_id}: Saved error screenshot to #{error_screenshot}")
+        return nil
+      end
+      
+      # Log initial page state
+      initial_state = page.evaluate(<<~JS)
+        function() {
+          return {
+            url: window.location.href,
+            title: document.title,
+            readyState: document.readyState,
+            hasApp: !!document.querySelector('#app'),
+            hasContent: !!document.querySelector('main'),
+            scripts: Array.from(document.scripts).map(s => s.src || 'inline'),
+            bodyContent: document.body.innerHTML.substring(0, 1000),
+            networkRequests: performance.getEntriesByType('resource').map(r => ({
+              url: r.name,
+              type: r.initiatorType,
+              status: r.responseStatus
+            }))
+          };
+        }
+      JS
+      $logger.info("Request #{request_id}: Initial page state: #{initial_state.inspect}")
+      
+      # Wait for any dynamic content to load
+      sleep(2)
+      
+      # Log page state after initial load
+      post_load_state = page.evaluate(<<~JS)
+        function() {
+          const app = document.querySelector('#app');
+          const main = document.querySelector('main');
+          return {
+            url: window.location.href,
+            title: document.title,
+            readyState: document.readyState,
+            appContent: app ? app.innerHTML.substring(0, 500) : 'No app element',
+            mainContent: main ? main.innerHTML.substring(0, 500) : 'No main element',
+            hasListings: !!document.querySelector('.listing-item'),
+            hasNoResults: !!document.querySelector('.no-results-message'),
+            dynamicContent: {
+              listings: document.querySelectorAll('.listing-item').length,
+              prices: document.querySelectorAll('[class*="price"]').length,
+              containers: document.querySelectorAll('[class*="container"]').length
+            }
+          };
+        }
+      JS
+      $logger.info("Request #{request_id}: Post-load page state: #{post_load_state.inspect}")
+      
+      # Take a screenshot before any scrolling
+      screenshot_path = "pre_scroll_#{condition}_#{Time.now.to_i}.png"
+      
+      # First scroll down just enough to see the listing area
+      page.evaluate(<<~JS)
+        function() {
+          // Scroll down a fixed amount that we know will show the card properly
+          window.scrollTo(0, 300);  // Scroll down 300px
+          // Wait a moment for any dynamic content to load
+          return new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      JS
+      
+      # Now take the screenshot after scrolling
+      page.screenshot(path: screenshot_path)
+      $logger.info("Request #{request_id}: Saved pre-scroll screenshot to #{screenshot_path}")
       
       # Execute the scroll function with proper error handling
       begin
-        page.evaluate('(async () => { try { await window.humanScroll(); } catch(e) { console.error("Scroll error:", e); } })()')
+        scroll_result = page.evaluate(<<~JS)
+          function() {
+            return new Promise(async (resolve) => {
+              try {
+                console.log('Starting simplified scroll operation');
+                
+                // Get page height
+                const height = document.documentElement.scrollHeight;
+                console.log('Page height:', height);
+                
+                // Scroll to bottom and back to top to trigger any lazy loading
+                window.scrollTo(0, height);
+                await new Promise(r => setTimeout(r, 1000));
+                window.scrollTo(0, 0);
+                await new Promise(r => setTimeout(r, 1000));
+                window.scrollTo(0, height);
+                
+                // Log what we find
+                const listings = document.querySelectorAll('.listing-item, .price-point, [class*="listing"], [class*="price"]');
+                console.log('Found listings after scroll:', listings.length);
+                
+                resolve({
+                  success: true,
+                  finalScroll: window.scrollY,
+                  contentHeight: height,
+                  hasListings: listings.length > 0,
+                  listingCount: listings.length,
+                  listingTexts: Array.from(listings).map(el => el.textContent.trim())
+                });
+              } catch(e) {
+                console.error('Scroll error:', e);
+                resolve({
+                  success: false,
+                  error: e.message,
+                  stack: e.stack
+                });
+              }
+            });
+          }
+        JS
+        $logger.info("Request #{request_id}: Scroll operation result: #{scroll_result.inspect}")
+        
+        # Take a screenshot after scrolling
+        screenshot_path = "post_scroll_#{condition}_#{Time.now.to_i}.png"
+        page.screenshot(path: screenshot_path)
+        $logger.info("Request #{request_id}: Saved post-scroll screenshot to #{screenshot_path}")
+        
         # Wait for scroll to complete
-        sleep(2)
+        sleep(3)
       rescue => e
         $logger.error("Request #{request_id}: Error during scroll: #{e.message}")
+        $logger.error("Request #{request_id}: Scroll error details: #{e.backtrace.join("\n")}")
       end
       
-      # Wait specifically for listing items with increased timeout
+      # Wait specifically for listing items with increased timeout and retry logic
       begin
-        page.wait_for_selector('.listing-item', timeout: 45000)  # Increased to 45 seconds
+        max_retries = 3
+        retry_count = 0
+        found_listings = false
+        
+        while retry_count < max_retries && !found_listings
+          begin
+            # Wait for either listing items or a "no results" message
+            found_listings = page.wait_for_selector('.listing-item, .no-results-message', timeout: 15000)
+            if found_listings
+              # Check if we got the no results message
+              no_results = page.evaluate(<<~JS)
+                document.querySelector('.no-results-message') !== null
+              JS
+              if no_results
+                $logger.info("Request #{request_id}: No listings found for this condition")
+                return nil
+              end
+              break
+            end
+          rescue => e
+            retry_count += 1
+            if retry_count < max_retries
+              $logger.info("Request #{request_id}: Retry #{retry_count} waiting for listings...")
+              sleep(2)
+              # Try refreshing the page on retry
+              page.reload(wait_until: 'networkidle0')
+            else
+              raise e
+            end
+          end
+        end
+        
+        if !found_listings
+          raise "Failed to find listings after #{max_retries} retries"
+        end
+        
         $logger.info("Request #{request_id}: Listing items found")
         
         # Get all listings and their prices
         price_data = page.evaluate(<<~'JS')
           function() {
+            // Helper function to safely extract numeric price
             function extractNumericPrice(text) {
               if (!text) return null;
-              // Try to match price patterns like $1.23, $1,234.56, etc.
-              const match = text.match(/\$[\d,]+(\.\d{2})?/);
-              if (!match) return null;
-              return parseFloat(match[0].replace(/[$,]/g, ''));
+              try {
+                // Match price patterns like $1.23, $1,234.56
+                const match = text.match(/\$[\d,]+(\.\d{2})?/);
+                if (!match) return null;
+                // Remove $ and commas, then parse as float
+                return parseFloat(match[0].replace(/[$,]/g, ''));
+              } catch (e) {
+                console.error('Error extracting price:', e);
+                return null;
+              }
             }
 
-            // Get all listing items
-            const listings = Array.from(document.querySelectorAll('.listing-item'));
-            if (!listings.length) {
-              console.log('No listings found');
-              return null;
-            }
+            try {
+              // Get all listing items with a more specific selector
+              const listings = Array.from(document.querySelectorAll('.listing-item:not(.listing-item--sold-out)'));
+              console.log('Found', listings.length, 'active listings');
 
-            console.log('Found', listings.length, 'listings');
-
-            // Process each listing
-            const validListings = listings.map(listing => {
-              // Get price and shipping elements using exact class names
-              const priceElement = listing.querySelector('.listing-item__listing-data__info__price');
-              const shippingElement = listing.querySelector('.shipping-messages__price');
-              
-              if (!priceElement) {
-                console.log('No price element found in listing');
+              if (!listings.length) {
+                console.log('No active listings found');
                 return null;
               }
 
-              const basePrice = extractNumericPrice(priceElement.textContent);
-              if (basePrice === null) {
-                console.log('Could not extract base price from:', priceElement.textContent);
+              // Process each listing with error handling
+              const validListings = listings.map(listing => {
+                try {
+                  // Get price element with fallback selectors
+                  const priceElement = listing.querySelector('.listing-item__listing-data__info__price') || 
+                                     listing.querySelector('[class*="price"]');
+                  const shippingElement = listing.querySelector('.shipping-messages__price') ||
+                                        listing.querySelector('[class*="shipping"]');
+
+                  if (!priceElement) {
+                    console.log('No price element found in listing');
+                    return null;
+                  }
+
+                  // Extract base price
+                  const basePrice = extractNumericPrice(priceElement.textContent);
+                  if (basePrice === null) {
+                    console.log('Invalid base price:', priceElement.textContent);
+                    return null;
+                  }
+
+                  // Calculate shipping price
+                  let shippingPrice = 0;
+                  if (shippingElement) {
+                    const shippingText = shippingElement.textContent.trim();
+                    if (!shippingText.toLowerCase().includes('free shipping')) {
+                      const price = extractNumericPrice(shippingText);
+                      if (price !== null) {
+                        shippingPrice = price;
+                      }
+                    }
+                  }
+
+                  const totalPrice = basePrice + shippingPrice;
+                  
+                  // Only return listings with valid total price
+                  if (isNaN(totalPrice) || totalPrice <= 0) {
+                    console.log('Invalid total price:', totalPrice);
+                    return null;
+                  }
+
+                  return {
+                    basePrice,
+                    shippingPrice,
+                    totalPrice,
+                    priceText: priceElement.textContent.trim(),
+                    shippingText: shippingElement ? shippingElement.textContent.trim() : 'free shipping'
+                  };
+                } catch (e) {
+                  console.error('Error processing listing:', e);
+                  return null;
+                }
+              }).filter(Boolean)  // Remove null entries
+                .sort((a, b) => a.totalPrice - b.totalPrice);
+
+              if (!validListings.length) {
+                console.log('No valid listings after processing');
                 return null;
               }
 
-              // Get shipping price if available
-              let shippingPrice = 0;
-              if (shippingElement) {
-                const shippingText = shippingElement.textContent.trim();
-                if (shippingText.toLowerCase().includes('free shipping')) {
-                  shippingPrice = 0;
-                } else {
-                  const price = extractNumericPrice(shippingText);
-                  if (price !== null) {
-                    shippingPrice = price;
+              // Get the lowest priced listing
+              const lowestListing = validListings[0];
+              console.log('Selected lowest listing:', lowestListing);
+
+              return {
+                price: `$${lowestListing.totalPrice.toFixed(2)}`,
+                url: window.location.href,
+                debug: {
+                  basePrice: lowestListing.basePrice,
+                  shippingPrice: lowestListing.shippingPrice,
+                  totalPrice: lowestListing.totalPrice,
+                  source: 'lowest_valid_listing',
+                  rawText: {
+                    price: lowestListing.priceText,
+                    shipping: lowestListing.shippingText
                   }
                 }
-              }
-
-              const totalPrice = basePrice + shippingPrice;
-              console.log('Valid listing found:', { basePrice, shippingPrice, totalPrice });
-              
-              return {
-                basePrice,
-                shippingPrice,
-                totalPrice,
-                priceElement: priceElement.textContent.trim(),
-                shippingElement: shippingElement ? shippingElement.textContent.trim() : 'no shipping info'
               };
-            }).filter(listing => listing !== null)
-              .sort((a, b) => a.totalPrice - b.totalPrice);
-
-            if (!validListings.length) {
-              console.log('No valid listings found after processing');
+            } catch (e) {
+              console.error('Error in price extraction:', e);
               return null;
             }
-
-            // Get the lowest priced listing
-            const lowestListing = validListings[0];
-            console.log('Selected lowest listing:', lowestListing);
-            
-            return {
-              price: `$${lowestListing.totalPrice.toFixed(2)}`,
-              url: window.location.href,
-              debug: {
-                basePrice: lowestListing.basePrice,
-                shippingPrice: lowestListing.shippingPrice,
-                totalPrice: lowestListing.totalPrice,
-                source: 'lowest_valid_listing',
-                rawText: {
-                  price: lowestListing.priceElement,
-                  shipping: lowestListing.shippingElement
-                }
-              }
-            };
           }
         JS
         
@@ -951,6 +1557,23 @@ end
 get '/card_prices.js' do
   content_type 'application/javascript'
   send_file File.join(settings.public_folder, 'card_prices.js')
+end
+
+# Add a method to safely evaluate JavaScript on a page
+def safe_evaluate(page, script, request_id = nil)
+  begin
+    # Wait for the page to be ready
+    page.wait_for_load_state('domcontentloaded', timeout: 5000)
+    
+    # Evaluate the script
+    page.evaluate(script)
+  rescue Puppeteer::FrameManager::FrameNotFoundError => e
+    $logger.warn("Request #{request_id}: Frame not found during evaluation: #{e.message}")
+    nil
+  rescue => e
+    $logger.error("Request #{request_id}: Error during page evaluation: #{e.message}")
+    nil
+  end
 end
 
 puts "Price proxy server starting on http://localhost:4567"

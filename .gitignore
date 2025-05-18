@@ -1,6 +1,11 @@
 # SpecStory explanation file
 .specstory/.what-is-this.md
 
+# Screenshots and error logs
+*.png
+*.html
+price_proxy.log
+
 # Ruby
 .bundle/
 *.gem
@@ -55,3 +60,9 @@ commander_cards/processed_debug.jpg
 debug_search.html
 full_transcript.txt
 mtg_cards.html
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo

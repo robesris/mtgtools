@@ -932,8 +932,8 @@ get '/card_info' do
         # Format the response to match the original style
         formatted_prices = {}
         prices.each do |condition, data|
-          # Extract just the numeric price from the price text
-          price_value = data['price'].gsub(/[^\d.]/, '')
+          # Extract just the numeric price from the price text, but preserve the $ prefix
+          price_value = data['price'].gsub(/[^\d.$]/, '')  # Keep $ and decimal point
           formatted_prices[condition] = {
             'price' => price_value,
             'url' => data['url']
@@ -1297,10 +1297,11 @@ def process_condition(page, product_url, condition, request_id, card_name)
 
               # If we found listings with prices, return the result
               if listings_html.is_a?(Hash) && listings_html['success'] && listings_html['lowestPrice']
+                $logger.info("Request #{request_id}: Found valid price: $#{listings_html['lowestPrice']}")
                 return {
                   'success' => true,
-                  'price' => listings_html['lowestPrice'],
-                  'url' => listings_html['lowestPriceUrl']
+                  'price' => "$#{listings_html['lowestPrice']}",  # Add $ prefix back
+                  'url' => listings_html['lowestPriceUrl'] || product_url  # Fallback to product_url if no specific URL found
                 }
               end
             rescue => e
@@ -1340,6 +1341,7 @@ def process_condition(page, product_url, condition, request_id, card_name)
       end
 
       # If we haven't found any listings with prices, return failure
+      $logger.error("Request #{request_id}: No valid listings found after all screenshots")
       return {
         'success' => false,
         'message' => 'No valid listings found after all screenshots'

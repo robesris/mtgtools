@@ -25,17 +25,30 @@ async function updateCardPrices(cardElement) {
     const isLegal = data.legality === 'legal';
 
     if (prices) {
-      Object.entries(prices).forEach(([condition, priceData]) => {
-        if (priceData && priceData.price) {
-          const displayCondition = condition
-            .replace('Near Mint', 'NM')
-            .replace('Lightly Played', 'LP');
-          priceHtml += `<a href="${priceData.url}" target="_blank">TCGPlayer (${displayCondition}): ${priceData.price}</a><br>`;
+      let priceHtml = '';
+      const conditionOrder = ['lightly played', 'near mint'];
+      
+      // First add prices in our preferred order
+      conditionOrder.forEach((condition, index) => {
+        if (prices[condition] && prices[condition].price) {
+          if (priceHtml) priceHtml += ' | ';
+          const displayCondition = condition === 'near mint' ? 'Near Mint' : 'Lightly Played';
+          priceHtml += `${displayCondition}: <a href="${prices[condition].url}" target="_blank" class="price-link">${prices[condition].price}</a>`;
         }
       });
-    }
-
-    if (priceHtml) {
+      
+      // Then add any other conditions that might exist
+      Object.entries(prices).forEach(([condition, priceData]) => {
+        if (!conditionOrder.includes(condition) && priceData && priceData.price) {
+          if (priceHtml) priceHtml += ' | ';
+          const displayCondition = condition
+            .replace('near mint', 'Near Mint')
+            .replace('lightly played', 'Lightly Played')
+            .replace(' foil', ' Foil');
+          priceHtml += `${displayCondition}: <a href="${priceData.url}" target="_blank" class="price-link">${priceData.price}</a>`;
+        }
+      });
+      
       priceInfo.innerHTML = priceHtml;
       if (!isLegal) {
         priceInfo.classList.add('illegal');
@@ -93,13 +106,13 @@ function loadCachedPrices() {
             console.log(`Adding cached price for ${condition}:`, price);
             if (html) { html += ' | '; }
             const displayCondition = condition
-              .replace('near mint', 'NM')
-              .replace('lightly played', 'LP')
+              .replace('near mint', 'Near Mint')
+              .replace('lightly played', 'Lightly Played')
               .replace(' foil', ' Foil');
-            html += `${displayCondition}: <a href="${price.url}" target="_blank" class="price-link">${price.total}</a>`;
+            html += `${displayCondition}: <a href="${price.url}" target="_blank" class="price-link">${price.price}</a>`;
           };
           
-          const conditionOrder = ['near mint', 'lightly played', 'near mint foil', 'lightly played foil'];
+          const conditionOrder = ['lightly played', 'near mint'];
           conditionOrder.forEach(condition => {
             if (prices[condition]) {
               addPrice(condition, prices[condition]);

@@ -108,77 +108,85 @@ def launch_browser
   # Set a realistic user agent and headers for all new pages
   browser.on('targetcreated') do |target|
     if target.type == 'page'
-      page = target.page
-      page.set_user_agent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
-      
-      # Override navigator.webdriver to appear as a real browser
-      page.evaluate_on_new_document(<<~JS)
-        Object.defineProperty(navigator, 'webdriver', {
-          get: () => undefined
-        });
-        // Override other automation detection
-        Object.defineProperty(navigator, 'plugins', {
-          get: () => [1, 2, 3, 4, 5]
-        });
-        Object.defineProperty(navigator, 'languages', {
-          get: () => ['en-US', 'en']
-        });
-        // Override more browser properties
-        Object.defineProperty(navigator, 'platform', {
-          get: () => 'MacIntel'
-        });
-        Object.defineProperty(navigator, 'vendor', {
-          get: () => 'Google Inc.'
-        });
-        Object.defineProperty(navigator, 'maxTouchPoints', {
-          get: () => 5
-        });
-        Object.defineProperty(navigator, 'hardwareConcurrency', {
-          get: () => 8
-        });
-        Object.defineProperty(navigator, 'deviceMemory', {
-          get: () => 8
-        });
-        Object.defineProperty(navigator, 'connection', {
-          get: () => ({
-            effectiveType: '4g',
-            rtt: 50,
-            downlink: 10,
-            saveData: false
-          })
-        });
-        // Override window properties
-        Object.defineProperty(window, 'chrome', {
-          get: () => ({
-            runtime: {},
-            loadTimes: function() {},
-            csi: function() {},
-            app: {}
-          })
-        });
-      JS
-      
-      # Add cookies to appear more like a real browser
-      page.set_cookie({
-        name: 'tcgplayer_session',
-        value: '1',
-        domain: '.tcgplayer.com',
-        path: '/'
-      })
-     
-      # Add more cookies
-      page.set_cookie({
-        name: 'tcgplayer_visitor',
-        value: '1',
-        domain: '.tcgplayer.com',
-        path: '/'
-      })
-      page.set_cookie({
-        name: 'tcgplayer_preferences',
-        value: '{"currency":"USD","language":"en"}',
-        domain: '.tcgplayer.com',
-        path: '/'
-      })
+      begin
+        page = target.page
+        page.set_user_agent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
+        
+        # Wait for the page to be ready before injecting scripts
+        page.wait_for_load_state('domcontentloaded')
+        
+        # Override navigator.webdriver to appear as a real browser
+        page.evaluate_on_new_document(<<~JS)
+          Object.defineProperty(navigator, 'webdriver', {
+            get: () => undefined
+          });
+          // Override other automation detection
+          Object.defineProperty(navigator, 'plugins', {
+            get: () => [1, 2, 3, 4, 5]
+          });
+          Object.defineProperty(navigator, 'languages', {
+            get: () => ['en-US', 'en']
+          });
+          // Override more browser properties
+          Object.defineProperty(navigator, 'platform', {
+            get: () => 'MacIntel'
+          });
+          Object.defineProperty(navigator, 'vendor', {
+            get: () => 'Google Inc.'
+          });
+          Object.defineProperty(navigator, 'maxTouchPoints', {
+            get: () => 5
+          });
+          Object.defineProperty(navigator, 'hardwareConcurrency', {
+            get: () => 8
+          });
+          Object.defineProperty(navigator, 'deviceMemory', {
+            get: () => 8
+          });
+          Object.defineProperty(navigator, 'connection', {
+            get: () => ({
+              effectiveType: '4g',
+              rtt: 50,
+              downlink: 10,
+              saveData: false
+            })
+          });
+          // Override window properties
+          Object.defineProperty(window, 'chrome', {
+            get: () => ({
+              runtime: {},
+              loadTimes: function() {},
+              csi: function() {},
+              app: {}
+            })
+          });
+        JS
+        
+        # Add cookies to appear more like a real browser
+        page.set_cookie({
+          name: 'tcgplayer_session',
+          value: '1',
+          domain: '.tcgplayer.com',
+          path: '/'
+        })
+        
+        # Add more cookies
+        page.set_cookie({
+          name: 'tcgplayer_visitor',
+          value: '1',
+          domain: '.tcgplayer.com',
+          path: '/'
+        })
+        page.set_cookie({
+          name: 'tcgplayer_preferences',
+          value: '{"currency":"USD","language":"en"}',
+          domain: '.tcgplayer.com',
+          path: '/'
+        })
+      rescue => e
+        puts "Error setting up new page: #{e.message}"
+        # Don't re-raise, just log the error
+      end
     end
   end
   
@@ -371,15 +379,15 @@ get '/prices' do
       puts "Navigating to search URL: #{search_url}"
       
       # Log requests and responses
-      main_page.on('request', ->(request) {
+      main_page.on('request') do |request|
         puts "Request: #{request.method} #{request.url}"
-      })
-      main_page.on('response', ->(response) {
+      end
+      main_page.on('response') do |response|
         puts "Response: #{response.status} #{response.url}"
         if response.url.include?('tcgplayer.com')
           puts "Response headers: #{response.headers.inspect}"
         end
-      })
+      end
       
       response = main_page.goto(search_url, wait_until: 'networkidle0', timeout: 30000)
       puts "Search response status: #{response&.status}"

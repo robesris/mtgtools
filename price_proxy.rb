@@ -162,6 +162,11 @@ get '/card_info' do
       search_page.default_navigation_timeout = 15000  # 15 seconds for navigation
       search_page.default_timeout = 10000  # 10 seconds for other operations
       
+      # Set up console log capture
+      search_page.on('console') do |msg|
+        $logger.info("Request #{request_id}: Browser console: #{msg.text}")
+      end
+      
       # Navigate to TCGPlayer search
       $logger.info("Request #{request_id}: Navigating to TCGPlayer search for: #{card_name}")
       search_url = "https://www.tcgplayer.com/search/magic/product?q=#{CGI.escape(card_name)}&view=grid"
@@ -170,322 +175,385 @@ get '/card_info' do
       begin
         response = search_page.goto(search_url, wait_until: 'networkidle0')
         $logger.info("Request #{request_id}: Search page response status: #{response.status}")
-      rescue Puppeteer::TimeoutError => e
-        $logger.error("Request #{request_id}: Timeout navigating to search page: #{e.message}")
-        return { error: 'Timeout searching for card', legality: legality }.to_json
-      rescue => e
-        $logger.error("Request #{request_id}: Error navigating to search page: #{e.message}")
-        $logger.error(e.backtrace.join("\n"))
-        return { error: "Error searching for card: #{e.message}", legality: legality }.to_json
-      end
-      
-      # Log the page content for debugging
-      $logger.info("Request #{request_id}: Page title: #{search_page.title}")
-      $logger.info("Request #{request_id}: Current URL: #{search_page.url}")
-      
-      # Get the first product URL with multiple possible selectors
-      # Try multiple selectors for the product grid
-      selectors = [
-        '.product-grid',
-        '.search-result',
-        '.product-list',
-        '[data-testid="product-grid"]',
-        '[data-testid="search-results"]'
-      ]
-      
-      found_selector = nil
-      selectors.each do |selector|
+        
+        # Wait for the search results to load
         begin
-          $logger.info("Request #{request_id}: Trying selector: #{selector}")
-          search_page.wait_for_selector(selector, timeout: 5000)  # 5 seconds for selector wait
-          found_selector = selector
-          $logger.info("Request #{request_id}: Found working selector: #{selector}")
-          break
+          search_page.wait_for_selector('.search-result, .product-card, [class*="product"], [class*="listing"]', timeout: 10000)
+          $logger.info("Request #{request_id}: Search results found")
         rescue => e
-          $logger.info("Request #{request_id}: Selector #{selector} not found: #{e.message}")
+          $logger.error("Request #{request_id}: Timeout waiting for search results: #{e.message}")
+          # Take a screenshot for debugging
+          screenshot_path = "search_error_#{Time.now.to_i}.png"
+          search_page.screenshot(path: screenshot_path)
+          $logger.info("Request #{request_id}: Saved error screenshot to #{screenshot_path}")
         end
-      end
-      
-      unless found_selector
-        $logger.error("Request #{request_id}: Could not find any product grid selectors")
-        # Take a screenshot for debugging
-        screenshot_path = "search_error_#{Time.now.to_i}.png"
-        search_page.screenshot(path: screenshot_path)
-        $logger.info("Request #{request_id}: Saved error screenshot to #{screenshot_path}")
-        return { error: 'Could not find product listings', legality: legality }.to_json
-      end
-      
-      # Find the lowest-priced valid product on the search page
-      lowest_product = search_page.evaluate(<<~JAVASCRIPT, cardName: card_name)
-        function(cardName) {
-          function extractNumericPrice(text) {
-            if (!text) return null;
-            // Try to match price patterns like $1.23, $1,234.56, etc.
-            const match = text.match(/\$[\d,]+(\.\d{2})?/);
-            if (!match) return null;
-            return parseFloat(match[0].replace(/[$,]/g, ''));
-          }
-
-          function isExactCardMatch(title) {
-            // Convert both to lowercase for case-insensitive comparison
-            const searchTitle = title.toLowerCase();
-            const searchName = cardName.toLowerCase();
+        
+        # Give extra time for dynamic content to stabilize
+        sleep(2)
+        
+        # Log the page content for debugging
+        $logger.info("Request #{request_id}: Page title: #{search_page.title}")
+        $logger.info("Request #{request_id}: Current URL: #{search_page.url}")
+        
+        # Find the lowest priced valid product from the search results
+        card_name = card_name.strip  # Normalize the card name in Ruby first
+        lowest_priced_product = search_page.evaluate(<<~'JS', { cardName: card_name }.to_json)
+          function(params) {
+            const cardName = JSON.parse(params).cardName;
+            console.log('Searching for card:', cardName);
             
-            // Check for art cards and proxies
-            if (searchTitle.includes('art card') || searchTitle.includes('proxy')) {
-              return false;
-            }
-            
-            // Log the title we're checking
-            console.log('Checking title:', searchTitle, 'against card name:', searchName);
-            
-            // Find the card name in the title
-            const nameIndex = searchTitle.indexOf(searchName);
-            if (nameIndex === -1) {
-              console.log('Card name not found in title');
-              return false;
-            }
-            
-            // Check if there are any characters before the card name
-            if (nameIndex > 0) {
-              const beforeName = searchTitle.slice(0, nameIndex).trim();
-              // Allow words like "promo", "judge", "promos" before the card name
-              const allowedPrefixes = ['promo', 'judge', 'promos', 'commander', 'collectors'];
-              const hasAllowedPrefix = allowedPrefixes.some(prefix => beforeName.endsWith(prefix));
-              if (beforeName && !hasAllowedPrefix && !/[\-\(\)\[\]\{\}\.,;:]$/.test(beforeName)) {
-                console.log('Invalid characters before card name:', beforeName);
-                return false;
+            function extractNumericPrice(priceText) {
+              if (!priceText) {
+                console.log('No price text provided');
+                return null;
               }
-            }
-            
-            // Check if there are any characters after the card name
-            const afterIndex = nameIndex + searchName.length;
-            if (afterIndex < searchTitle.length) {
-              const afterName = searchTitle.slice(afterIndex).trim();
-              // Allow words like "promo", "judge", "promos" after the card name
-              const allowedSuffixes = ['promo', 'judge', 'promos', 'commander', 'collectors'];
-              const hasAllowedSuffix = allowedSuffixes.some(suffix => afterName.startsWith(suffix));
-              if (afterName && !hasAllowedSuffix && !/^[\-\(\)\[\]\{\}\.,;:]/.test(afterName)) {
-                console.log('Invalid characters after card name:', afterName);
-                return false;
-              }
-            }
-            
-            console.log('Title is a match');
-            return true;
-          }
-
-          // Get all product cards
-          const productCards = Array.from(document.querySelectorAll('.search-result'));
-          console.log('Found', productCards.length, 'product cards');
-          
-          // Log the HTML structure of the first card to see what we're working with
-          if (productCards.length > 0) {
-            console.log('First card HTML:', productCards[0].outerHTML);
-            console.log('Available classes in first card:', 
-              Array.from(productCards[0].classList).join(', '));
-          }
-
-          // Filter and sort product cards
-          const validProducts = productCards
-            .map((card, index) => {
-              console.log(`\nProcessing card ${index + 1}:`);
               
-              // Log all elements with class names containing 'product' or 'price'
-              const allElements = card.querySelectorAll('*');
-              const relevantElements = Array.from(allElements).filter(el => {
-                const classes = Array.from(el.classList).join(' ').toLowerCase();
-                return classes.includes('product') || classes.includes('price');
+              // Create and inspect the regex object
+              const priceRegex = /\$\d+\.\d{2}/;  // Simple match for $XX.XX
+              
+              // Test if the price matches the pattern
+              if (!priceRegex.test(priceText)) {
+                console.log('No price pattern found in:', priceText);
+                return null;
+              }
+              
+              // Extract just the numeric part (remove the $ sign)
+              const numericStr = priceText.slice(1);
+              const result = parseFloat(numericStr);
+              console.log('Extracted numeric price:', result, 'from:', numericStr);
+              return isNaN(result) ? null : result;
+            }
+
+            function isExactCardMatch(title, cardName) {
+              if (!title || !cardName) {
+                console.log('Missing title or cardName:', { title, cardName });
+                return false;
+              }
+              
+              // Normalize both strings
+              const normalizedTitle = title.toLowerCase().trim().replace(/\s+/g, ' ');
+              const normalizedCardName = String(cardName).toLowerCase().trim().replace(/\s+/g, ' ');
+              
+              console.log('Comparing card names:', {
+                normalizedTitle,
+                normalizedCardName,
+                titleLength: normalizedTitle.length,
+                cardNameLength: normalizedCardName.length
               });
               
-              console.log('Found relevant elements:', 
-                relevantElements.map(el => ({
-                  tag: el.tagName,
-                  classes: Array.from(el.classList).join(' '),
-                  text: el.textContent.trim().slice(0, 50) // First 50 chars of text
-                }))
+              // First try exact match
+              if (normalizedTitle === normalizedCardName) {
+                console.log('Found exact match');
+                return true;
+              }
+              
+              // Then try match with punctuation delimiters
+              const regex = new RegExp(
+                `(^|\\s|[^a-zA-Z0-9])${normalizedCardName}(\\s|[^a-zA-Z0-9]|$)`,
+                'i'
               );
-
-              // Try to find title and price elements
-              const titleElement = card.querySelector('[class*="product"][class*="name"], [class*="product"][class*="title"]');
-              const priceElement = card.querySelector('[class*="price"]');
-              const linkElement = card.querySelector('a[href*="/product/"]');
               
-              console.log('Found elements:', {
-                title: titleElement ? {
-                  class: Array.from(titleElement.classList).join(' '),
-                  text: titleElement.textContent.trim()
-                } : null,
-                price: priceElement ? {
-                  class: Array.from(priceElement.classList).join(' '),
-                  text: priceElement.textContent.trim()
-                } : null,
-                link: linkElement ? {
-                  href: linkElement.href,
-                  text: linkElement.textContent.trim()
-                } : null
+              const isMatch = regex.test(normalizedTitle);
+              console.log('Regex match result:', { 
+                isMatch,
+                matchIndex: normalizedTitle.search(regex),
+                title: normalizedTitle
               });
               
-              if (!titleElement || !priceElement || !linkElement) {
-                console.log('Missing required elements:', {
-                  hasTitle: !!titleElement,
-                  hasPrice: !!priceElement,
-                  hasLink: !!linkElement
-                });
-                return null;
-              }
-              
-              const title = titleElement.textContent.trim();
-              const priceText = priceElement.textContent.trim();
-              console.log('Checking product:', { title, priceText });
-              
-              if (!isExactCardMatch(title)) {
-                console.log('Title does not match card name');
-                return null;
-              }
-              
-              const price = extractNumericPrice(priceText);
-              if (price === null) {
-                console.log('Could not extract price from:', priceText);
-                return null;
-              }
-              
-              // Get the clean URL
-              const url = new URL(linkElement.href);
-              const cleanUrl = url.origin + url.pathname;
-              
-              console.log('Valid product found:', { title, price, url: cleanUrl });
-              return {
-                title,
-                price,
-                url: cleanUrl
-              };
-            })
-            .filter(product => product !== null)
-            .sort((a, b) => a.price - b.price);
-
-          if (!validProducts.length) {
-            console.log('No valid products found after filtering');
-            return null;
-          }
-
-          // Get the lowest priced valid product
-          const lowestProduct = validProducts[0];
-          console.log('Selected lowest product:', lowestProduct.title, 'at', lowestProduct.price);
-          
-          return {
-            url: lowestProduct.url,
-            title: lowestProduct.title,
-            price: lowestProduct.price
-          };
-        }
-      JAVASCRIPT
-      
-      if !lowest_product
-        $logger.error("Request #{request_id}: No valid products found for: #{card_name}")
-        return { error: 'No valid product found', legality: legality }.to_json
-      end
-      
-      $logger.info("Request #{request_id}: Found lowest priced product: #{lowest_product['title']} at $#{lowest_product['price']}")
-      
-      # Now we only need to process the single lowest-priced product
-      found_prices = false
-      prices = {}
-      found_conditions = 0
-      conditions = ['Near Mint', 'Lightly Played']
-      
-      conditions.each do |condition|
-        # Stop if we've found both conditions
-        break if found_conditions >= 2
-        
-        # Create a new page for each condition
-        condition_page = context.new_page
-        condition_page.default_navigation_timeout = 15000  # 15 seconds
-        condition_page.default_timeout = 10000  # 10 seconds
-        
-        begin
-          $logger.info("Request #{request_id}: Processing condition: #{condition}")
-          result = process_condition(condition_page, lowest_product['url'], condition, request_id, card_name)
-          $logger.info("Request #{request_id}: Condition result: #{result.inspect}")
-          if result
-            prices[condition] = {
-              'price' => result['price'],
-              'url' => result['url']
+              return isMatch;
             }
-            found_conditions += 1
-            found_prices = true
+
+            // Wait for elements to be fully loaded
+            function waitForElements() {
+              return new Promise((resolve) => {
+                let attempts = 0;
+                const maxAttempts = 50; // 5 seconds total
+                
+                const checkElements = () => {
+                  attempts++;
+                  const cards = document.querySelectorAll('.product-card__product');
+                  console.log(`Attempt ${attempts}: Found ${cards.length} cards`);
+                  
+                  if (cards.length > 0) {
+                    // Check if any card has content
+                    const hasContent = Array.from(cards).some(card => {
+                      const title = card.querySelector('.product-card__title');
+                      const hasTitle = title && title.textContent.trim().length > 0;
+                      if (hasTitle) {
+                        console.log('Found card with title:', title.textContent.trim());
+                      }
+                      return hasTitle;
+                    });
+                    
+                    if (hasContent) {
+                      console.log('Found cards with content, waiting for stability...');
+                      // Give extra time for dynamic content to stabilize
+                      setTimeout(() => {
+                        console.log('Content should be stable now');
+                        resolve(true);
+                      }, 1000);
+                      return;
+                    }
+                  }
+                  
+                  if (attempts >= maxAttempts) {
+                    console.log('Max attempts reached, proceeding anyway');
+                    resolve(false);
+                    return;
+                  }
+                  
+                  console.log('Waiting for cards with content...');
+                  setTimeout(checkElements, 100);
+                };
+                
+                checkElements();
+              });
+            }
+
+            async function processCards() {
+              // Wait for elements to be loaded
+              const elementsLoaded = await waitForElements();
+              if (!elementsLoaded) {
+                console.log('Warning: Elements may not be fully loaded');
+              }
+              
+              // Get all product cards
+              const productCards = Array.from(document.querySelectorAll('.product-card__product'));
+              console.log(`Found ${productCards.length} product cards`);
+
+              // Process each product card
+              const validProducts = productCards.map((card, index) => {
+                console.log(`\nProcessing card ${index + 1}:`);
+                
+                // Get elements using multiple possible selectors
+                const titleElement = card.querySelector('.product-card__title') || 
+                                   card.querySelector('[class*="title"]') ||
+                                   card.querySelector('[class*="name"]');
+                const priceElement = card.querySelector('.inventory__price-with-shipping') || 
+                                   card.querySelector('[class*="price"]');
+                const linkElement = card.querySelector('a[href*="/product/"]') || 
+                                  card.closest('a[href*="/product/"]');
+
+                // Log detailed element info
+                console.log('Element details:', {
+                  title: titleElement ? {
+                    exists: true,
+                    className: titleElement.className,
+                    textContent: titleElement.textContent,
+                    innerText: titleElement.innerText,
+                    innerHTML: titleElement.innerHTML,
+                    textLength: titleElement.textContent.length
+                  } : 'Not found',
+                  price: priceElement ? {
+                    exists: true,
+                    className: priceElement.className,
+                    textContent: priceElement.textContent,
+                    innerText: priceElement.innerText,
+                    innerHTML: priceElement.innerHTML,
+                    textLength: priceElement.textContent.length
+                  } : 'Not found',
+                  link: linkElement ? {
+                    exists: true,
+                    href: linkElement.href
+                  } : 'Not found'
+                });
+
+                if (!titleElement || !priceElement) {
+                  console.log('Missing required elements:', {
+                    hasTitle: !!titleElement,
+                    hasPrice: !!priceElement,
+                    hasLink: !!linkElement
+                  });
+                  return null;
+                }
+
+                // Get the text content with fallbacks
+                const title = titleElement.textContent.trim() || 
+                            titleElement.innerText.trim() || 
+                            titleElement.innerHTML.trim();
+                const priceText = priceElement.textContent.trim() || 
+                                priceElement.innerText.trim() || 
+                                priceElement.innerHTML.trim();
+                
+                console.log('Extracted text content:', {
+                  title,
+                  priceText,
+                  titleLength: title.length,
+                  priceTextLength: priceText.length,
+                  titleElementType: titleElement.tagName,
+                  priceElementType: priceElement.tagName
+                });
+
+                if (!title || !priceText) {
+                  console.log('Empty text content:', {
+                    titleEmpty: !title,
+                    priceTextEmpty: !priceText,
+                    titleElementHTML: titleElement.outerHTML,
+                    priceElementHTML: priceElement.outerHTML
+                  });
+                  return null;
+                }
+
+                const price = extractNumericPrice(priceText);
+                const url = linkElement ? linkElement.href : null;
+
+                // Skip art cards and proxies
+                if (title.toLowerCase().includes('art card') || 
+                    title.toLowerCase().includes('proxy') ||
+                    title.toLowerCase().includes('playtest')) {
+                  console.log('Skipping non-playable card:', title);
+                  return null;
+                }
+
+                const isMatch = isExactCardMatch(title, cardName);
+                const hasValidPrice = !isNaN(price) && price > 0;
+                
+                if (isMatch && hasValidPrice) {
+                  console.log('Found valid product:', { 
+                    title, 
+                    price, 
+                    url,
+                    isMatch,
+                    hasValidPrice
+                  });
+                  return { title, price, url };
+                } else {
+                  console.log('Invalid product:', { 
+                    title, 
+                    price, 
+                    isMatch,
+                    hasValidPrice,
+                    reason: !isMatch ? 'title does not match' : 'invalid price'
+                  });
+                  return null;
+                }
+              }).filter(Boolean);
+
+              console.log(`Found ${validProducts.length} valid products`);
+
+              if (validProducts.length === 0) {
+                console.log('No valid products found');
+                return null;
+              }
+
+              // Sort by price and return the lowest priced product
+              validProducts.sort((a, b) => a.price - b.price);
+              const lowest = validProducts[0];
+              console.log('Selected lowest priced product:', lowest);
+              return lowest;
+            }
+
+            // Execute the async function
+            return processCards();
+          }
+        JS
+        
+        if !lowest_priced_product
+          $logger.error("Request #{request_id}: No valid products found for: #{card_name}")
+          return { error: 'No valid product found', legality: legality }.to_json
+        end
+        
+        $logger.info("Request #{request_id}: Found lowest priced product: #{lowest_priced_product['title']} at $#{lowest_priced_product['price']}")
+        
+        # Now we only need to process the single lowest-priced product
+        found_prices = false
+        prices = {}
+        found_conditions = 0
+        conditions = ['Near Mint', 'Lightly Played']
+        
+        conditions.each do |condition|
+          # Stop if we've found both conditions
+          break if found_conditions >= 2
+          
+          # Create a new page for each condition
+          condition_page = context.new_page
+          condition_page.default_navigation_timeout = 15000  # 15 seconds
+          condition_page.default_timeout = 10000  # 10 seconds
+          
+          begin
+            $logger.info("Request #{request_id}: Processing condition: #{condition}")
+            result = process_condition(condition_page, lowest_priced_product['url'], condition, request_id, card_name)
+            $logger.info("Request #{request_id}: Condition result: #{result.inspect}")
+            if result
+              prices[condition] = {
+                'price' => result['price'],
+                'url' => result['url']
+              }
+              found_conditions += 1
+              found_prices = true
+            end
+          ensure
+            condition_page.close
           end
-        ensure
-          condition_page.close
+        end
+        
+        if prices.empty?
+          $logger.error("Request #{request_id}: No valid prices found for any condition")
+          return { error: 'No valid prices found', legality: legality }.to_json
+        end
+        
+        $logger.info("Request #{request_id}: Final prices: #{prices.inspect}")
+        # Format the response to match the original style
+        formatted_prices = {}
+        prices.each do |condition, data|
+          # Extract just the numeric price from the price text
+          price_value = data['price'].gsub(/[^\d.]/, '')
+          formatted_prices[condition] = {
+            'price' => price_value,
+            'url' => data['url']
+          }
+        end
+        
+        # Combine prices and legality into a single response
+        response = { 
+          prices: formatted_prices,
+          legality: legality
+        }.to_json
+        
+        # Cache the response with timestamp
+        $active_requests[card_name] = { 
+          status: 'complete',
+          data: response,
+          timestamp: Time.now,
+          request_id: request_id
+        }
+        
+        response
+        
+      ensure
+        # Clean up the context
+        if context
+          begin
+            context.close
+            $logger.info("Request #{request_id}: Closed browser context")
+          rescue => e
+            $logger.error("Request #{request_id}: Error closing browser context: #{e.message}")
+          end
         end
       end
       
-      if prices.empty?
-        $logger.error("Request #{request_id}: No valid prices found for any condition")
-        return { error: 'No valid prices found', legality: legality }.to_json
-      end
-      
-      $logger.info("Request #{request_id}: Final prices: #{prices.inspect}")
-      # Format the response to match the original style
-      formatted_prices = {}
-      prices.each do |condition, data|
-        # Extract just the numeric price from the price text
-        price_value = data['price'].gsub(/[^\d.]/, '')
-        formatted_prices[condition] = {
-          'price' => price_value,
-          'url' => data['url']
-        }
-      end
-      
-      # Combine prices and legality into a single response
-      response = { 
-        prices: formatted_prices,
-        legality: legality
+    rescue => e
+      $logger.error("Request #{request_id}: Error processing request: #{e.message}")
+      $logger.error(e.backtrace.join("\n"))
+      error_response = { 
+        error: e.message,
+        legality: legality  # Include legality even if price check failed
       }.to_json
       
-      # Cache the response with timestamp
-      $active_requests[card_name] = { 
-        status: 'complete',
-        data: response,
+      # Cache the error response
+      $active_requests[card_name] = {
+        status: 'error',
+        data: error_response,
         timestamp: Time.now,
         request_id: request_id
       }
       
-      response
-      
+      error_response
     ensure
-      # Clean up the context
-      if context
-        begin
-          context.close
-          $logger.info("Request #{request_id}: Closed browser context")
-        rescue => e
-          $logger.error("Request #{request_id}: Error closing browser context: #{e.message}")
-        end
+      # Clear old requests (older than 5 minutes)
+      $active_requests.delete_if do |_, request|
+        request[:timestamp] < (Time.now - 300)  # 5 minutes
       end
-    end
-    
-  rescue => e
-    $logger.error("Request #{request_id}: Error processing request: #{e.message}")
-    $logger.error(e.backtrace.join("\n"))
-    error_response = { 
-      error: e.message,
-      legality: legality  # Include legality even if price check failed
-    }.to_json
-    
-    # Cache the error response
-    $active_requests[card_name] = {
-      status: 'error',
-      data: error_response,
-      timestamp: Time.now,
-      request_id: request_id
-    }
-    
-    error_response
-  ensure
-    # Clear old requests (older than 5 minutes)
-    $active_requests.delete_if do |_, request|
-      request[:timestamp] < (Time.now - 300)  # 5 minutes
     end
   end
 end
@@ -495,7 +563,7 @@ def process_condition(page, product_url, condition, request_id, card_name)
   begin
     # Navigate to the product page with condition filter
     condition_param = URI.encode_www_form_component(condition)
-    filtered_url = "#{product_url}?Condition=#{condition_param}&Language=English"
+    filtered_url = "#{product_url}#{product_url.include?('?') ? '&' : '?'}Condition=#{condition_param}&Language=English"
     $logger.info("Request #{request_id}: Navigating to filtered URL: #{filtered_url}")
     
     begin
@@ -503,120 +571,49 @@ def process_condition(page, product_url, condition, request_id, card_name)
       response = page.goto(filtered_url, wait_until: 'networkidle0')
       $logger.info("Request #{request_id}: Product page response status: #{response.status}")
       
-      # Wait for the regular listing price element to appear
+      # Wait specifically for listing items
       begin
         page.wait_for_selector('.listing-item', timeout: 10000)
         $logger.info("Request #{request_id}: Listing items found")
-      rescue => e
-        $logger.error("Request #{request_id}: Timeout waiting for listing items: #{e.message}")
-        # Take a screenshot for debugging
-        screenshot_path = "price_error_#{condition}_#{Time.now.to_i}.png"
-        page.screenshot(path: screenshot_path)
-        $logger.info("Request #{request_id}: Saved error screenshot to #{screenshot_path}")
-        return nil
-      end
-      
-      # Give extra time for dynamic content to stabilize
-      sleep(2)
-      
-      # Try to get price with simplified extraction
-      price_data = page.evaluate(<<~'JS', cardName: card_name)
-        function(cardName) {
-          function extractNumericPrice(text) {
-            if (!text) return null;
-            // Try to match price patterns like $1.23, $1,234.56, etc.
-            const match = text.match(/\$[\d,]+(\.\d{2})?/);
-            if (!match) return null;
-            return parseFloat(match[0].replace(/[$,]/g, ''));
-          }
-
-          function isExactCardMatch(title) {
-            // Convert both to lowercase for case-insensitive comparison
-            const searchTitle = title.toLowerCase();
-            const searchName = cardName.toLowerCase();
-            
-            // Check for art cards and proxies
-            if (searchTitle.includes('art card') || searchTitle.includes('proxy')) {
-              return false;
+        
+        # Get all listings and their prices
+        price_data = page.evaluate(<<~'JS')
+          function() {
+            function extractNumericPrice(text) {
+              if (!text) return null;
+              // Try to match price patterns like $1.23, $1,234.56, etc.
+              const match = text.match(/\$[\d,]+(\.\d{2})?/);
+              if (!match) return null;
+              return parseFloat(match[0].replace(/[$,]/g, ''));
             }
-            
-            // Log the title we're checking
-            console.log('Checking title:', searchTitle, 'against card name:', searchName);
-            
-            // Find the card name in the title
-            const nameIndex = searchTitle.indexOf(searchName);
-            if (nameIndex === -1) {
-              console.log('Card name not found in title');
-              return false;
-            }
-            
-            // Check if there are any characters before the card name
-            if (nameIndex > 0) {
-              const beforeName = searchTitle.slice(0, nameIndex).trim();
-              // Allow words like "promo", "judge", "promos" before the card name
-              const allowedPrefixes = ['promo', 'judge', 'promos', 'commander', 'collectors'];
-              const hasAllowedPrefix = allowedPrefixes.some(prefix => beforeName.endsWith(prefix));
-              if (beforeName && !hasAllowedPrefix && !/[\-\(\)\[\]\{\}\.,;:]$/.test(beforeName)) {
-                console.log('Invalid characters before card name:', beforeName);
-                return false;
-              }
-            }
-            
-            // Check if there are any characters after the card name
-            const afterIndex = nameIndex + searchName.length;
-            if (afterIndex < searchTitle.length) {
-              const afterName = searchTitle.slice(afterIndex).trim();
-              // Allow words like "promo", "judge", "promos" after the card name
-              const allowedSuffixes = ['promo', 'judge', 'promos', 'commander', 'collectors'];
-              const hasAllowedSuffix = allowedSuffixes.some(suffix => afterName.startsWith(suffix));
-              if (afterName && !hasAllowedSuffix && !/^[\-\(\)\[\]\{\}\.,;:]/.test(afterName)) {
-                console.log('Invalid characters after card name:', afterName);
-                return false;
-              }
-            }
-            
-            console.log('Title is a match');
-            return true;
-          }
 
-          // Get all listing items
-          const listings = Array.from(document.querySelectorAll('.listing-item'));
-          if (!listings.length) {
-            console.log('No listings found');
-            return null;
-          }
+            // Get all listing items
+            const listings = Array.from(document.querySelectorAll('.listing-item'));
+            if (!listings.length) {
+              console.log('No listings found');
+              return null;
+            }
 
-          console.log('Found', listings.length, 'listings');
+            console.log('Found', listings.length, 'listings');
 
-          // Filter and sort listings
-          const validListings = listings
-            .map(listing => {
-              // Get the title specifically from the product-card__title element
-              const titleElement = listing.querySelector('.product-card__title') || 
-                                 listing.querySelector('.listing-item__title');
+            // Process each listing
+            const validListings = listings.map(listing => {
+              // Get price and shipping elements using exact class names
               const priceElement = listing.querySelector('.listing-item__listing-data__info__price');
               const shippingElement = listing.querySelector('.shipping-messages__price');
               
-              if (!titleElement || !priceElement) {
-                console.log('Missing title or price element');
+              if (!priceElement) {
+                console.log('No price element found in listing');
                 return null;
               }
-              
-              const title = titleElement.textContent.trim();
-              console.log('Checking listing title:', title);
-              
-              if (!isExactCardMatch(title)) {
-                console.log('Title does not match card name');
-                return null;
-              }
-              
+
               const basePrice = extractNumericPrice(priceElement.textContent);
               if (basePrice === null) {
-                console.log('Could not extract price from:', priceElement.textContent);
+                console.log('Could not extract base price from:', priceElement.textContent);
                 return null;
               }
-              
-              // Get shipping info from the same listing
+
+              // Get shipping price if available
               let shippingPrice = 0;
               if (shippingElement) {
                 const shippingText = shippingElement.textContent.trim();
@@ -629,54 +626,60 @@ def process_condition(page, product_url, condition, request_id, card_name)
                   }
                 }
               }
-              
+
               const totalPrice = basePrice + shippingPrice;
-              console.log('Valid listing found:', { title, basePrice, shippingPrice, totalPrice });
+              console.log('Valid listing found:', { basePrice, shippingPrice, totalPrice });
+              
               return {
-                listing,
-                title,
                 basePrice,
                 shippingPrice,
                 totalPrice,
-                priceElement,
-                shippingElement
+                priceElement: priceElement.textContent.trim(),
+                shippingElement: shippingElement ? shippingElement.textContent.trim() : 'no shipping info'
               };
-            })
-            .filter(listing => listing !== null)
-            .sort((a, b) => a.totalPrice - b.totalPrice);
+            }).filter(listing => listing !== null)
+              .sort((a, b) => a.totalPrice - b.totalPrice);
 
-          if (!validListings.length) {
-            console.log('No valid listings found after filtering');
-            return null;
-          }
-
-          // Get the lowest priced valid listing
-          const lowestListing = validListings[0];
-          console.log('Selected lowest listing:', lowestListing.title, 'at', lowestListing.totalPrice);
-          
-          return {
-            price: `$${lowestListing.totalPrice.toFixed(2)}`,
-            url: window.location.href,
-            debug: {
-              basePrice: lowestListing.basePrice,
-              shippingPrice: lowestListing.shippingPrice,
-              totalPrice: lowestListing.totalPrice,
-              title: lowestListing.title,
-              source: 'lowest_valid_listing',
-              rawText: {
-                price: lowestListing.priceElement.textContent.trim(),
-                shipping: lowestListing.shippingElement ? lowestListing.shippingElement.textContent.trim() : 'no shipping info'
-              }
+            if (!validListings.length) {
+              console.log('No valid listings found after processing');
+              return null;
             }
-          };
-        }
-      JS
-      
-      if price_data
-        $logger.info("Request #{request_id}: Found price data: #{price_data.inspect}")
-        return price_data
-      else
-        $logger.error("Request #{request_id}: No price data found")
+
+            // Get the lowest priced listing
+            const lowestListing = validListings[0];
+            console.log('Selected lowest listing:', lowestListing);
+            
+            return {
+              price: `$${lowestListing.totalPrice.toFixed(2)}`,
+              url: window.location.href,
+              debug: {
+                basePrice: lowestListing.basePrice,
+                shippingPrice: lowestListing.shippingPrice,
+                totalPrice: lowestListing.totalPrice,
+                source: 'lowest_valid_listing',
+                rawText: {
+                  price: lowestListing.priceElement,
+                  shipping: lowestListing.shippingElement
+                }
+              }
+            };
+          }
+        JS
+        
+        if price_data
+          $logger.info("Request #{request_id}: Found price data: #{price_data.inspect}")
+          return price_data
+        else
+          $logger.error("Request #{request_id}: No price data found")
+          return nil
+        end
+        
+      rescue => e
+        $logger.error("Request #{request_id}: Timeout waiting for listing items: #{e.message}")
+        # Take a screenshot for debugging
+        screenshot_path = "price_error_#{condition}_#{Time.now.to_i}.png"
+        page.screenshot(path: screenshot_path)
+        $logger.info("Request #{request_id}: Saved error screenshot to #{screenshot_path}")
         return nil
       end
       

@@ -23,7 +23,7 @@ class CommanderCardScraper
     @card_cache = load_cache
     @price_cache = load_price_cache
     FileUtils.mkdir_p(@output_dir)
-    FileUtils.mkdir_p(IMAGE_CACHE_DIR)
+    FileUtils.mkdir_p(File.join(@output_dir, 'card_images'))
     
     # Skip these garbage OCR results
     @skip_cards = [
@@ -312,10 +312,16 @@ class CommanderCardScraper
     # Skip garbage OCR results
     return nil if @skip_cards.include?(card_name)
     
+    # Check cache first
+    if @card_cache[card_name]
+      image_path = File.join(@output_dir, 'card_images', "#{@card_cache[card_name]}.jpg")
+      return image_path if File.exist?(image_path)
+    end
+    
     # Special case: hardcode multiverseid for INTUITION
     if card_name == "INTUITION"
       multiverseid = 382
-      local_image_path = File.join(IMAGE_CACHE_DIR, "#{multiverseid}.jpg")
+      local_image_path = File.join(@output_dir, 'card_images', "#{multiverseid}.jpg")
       unless File.exist?(local_image_path)
         image_url = "https://gatherer.wizards.com/Handlers/Image.ashx?multiverseid=#{multiverseid}&type=card"
         begin
@@ -336,7 +342,7 @@ class CommanderCardScraper
     # Special case: hardcode multiverseid for TERGRID, GOD OF FRIGHT
     if card_name == "TERGRID, GOD OF FRIGHT"
       multiverseid = 507654
-      local_image_path = File.join(IMAGE_CACHE_DIR, "#{multiverseid}.jpg")
+      local_image_path = File.join(@output_dir, 'card_images', "#{multiverseid}.jpg")
       unless File.exist?(local_image_path)
         image_url = "https://gatherer.wizards.com/Handlers/Image.ashx?multiverseid=#{multiverseid}&type=card"
         begin
@@ -354,16 +360,6 @@ class CommanderCardScraper
       return local_image_path
     end
     
-    # Check if we already have this card cached
-    if @card_cache[card_name]
-      multiverseid = @card_cache[card_name]
-      local_image_path = File.join(IMAGE_CACHE_DIR, "#{multiverseid}.jpg")
-      if File.exist?(local_image_path)
-        puts "Using cached image for #{card_name}"
-        return local_image_path
-      end
-    end
-
     # Special case handling for problematic cards
     case card_name
     when "TERGRID, GOD OF FRIGHT"
@@ -484,7 +480,7 @@ class CommanderCardScraper
               @card_cache[card_name] = multiverseid  # Store with original name
               save_cache
               image_url = "https://gatherer.wizards.com/Handlers/Image.ashx?multiverseid=#{multiverseid}&type=card"
-              local_image_path = File.join(IMAGE_CACHE_DIR, "#{multiverseid}.jpg")
+              local_image_path = File.join(@output_dir, 'card_images', "#{multiverseid}.jpg")
               unless File.exist?(local_image_path)
                 begin
                   puts "Downloading image for #{card_name}..."
@@ -513,7 +509,7 @@ class CommanderCardScraper
           @card_cache[card_name] = multiverseid  # Store with original name
           save_cache
           image_url = "https://gatherer.wizards.com/Handlers/Image.ashx?multiverseid=#{multiverseid}&type=card"
-          local_image_path = File.join(IMAGE_CACHE_DIR, "#{multiverseid}.jpg")
+          local_image_path = File.join(@output_dir, 'card_images', "#{multiverseid}.jpg")
           unless File.exist?(local_image_path)
             begin
               puts "Downloading image for #{card_name}..."
@@ -530,7 +526,7 @@ class CommanderCardScraper
           # Fallback: check for 'Object moved to' redirect with multiverseid
           if response.body =~ /Object moved to <a href="\/Pages\/Card\/Details\.aspx\?multiverseid=(\d+)">here<\/a>/
             multiverseid = $1
-            local_image_path = File.join(IMAGE_CACHE_DIR, "#{multiverseid}.jpg")
+            local_image_path = File.join(@output_dir, 'card_images', "#{multiverseid}.jpg")
             unless File.exist?(local_image_path)
               image_url = "https://gatherer.wizards.com/Handlers/Image.ashx?multiverseid=#{multiverseid}&type=card"
               begin
@@ -565,7 +561,7 @@ class CommanderCardScraper
       @card_cache[card_name] = multiverseid
       save_cache
       image_url = "https://gatherer.wizards.com/Handlers/Image.ashx?multiverseid=#{multiverseid}&type=card"
-      local_image_path = File.join(IMAGE_CACHE_DIR, "#{multiverseid}.jpg")
+      local_image_path = File.join(@output_dir, 'card_images', "#{multiverseid}.jpg")
       unless File.exist?(local_image_path)
         begin
           puts "Downloading image for #{card_name} (bracketed search)..."
@@ -813,7 +809,7 @@ class CommanderCardScraper
       
       if image_path
         image_filename = File.basename(image_path)
-        relative_path = "../#{IMAGE_CACHE_DIR}/#{image_filename}"
+        relative_path = "card_images/#{image_filename}"
         html += <<~HTML
           <div class="card">
             <div class="card-name">#{name}</div>

@@ -183,6 +183,7 @@ get '/card_info' do
       $logger.info("Request #{request_id}: Page title: #{search_page.title}")
       $logger.info("Request #{request_id}: Current URL: #{search_page.url}")
       
+      # Get the first product URL with multiple possible selectors
       # Try multiple selectors for the product grid
       selectors = [
         '.product-grid',
@@ -214,47 +215,184 @@ get '/card_info' do
         return { error: 'Could not find product listings', legality: legality }.to_json
       end
       
-      # Get the first product URL with multiple possible selectors
-      product_url = search_page.evaluate(<<~JAVASCRIPT)
-        () => {
-          // Try different selectors for the product link
-          const selectors = [
-            '.product-grid a',
-            '.search-result a',
-            '.product-list a',
-            '[data-testid="product-grid"] a',
-            '[data-testid="search-results"] a',
-            'a[href*="/product/"]',
-            'a[href*="/p/"]'
-          ];
-          
-          for (const selector of selectors) {
-            const link = document.querySelector(selector);
-            if (link && link.href) {
-              // Remove any existing query parameters
-              const url = new URL(link.href);
-              return url.origin + url.pathname;
-            }
+      # Find the lowest-priced valid product on the search page
+      lowest_product = search_page.evaluate(<<~JAVASCRIPT, cardName: card_name)
+        function(cardName) {
+          function extractNumericPrice(text) {
+            if (!text) return null;
+            // Try to match price patterns like $1.23, $1,234.56, etc.
+            const match = text.match(/\$[\d,]+(\.\d{2})?/);
+            if (!match) return null;
+            return parseFloat(match[0].replace(/[$,]/g, ''));
           }
-          return null;
+
+          function isExactCardMatch(title) {
+            // Convert both to lowercase for case-insensitive comparison
+            const searchTitle = title.toLowerCase();
+            const searchName = cardName.toLowerCase();
+            
+            // Check for art cards and proxies
+            if (searchTitle.includes('art card') || searchTitle.includes('proxy')) {
+              return false;
+            }
+            
+            // Log the title we're checking
+            console.log('Checking title:', searchTitle, 'against card name:', searchName);
+            
+            // Find the card name in the title
+            const nameIndex = searchTitle.indexOf(searchName);
+            if (nameIndex === -1) {
+              console.log('Card name not found in title');
+              return false;
+            }
+            
+            // Check if there are any characters before the card name
+            if (nameIndex > 0) {
+              const beforeName = searchTitle.slice(0, nameIndex).trim();
+              // Allow words like "promo", "judge", "promos" before the card name
+              const allowedPrefixes = ['promo', 'judge', 'promos', 'commander', 'collectors'];
+              const hasAllowedPrefix = allowedPrefixes.some(prefix => beforeName.endsWith(prefix));
+              if (beforeName && !hasAllowedPrefix && !/[\-\(\)\[\]\{\}\.,;:]$/.test(beforeName)) {
+                console.log('Invalid characters before card name:', beforeName);
+                return false;
+              }
+            }
+            
+            // Check if there are any characters after the card name
+            const afterIndex = nameIndex + searchName.length;
+            if (afterIndex < searchTitle.length) {
+              const afterName = searchTitle.slice(afterIndex).trim();
+              // Allow words like "promo", "judge", "promos" after the card name
+              const allowedSuffixes = ['promo', 'judge', 'promos', 'commander', 'collectors'];
+              const hasAllowedSuffix = allowedSuffixes.some(suffix => afterName.startsWith(suffix));
+              if (afterName && !hasAllowedSuffix && !/^[\-\(\)\[\]\{\}\.,;:]/.test(afterName)) {
+                console.log('Invalid characters after card name:', afterName);
+                return false;
+              }
+            }
+            
+            console.log('Title is a match');
+            return true;
+          }
+
+          // Get all product cards
+          const productCards = Array.from(document.querySelectorAll('.search-result'));
+          console.log('Found', productCards.length, 'product cards');
+          
+          // Log the HTML structure of the first card to see what we're working with
+          if (productCards.length > 0) {
+            console.log('First card HTML:', productCards[0].outerHTML);
+            console.log('Available classes in first card:', 
+              Array.from(productCards[0].classList).join(', '));
+          }
+
+          // Filter and sort product cards
+          const validProducts = productCards
+            .map((card, index) => {
+              console.log(`\nProcessing card ${index + 1}:`);
+              
+              // Log all elements with class names containing 'product' or 'price'
+              const allElements = card.querySelectorAll('*');
+              const relevantElements = Array.from(allElements).filter(el => {
+                const classes = Array.from(el.classList).join(' ').toLowerCase();
+                return classes.includes('product') || classes.includes('price');
+              });
+              
+              console.log('Found relevant elements:', 
+                relevantElements.map(el => ({
+                  tag: el.tagName,
+                  classes: Array.from(el.classList).join(' '),
+                  text: el.textContent.trim().slice(0, 50) // First 50 chars of text
+                }))
+              );
+
+              // Try to find title and price elements
+              const titleElement = card.querySelector('[class*="product"][class*="name"], [class*="product"][class*="title"]');
+              const priceElement = card.querySelector('[class*="price"]');
+              const linkElement = card.querySelector('a[href*="/product/"]');
+              
+              console.log('Found elements:', {
+                title: titleElement ? {
+                  class: Array.from(titleElement.classList).join(' '),
+                  text: titleElement.textContent.trim()
+                } : null,
+                price: priceElement ? {
+                  class: Array.from(priceElement.classList).join(' '),
+                  text: priceElement.textContent.trim()
+                } : null,
+                link: linkElement ? {
+                  href: linkElement.href,
+                  text: linkElement.textContent.trim()
+                } : null
+              });
+              
+              if (!titleElement || !priceElement || !linkElement) {
+                console.log('Missing required elements:', {
+                  hasTitle: !!titleElement,
+                  hasPrice: !!priceElement,
+                  hasLink: !!linkElement
+                });
+                return null;
+              }
+              
+              const title = titleElement.textContent.trim();
+              const priceText = priceElement.textContent.trim();
+              console.log('Checking product:', { title, priceText });
+              
+              if (!isExactCardMatch(title)) {
+                console.log('Title does not match card name');
+                return null;
+              }
+              
+              const price = extractNumericPrice(priceText);
+              if (price === null) {
+                console.log('Could not extract price from:', priceText);
+                return null;
+              }
+              
+              // Get the clean URL
+              const url = new URL(linkElement.href);
+              const cleanUrl = url.origin + url.pathname;
+              
+              console.log('Valid product found:', { title, price, url: cleanUrl });
+              return {
+                title,
+                price,
+                url: cleanUrl
+              };
+            })
+            .filter(product => product !== null)
+            .sort((a, b) => a.price - b.price);
+
+          if (!validProducts.length) {
+            console.log('No valid products found after filtering');
+            return null;
+          }
+
+          // Get the lowest priced valid product
+          const lowestProduct = validProducts[0];
+          console.log('Selected lowest product:', lowestProduct.title, 'at', lowestProduct.price);
+          
+          return {
+            url: lowestProduct.url,
+            title: lowestProduct.title,
+            price: lowestProduct.price
+          };
         }
       JAVASCRIPT
       
-      if product_url.nil?
-        $logger.error("Request #{request_id}: No product found for: #{card_name}")
-        # Take a screenshot for debugging
-        screenshot_path = "no_product_#{Time.now.to_i}.png"
-        search_page.screenshot(path: screenshot_path)
-        $logger.info("Request #{request_id}: Saved no-product screenshot to #{screenshot_path}")
-        return { error: 'No product found', legality: legality }.to_json
+      if !lowest_product
+        $logger.error("Request #{request_id}: No valid products found for: #{card_name}")
+        return { error: 'No valid product found', legality: legality }.to_json
       end
       
-      $logger.info("Request #{request_id}: Found product URL: #{product_url}")
+      $logger.info("Request #{request_id}: Found lowest priced product: #{lowest_product['title']} at $#{lowest_product['price']}")
       
-      # Process conditions sequentially
-      conditions = ['Lightly Played', 'Near Mint']
+      # Now we only need to process the single lowest-priced product
+      found_prices = false
       prices = {}
       found_conditions = 0
+      conditions = ['Near Mint', 'Lightly Played']
       
       conditions.each do |condition|
         # Stop if we've found both conditions
@@ -267,7 +405,7 @@ get '/card_info' do
         
         begin
           $logger.info("Request #{request_id}: Processing condition: #{condition}")
-          result = process_condition(condition_page, product_url, condition, request_id)
+          result = process_condition(condition_page, lowest_product['url'], condition, request_id, card_name)
           $logger.info("Request #{request_id}: Condition result: #{result.inspect}")
           if result
             prices[condition] = {
@@ -275,6 +413,7 @@ get '/card_info' do
               'url' => result['url']
             }
             found_conditions += 1
+            found_prices = true
           end
         ensure
           condition_page.close
@@ -352,7 +491,7 @@ get '/card_info' do
 end
 
 # Process a single condition
-def process_condition(page, product_url, condition, request_id)
+def process_condition(page, product_url, condition, request_id, card_name)
   begin
     # Navigate to the product page with condition filter
     condition_param = URI.encode_www_form_component(condition)
@@ -381,7 +520,7 @@ def process_condition(page, product_url, condition, request_id)
       sleep(2)
       
       # Try to get price with simplified extraction
-      price_data = page.evaluate(<<~'JS', cardName: cardName)
+      price_data = page.evaluate(<<~'JS', cardName: card_name)
         function(cardName) {
           function extractNumericPrice(text) {
             if (!text) return null;
@@ -401,15 +540,24 @@ def process_condition(page, product_url, condition, request_id)
               return false;
             }
             
+            // Log the title we're checking
+            console.log('Checking title:', searchTitle, 'against card name:', searchName);
+            
             // Find the card name in the title
             const nameIndex = searchTitle.indexOf(searchName);
-            if (nameIndex === -1) return false;
+            if (nameIndex === -1) {
+              console.log('Card name not found in title');
+              return false;
+            }
             
             // Check if there are any characters before the card name
             if (nameIndex > 0) {
               const beforeName = searchTitle.slice(0, nameIndex).trim();
-              // If there are characters before the name, they must be separated by punctuation (not spaces)
-              if (beforeName && !/[\-\(\)\[\]\{\}\.,;:]$/.test(beforeName)) {
+              // Allow words like "promo", "judge", "promos" before the card name
+              const allowedPrefixes = ['promo', 'judge', 'promos', 'commander', 'collectors'];
+              const hasAllowedPrefix = allowedPrefixes.some(prefix => beforeName.endsWith(prefix));
+              if (beforeName && !hasAllowedPrefix && !/[\-\(\)\[\]\{\}\.,;:]$/.test(beforeName)) {
+                console.log('Invalid characters before card name:', beforeName);
                 return false;
               }
             }
@@ -418,33 +566,55 @@ def process_condition(page, product_url, condition, request_id)
             const afterIndex = nameIndex + searchName.length;
             if (afterIndex < searchTitle.length) {
               const afterName = searchTitle.slice(afterIndex).trim();
-              // If there are characters after the name, they must be separated by punctuation (not spaces)
-              if (afterName && !/^[\-\(\)\[\]\{\}\.,;:]/.test(afterName)) {
+              // Allow words like "promo", "judge", "promos" after the card name
+              const allowedSuffixes = ['promo', 'judge', 'promos', 'commander', 'collectors'];
+              const hasAllowedSuffix = allowedSuffixes.some(suffix => afterName.startsWith(suffix));
+              if (afterName && !hasAllowedSuffix && !/^[\-\(\)\[\]\{\}\.,;:]/.test(afterName)) {
+                console.log('Invalid characters after card name:', afterName);
                 return false;
               }
             }
             
+            console.log('Title is a match');
             return true;
           }
 
           // Get all listing items
           const listings = Array.from(document.querySelectorAll('.listing-item'));
-          if (!listings.length) return null;
+          if (!listings.length) {
+            console.log('No listings found');
+            return null;
+          }
+
+          console.log('Found', listings.length, 'listings');
 
           // Filter and sort listings
           const validListings = listings
             .map(listing => {
-              const titleElement = listing.querySelector('.listing-item__title');
+              // Get the title specifically from the product-card__title element
+              const titleElement = listing.querySelector('.product-card__title') || 
+                                 listing.querySelector('.listing-item__title');
               const priceElement = listing.querySelector('.listing-item__listing-data__info__price');
               const shippingElement = listing.querySelector('.shipping-messages__price');
               
-              if (!titleElement || !priceElement) return null;
+              if (!titleElement || !priceElement) {
+                console.log('Missing title or price element');
+                return null;
+              }
               
               const title = titleElement.textContent.trim();
-              if (!isExactCardMatch(title)) return null;
+              console.log('Checking listing title:', title);
+              
+              if (!isExactCardMatch(title)) {
+                console.log('Title does not match card name');
+                return null;
+              }
               
               const basePrice = extractNumericPrice(priceElement.textContent);
-              if (basePrice === null) return null;
+              if (basePrice === null) {
+                console.log('Could not extract price from:', priceElement.textContent);
+                return null;
+              }
               
               // Get shipping info from the same listing
               let shippingPrice = 0;
@@ -461,6 +631,7 @@ def process_condition(page, product_url, condition, request_id)
               }
               
               const totalPrice = basePrice + shippingPrice;
+              console.log('Valid listing found:', { title, basePrice, shippingPrice, totalPrice });
               return {
                 listing,
                 title,
@@ -474,10 +645,14 @@ def process_condition(page, product_url, condition, request_id)
             .filter(listing => listing !== null)
             .sort((a, b) => a.totalPrice - b.totalPrice);
 
-          if (!validListings.length) return null;
+          if (!validListings.length) {
+            console.log('No valid listings found after filtering');
+            return null;
+          }
 
           // Get the lowest priced valid listing
           const lowestListing = validListings[0];
+          console.log('Selected lowest listing:', lowestListing.title, 'at', lowestListing.totalPrice);
           
           return {
             price: `$${lowestListing.totalPrice.toFixed(2)}`,

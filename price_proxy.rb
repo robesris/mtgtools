@@ -1157,12 +1157,12 @@ def process_condition(page, product_url, condition, request_id, card_name)
               listings_html = page.evaluate(<<~'JS')
                 function() {
                   try {
-                    // Find the "listings" text
+                    // Find the "listings" text (case insensitive, handles both singular and plural)
                     var listingsHeader = null;
                     var allElements = document.querySelectorAll("*");
                     for (var i = 0; i < allElements.length; i++) {
                       var el = allElements[i];
-                      if (el.textContent && /^[0-9]+\\s+listings$/i.test(el.textContent.trim())) {
+                      if (el.textContent && /^[0-9]+\\s+[Ll]isting[s]?$/i.test(el.textContent.trim())) {
                         listingsHeader = el;
                         break;
                       }
@@ -1172,13 +1172,13 @@ def process_condition(page, product_url, condition, request_id, card_name)
                       var allText = [];
                       for (var i = 0; i < allElements.length; i++) {
                         var el = allElements[i];
-                        if (el.textContent && el.textContent.indexOf("listings") !== -1) {
+                        if (el.textContent && /[Ll]isting[s]?/i.test(el.textContent)) {
                           allText.push(el.textContent.trim());
                         }
                       }
                       return { 
                         found: false, 
-                        message: "No listings header found matching pattern \"X listings\"",
+                        message: "No listings header found matching pattern \"X Listing(s)\"",
                         allText: allText
                       };
                     }

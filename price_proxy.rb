@@ -419,16 +419,49 @@ get '/prices' do
       3.times do |i|
         # Wait for all search results to load
         puts "Waiting for search results (attempt #{i + 1})..."
-        main_page.wait_for_selector('.search-result, .product-grid__card', timeout: 5000)
+        main_page.wait_for_selector('.search-result, .product-grid__card, .product-card', timeout: 5000)
         
         # Get all search results
-        search_results = main_page.query_selector_all('.search-result, .product-grid__card')
+        search_results = main_page.query_selector_all('.search-result, .product-grid__card, .product-card')
         puts "Found #{search_results.length} search results"
         
         # Log the HTML of the first result for debugging
         if search_results.any?
           first_result = search_results.first
-          puts "First result HTML: #{first_result.evaluate('el => el.outerHTML')}"
+          puts "\nFirst result HTML structure:"
+          puts first_result.evaluate('el => {
+            const getElementInfo = (el) => {
+              const classes = Array.from(el.classList).join(" ");
+              const id = el.id ? `#${el.id}` : "";
+              return `${el.tagName.toLowerCase()}${id}.${classes}`;
+            };
+            
+            const walk = (el, depth = 0) => {
+              const indent = "  ".repeat(depth);
+              let info = `${indent}${getElementInfo(el)}`;
+              if (el.textContent.trim()) {
+                info += ` (text: "${el.textContent.trim()}")`;
+              }
+              console.log(info);
+              Array.from(el.children).forEach(child => walk(child, depth + 1));
+            };
+            
+            walk(el);
+            return "See console for full structure";
+          }')
+          
+          # Also log all elements that might contain prices
+          puts "\nPotential price elements:"
+          main_page.evaluate('() => {
+            const elements = document.querySelectorAll("[class*=\'price\'], [data-testid*=\'price\']");
+            return Array.from(elements).map(el => ({
+              selector: el.tagName.toLowerCase() + (el.id ? `#${el.id}` : "") + "." + Array.from(el.classList).join("."),
+              text: el.textContent.trim(),
+              html: el.outerHTML
+            }));
+          }').each do |el|
+            puts "- #{el["selector"]}: #{el["text"]}"
+          end
         end
         
         break if search_results.any?
@@ -448,8 +481,20 @@ get '/prices' do
       search_results.each do |result|
         begin
           # Get the price element with multiple possible selectors
-          price_element = result.query_selector('.search-result__price, .product-price, [data-testid="product-price"]')
+          price_element = result.query_selector('
+            .search-result__price, 
+            .product-price, 
+            [data-testid="product-price"],
+            [class*="price"],
+            [data-testid*="price"],
+            .price-point,
+            .price-point__amount,
+            .product-card__price
+          ')
           puts "Price element found: #{price_element ? 'yes' : 'no'}"
+          if price_element
+            puts "Price element HTML: #{price_element.evaluate('el => el.outerHTML')}"
+          end
           next unless price_element
           
           # Extract price text and convert to float
@@ -468,7 +513,14 @@ get '/prices' do
             puts "Parsed price: #{price}"
             
             # Get the product name for verification
-            name_element = result.query_selector('.search-result__name, .product-name, [data-testid="product-name"]')
+            name_element = result.query_selector('
+              .search-result__name, 
+              .product-name, 
+              [data-testid="product-name"],
+              [class*="name"],
+              [data-testid*="name"],
+              .product-card__name
+            ')
             if name_element
               name_text = name_element.evaluate('el => el.textContent.trim()')
               puts "Product name: #{name_text}"

@@ -1318,8 +1318,8 @@ end
 # Add a method to safely evaluate JavaScript on a page
 def safe_evaluate(page, script, request_id = nil)
   begin
-    # Wait for the page to be ready
-    page.wait_for_load_state('domcontentloaded', timeout: 5000)
+    # Wait for the page to be ready using available methods
+    page.wait_for_selector('body', timeout: 5000)
     
     # Evaluate the script
     page.evaluate(script)

@@ -371,7 +371,7 @@ get '/prices' do
     main_page.default_navigation_timeout = 30000
     
     # Search by card name
-    search_url = "https://www.tcgplayer.com/search/magic/product?q=#{URI.encode_www_form_component(card_name)}&Language=English&view=grid&productLineName=magic&setName=product"
+    search_url = "https://www.tcgplayer.com/search/magic/product?q=#{URI.encode_www_form_component(card_name + ' card')}&Language=English&view=grid&productLineName=magic&setName=product&isList=false&isProductNameExact=true"
     
     # Navigate to search page with retry logic
     retries = 0
@@ -425,10 +425,10 @@ get '/prices' do
       3.times do |i|
         # Wait for all search results to load
         puts "\nLooking for search results (attempt #{i + 1})..."
-        main_page.wait_for_selector('.search-result, .product-grid__card, .product-card', timeout: 5000)
+        main_page.wait_for_selector('.product-card', timeout: 5000)
         
         # Get all search results
-        search_results = main_page.query_selector_all('.search-result, .product-grid__card, .product-card')
+        search_results = main_page.query_selector_all('.product-card')
         puts "Found #{search_results.length} potential card listings"
         
         # Log the HTML of the first result for debugging
@@ -486,18 +486,16 @@ get '/prices' do
       lowest_price_result = nil
       lowest_price = Float::INFINITY
       
+      # Normalize card name for comparison
+      normalized_search = card_name.downcase.gsub(/[^a-z0-9]/, '')
+      
       search_results.each do |result|
         begin
           # Get the price element with multiple possible selectors
           price_element = result.query_selector('
-            .search-result__price, 
-            .product-price, 
-            [data-testid="product-price"],
-            [class*="price"],
-            [data-testid*="price"],
-            .price-point,
-            .price-point__amount,
-            .product-card__price
+            .product-card__price,
+            .product-card__market-price--value,
+            [data-testid="product-price"]
           ')
           if price_element
             price_text = price_element.evaluate('el => el.textContent.trim()')
@@ -506,6 +504,9 @@ get '/prices' do
           next unless price_element
           
           # Extract price text and convert to float
+          price_text = price_element.evaluate('el => el.textContent.trim()')
+          
+          # Try different price formats
           price = nil
           if price_text =~ /\$([\d,.]+)/
             price = $1.gsub(',', '').to_f
@@ -516,33 +517,27 @@ get '/prices' do
           if price
             # Get the product name for verification
             name_element = result.query_selector('
-              .search-result__name, 
-              .product-name, 
-              [data-testid="product-name"],
-              [class*="name"],
-              [data-testid*="name"],
-              .product-card__name
+              .product-card__title
             ')
             if name_element
               name_text = name_element.evaluate('el => el.textContent.trim()')
-              puts "\nFound matching card '#{name_text}' at $#{price}"
+              # Normalize the found name for comparison
+              normalized_name = name_text.downcase.gsub(/[^a-z0-9]/, '')
               
-              # Only update if this is the card we're looking for
-              if name_text.downcase.include?(card_name.downcase)
+              # Check if this is the exact card we're looking for
+              if normalized_name == normalized_search || 
+                 (normalized_name.include?(normalized_search) && 
+                  # Additional check to avoid matching set names or other products
+                  !name_text.match?(/^(booster|commander|deck|set|collection|bundle|box|pack)/i))
                 if price < lowest_price
                   lowest_price = price
                   lowest_price_result = result
-                else
-                  # Only log non-matches if they're close
-                  if name_text.downcase.include?(card_name.downcase.split.first) || 
-                     card_name.downcase.split.first.include?(name_text.downcase.split.first)
-                    puts "Skipping similar card '#{name_text}'"
-                  end
+                  puts "Found matching card '#{name_text}' at $#{price}"
                 end
               else
                 # Only log non-matches if they're close
-                if name_text.downcase.include?(card_name.downcase.split.first) || 
-                   card_name.downcase.split.first.include?(name_text.downcase.split.first)
+                if normalized_name.include?(normalized_search) || 
+                   normalized_search.include?(normalized_name)
                   puts "Skipping similar card '#{name_text}'"
                 end
               end
@@ -557,13 +552,19 @@ get '/prices' do
       unless lowest_price_result
         puts "\nNo matching cards found with valid prices. Available cards:"
         search_results.each do |result|
-          name_element = result.query_selector('.search-result__name, .product-name, [data-testid="product-name"]')
+          name_element = result.query_selector('
+            .product-card__title
+          ')
           if name_element
             name = name_element.evaluate('el => el.textContent.trim()')
-            puts "- #{name}"
+            # Only show cards that might be relevant
+            normalized_name = name.downcase.gsub(/[^a-z0-9]/, '')
+            if normalized_name.include?(normalized_search) || normalized_search.include?(normalized_name)
+              puts "- #{name}"
+            end
           end
         end
-        return { error: "Could not find valid prices in search results" }.to_json
+        return { error: "Could not find valid prices for #{card_name}" }.to_json
       end
       
       # Get the product URL from the lowest priced result

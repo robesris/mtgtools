@@ -28,9 +28,8 @@ async function updateCardPrices(cardElement) {
 
     // Add each condition's price
     Object.entries(prices).forEach(([condition, info], index, array) => {
-      // Use the text directly since it's already formatted
-      const [prefix, price] = info.text.split(': $');
-      priceHtml += `${prefix}: <a href="${info.url}" target="_blank" class="price-link">$${price}</a>`;
+      // Format the price with the condition and make only the price clickable
+      priceHtml += `${condition}: <a href="${info.url}" target="_blank" class="price-link">$${info.price}</a>`;
       
       // Add separator between prices
       if (index < array.length - 1) {

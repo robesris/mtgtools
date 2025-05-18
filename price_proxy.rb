@@ -619,8 +619,10 @@ get '/prices' do
       # Format the response to match the original style
       formatted_prices = {}
       prices.each do |condition, data|
+        # Extract just the numeric price from the price text
+        price_value = data['price'].gsub(/[^\d.]/, '')
         formatted_prices[condition] = {
-          'text' => "#{condition}: $#{data['price'].gsub(/[^\d.]/, '')}",
+          'price' => price_value,
           'url' => data['url']
         }
       end

@@ -39,17 +39,94 @@ $request_mutex = Mutex.new
 # Get or initialize browser
 def get_browser
   $browser_mutex.synchronize do
+    # Always cleanup any existing browser instance first
+    cleanup_browser if $browser
+    
     if $browser.nil?
       $logger.info("Initializing browser...")
       begin
         $browser = Puppeteer.launch(
           headless: true,
-          args: ['--no-sandbox', '--disable-setuid-sandbox']
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--disable-gpu',
+            '--window-size=1920,1080',
+            '--disable-blink-features=AutomationControlled',
+            '--disable-features=IsolateOrigins,site-per-process',
+            '--disable-site-isolation-trials'
+          ],
+          default_viewport: Puppeteer::Viewport.new(
+            width: 1920,
+            height: 1080,
+            device_scale_factor: 1.0,
+            is_mobile: false,
+            has_touch: false
+          )
         )
-        $logger.info("Browser initialized successfully")
+        
+        page = $browser.new_page
+        
+        # Set user agent
+        page.set_user_agent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36')
+
+        # Add more sophisticated anti-detection scripts
+        page.add_script_tag(content: <<~JS)
+          // Override navigator properties
+          Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+          Object.defineProperty(navigator, 'plugins', { 
+            get: () => [
+              { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer' },
+              { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai' },
+              { name: 'Native Client', filename: 'internal-nacl-plugin' }
+            ]
+          });
+          Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+          
+          // Add Chrome-specific properties
+          window.chrome = {
+            runtime: {},
+            loadTimes: function() {},
+            csi: function() {},
+            app: {}
+          };
+          
+          // Override permissions
+          const originalQuery = window.navigator.permissions.query;
+          window.navigator.permissions.query = (parameters) => (
+            parameters.name === 'notifications' ?
+              Promise.resolve({ state: Notification.permission }) :
+              originalQuery(parameters)
+          );
+          
+          // Add missing properties that real browsers have
+          Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' });
+          Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+          Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+          
+          // Override WebGL to appear more realistic
+          const getParameter = WebGLRenderingContext.prototype.getParameter;
+          WebGLRenderingContext.prototype.getParameter = function(parameter) {
+            if (parameter === 37445) {
+              return 'Intel Inc.';
+            }
+            if (parameter === 37446) {
+              return 'Intel Iris OpenGL Engine';
+            }
+            return getParameter.apply(this, arguments);
+          };
+        JS
+        
+        # Close the setup page
+        page.close
+        
+        $logger.info("Browser initialized successfully with enhanced anti-detection measures")
       rescue => e
         $logger.error("Failed to initialize browser: #{e.message}")
         $logger.error(e.backtrace.join("\n"))
+        cleanup_browser  # Ensure cleanup on error
         raise
       end
     end
@@ -68,6 +145,8 @@ def cleanup_browser
         $logger.error("Error closing browser: #{e.message}")
       ensure
         $browser = nil
+        # Force garbage collection to ensure browser is fully cleaned up
+        GC.start
       end
     end
   end
@@ -467,8 +546,8 @@ get '/card_info' do
           
           # Create a new page for each condition
           condition_page = context.new_page
-          condition_page.default_navigation_timeout = 15000  # 15 seconds
-          condition_page.default_timeout = 10000  # 10 seconds
+          condition_page.default_navigation_timeout = 30000  # 30 seconds
+          condition_page.default_timeout = 30000  # 30 seconds
           
           begin
             $logger.info("Request #{request_id}: Processing condition: #{condition}")
@@ -573,7 +652,7 @@ def process_condition(page, product_url, condition, request_id, card_name)
       
       # Wait specifically for listing items
       begin
-        page.wait_for_selector('.listing-item', timeout: 10000)
+        page.wait_for_selector('.listing-item', timeout: 30000)  # Increased to 30 seconds
         $logger.info("Request #{request_id}: Listing items found")
         
         # Get all listings and their prices
@@ -676,6 +755,42 @@ def process_condition(page, product_url, condition, request_id, card_name)
         
       rescue => e
         $logger.error("Request #{request_id}: Timeout waiting for listing items: #{e.message}")
+        
+        # Log detailed page content for debugging
+        page_content = page.evaluate(<<~'JS')
+          function() {
+            // Get all elements that might be related to listings
+            const possibleListingElements = {
+              'listing-item': document.querySelectorAll('.listing-item').length,
+              'product-listing': document.querySelectorAll('.product-listing').length,
+              'inventory-item': document.querySelectorAll('.inventory-item').length,
+              'price-point': document.querySelectorAll('.price-point').length,
+              'product-price': document.querySelectorAll('.product-price').length,
+              'inventory__price': document.querySelectorAll('.inventory__price').length,
+              'inventory__price-with-shipping': document.querySelectorAll('.inventory__price-with-shipping').length
+            };
+            
+            // Get the main content area
+            const mainContent = document.querySelector('main') || document.querySelector('#main-content') || document.body;
+            
+            return {
+              url: window.location.href,
+              title: document.title,
+              possibleListingElements,
+              mainContentHTML: mainContent ? mainContent.innerHTML.substring(0, 2000) : 'No main content found',
+              bodyClasses: document.body.className,
+              readyState: document.readyState,
+              // Check for any loading indicators
+              loadingIndicators: {
+                'loading-spinner': document.querySelectorAll('.loading-spinner, .spinner, [class*="loading"]').length,
+                'skeleton': document.querySelectorAll('[class*="skeleton"]').length
+              }
+            };
+          }
+        JS
+        
+        $logger.info("Request #{request_id}: Page content at timeout: #{page_content.inspect}")
+        
         # Take a screenshot for debugging
         screenshot_path = "price_error_#{condition}_#{Time.now.to_i}.png"
         page.screenshot(path: screenshot_path)

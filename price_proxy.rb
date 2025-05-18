@@ -1168,8 +1168,7 @@ def process_condition(page, product_url, condition, request_id, card_name)
                         shipping: shipping ? {
                           text: shipping.textContent.trim(),
                           classes: shipping.className
-                        } : null,
-                        html: item.outerHTML
+                        } : null
                       });
                     });
 
@@ -1238,7 +1237,6 @@ def process_condition(page, product_url, condition, request_id, card_name)
                         $logger.info("    Shipping: #{listing['shipping']['text']}")
                         $logger.info("    Shipping Classes: #{listing['shipping']['classes']}")
                       end
-                      $logger.info("    HTML: #{listing['html']}")
                     end
                   end
                 elsif listings_html['error']
@@ -1278,26 +1276,23 @@ def process_condition(page, product_url, condition, request_id, card_name)
         sleep(0.1)
       end
 
-      # After all screenshots are taken, log the entire HTML
+      # After all screenshots are taken, log the page info (without HTML)
       begin
-        full_html = page.evaluate(<<~'JS')
+        page_info = page.evaluate(<<~'JS')
           function() {
             return {
               url: window.location.href,
-              title: document.title,
-              html: document.documentElement.outerHTML
+              title: document.title
             };
           }
         JS
 
-        $logger.info("Request #{request_id}: === FULL PAGE HTML ===")
-        $logger.info("  URL: #{full_html['url']}")
-        $logger.info("  Title: #{full_html['title']}")
-        $logger.info("  === HTML CONTENT ===")
-        $logger.info(full_html['html'])
-        $logger.info("=== END OF FULL PAGE HTML ===")
+        $logger.info("Request #{request_id}: === PAGE INFO ===")
+        $logger.info("  URL: #{page_info['url']}")
+        $logger.info("  Title: #{page_info['title']}")
+        $logger.info("=== END OF PAGE INFO ===")
       rescue => e
-        $logger.error("Request #{request_id}: Error capturing full page HTML: #{e.message}")
+        $logger.error("Request #{request_id}: Error capturing page info: #{e.message}")
         $logger.error(e.backtrace.join("\n"))
       end
 

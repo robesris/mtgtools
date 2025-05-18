@@ -1158,25 +1158,25 @@ def process_condition(page, product_url, condition, request_id, card_name)
                 (function() {
                   try {
                     // Find the "listings" text - look for exact match of "X listings"
-                    const listingsHeader = Array.from(document.querySelectorAll('*')).find(el => 
-                      el.textContent && /^\\d+\\s+listings$/i.test(el.textContent.trim())
-                    );
+                    const listingsHeader = Array.from(document.querySelectorAll('*')).find(function(el) {
+                      return el.textContent && /^\\d+\\s+listings$/i.test(el.textContent.trim());
+                    });
                     
                     if (!listingsHeader) {
                       return { 
                         found: false, 
                         message: 'No listings header found matching pattern "X listings"',
                         allText: Array.from(document.querySelectorAll('*'))
-                          .filter(el => el.textContent && el.textContent.includes('listings'))
-                          .map(el => el.textContent.trim())
+                          .filter(function(el) { return el.textContent && el.textContent.includes('listings'); })
+                          .map(function(el) { return el.textContent.trim(); })
                       };
                     }
 
                     // Get all content between the header and first "Add to Cart" button
-                    let current = listingsHeader;
-                    let html = '';
-                    let foundAddToCart = false;
-                    let elementCount = 0;
+                    var current = listingsHeader;
+                    var html = '';
+                    var foundAddToCart = false;
+                    var elementCount = 0;
                     
                     while (current && !foundAddToCart) {
                       // Move to next element
@@ -1197,17 +1197,19 @@ def process_condition(page, product_url, condition, request_id, card_name)
                     }
 
                     // Get all elements with prices and their full context
-                    const priceElements = Array.from(document.querySelectorAll('*'))
-                      .filter(el => el.textContent && el.textContent.includes('$'))
-                      .map(el => ({
-                        className: el.className,
-                        text: el.textContent.trim(),
-                        tagName: el.tagName,
-                        parentClasses: el.parentElement ? el.parentElement.className : null,
-                        grandparentClasses: el.parentElement && el.parentElement.parentElement ? 
-                          el.parentElement.parentElement.className : null,
-                        html: el.outerHTML
-                      }));
+                    var priceElements = Array.from(document.querySelectorAll('*'))
+                      .filter(function(el) { return el.textContent && el.textContent.includes('$'); })
+                      .map(function(el) {
+                        return {
+                          className: el.className,
+                          text: el.textContent.trim(),
+                          tagName: el.tagName,
+                          parentClasses: el.parentElement ? el.parentElement.className : null,
+                          grandparentClasses: el.parentElement && el.parentElement.parentElement ? 
+                            el.parentElement.parentElement.className : null,
+                          html: el.outerHTML
+                        };
+                      });
 
                     return {
                       found: true,

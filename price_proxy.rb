@@ -581,8 +581,12 @@ get '/prices' do
       # Process conditions sequentially instead of in parallel
       conditions = ['Lightly Played', 'Near Mint']
       prices = {}
+      found_conditions = 0
       
       conditions.each do |condition|
+        # Stop if we've found both conditions
+        break if found_conditions >= 2
+        
         # Create a new page for each condition
         condition_page = context.new_page
         pages << condition_page
@@ -599,6 +603,7 @@ get '/prices' do
               'price' => result['price'],
               'url' => result['url']
             }
+            found_conditions += 1
           end
         ensure
           # Don't close the page yet, we'll close all pages at the end
@@ -615,7 +620,7 @@ get '/prices' do
       formatted_prices = {}
       prices.each do |condition, data|
         formatted_prices[condition] = {
-          'text' => "#{condition}: #{data['price']}",
+          'text' => "#{condition}: $#{data['price'].gsub(/[^\d.]/, '')}",
           'url' => data['url']
         }
       end

@@ -5,6 +5,13 @@ const TCG_API_URL = 'https://api.tcgplayer.com/v1.39.0';
 async function updateCardPrices(cardElement) {
   const cardName = cardElement.querySelector('.card-name').textContent;
   const priceInfo = cardElement.querySelector('.price-info');
+  
+  // If we already have prices displayed, don't fetch again
+  if (priceInfo.querySelector('.price-link')) {
+    console.log('Prices already loaded for', cardName);
+    return;
+  }
+  
   priceInfo.innerHTML = '<span class="loading">Loading prices...</span>';
 
   try {
@@ -21,11 +28,9 @@ async function updateCardPrices(cardElement) {
 
     // Add each condition's price
     Object.entries(prices).forEach(([condition, info], index, array) => {
-      // Split the text into condition and price parts
-      const [conditionText, priceText] = info.text.split(': ');
-      
-      // Add the condition text and price link
-      priceHtml += `${conditionText}: <a href="${info.url}" target="_blank" class="price-link">${priceText}</a>`;
+      // Use the text directly since it's already formatted
+      const [prefix, price] = info.text.split(': $');
+      priceHtml += `${prefix}: <a href="${info.url}" target="_blank" class="price-link">$${price}</a>`;
       
       // Add separator between prices
       if (index < array.length - 1) {
@@ -35,6 +40,11 @@ async function updateCardPrices(cardElement) {
 
     if (priceHtml) {
       priceInfo.innerHTML = priceHtml;
+      // Cache the prices
+      localStorage.setItem(`price_${cardName}`, JSON.stringify({
+        prices: data.prices,
+        timestamp: Date.now()
+      }));
       if (!isLegal) {
         priceInfo.classList.add('illegal');
         priceInfo.innerHTML += `<div class="illegal-notice">Not legal in Commander</div>`;

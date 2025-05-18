@@ -82,7 +82,26 @@ def launch_browser
       '--disable-blink-features=AutomationControlled',  # Hide automation
       '--disable-features=IsolateOrigins,site-per-process',  # Disable site isolation
       '--disable-web-security',  # Disable CORS
-      '--disable-features=IsolateOrigins,site-per-process,SameSiteByDefaultCookies,CookiesWithoutSameSiteMustBeSecure'  # Disable security features that might interfere
+      '--disable-features=IsolateOrigins,site-per-process,SameSiteByDefaultCookies,CookiesWithoutSameSiteMustBeSecure',  # Disable security features
+      '--disable-extensions',  # Disable extensions
+      '--disable-component-extensions-with-background-pages',  # Disable background extensions
+      '--disable-default-apps',  # Disable default apps
+      '--mute-audio',  # Mute audio
+      '--no-first-run',  # Skip first run
+      '--no-default-browser-check',  # Skip default browser check
+      '--disable-background-timer-throttling',  # Disable timer throttling
+      '--disable-backgrounding-occluded-windows',  # Disable background throttling
+      '--disable-renderer-backgrounding',  # Disable renderer backgrounding
+      '--disable-breakpad',  # Disable crash reporting
+      '--disable-sync',  # Disable sync
+      '--disable-translate',  # Disable translate
+      '--metrics-recording-only',  # Only record metrics
+      '--disable-hang-monitor',  # Disable hang monitor
+      '--disable-prompt-on-repost',  # Disable repost prompt
+      '--disable-client-side-phishing-detection',  # Disable phishing detection
+      '--password-store=basic',  # Use basic password store
+      '--use-mock-keychain',  # Use mock keychain
+      '--disable-site-isolation-trials'  # Disable site isolation trials
     ]
   )
   
@@ -104,12 +123,59 @@ def launch_browser
         Object.defineProperty(navigator, 'languages', {
           get: () => ['en-US', 'en']
         });
+        // Override more browser properties
+        Object.defineProperty(navigator, 'platform', {
+          get: () => 'MacIntel'
+        });
+        Object.defineProperty(navigator, 'vendor', {
+          get: () => 'Google Inc.'
+        });
+        Object.defineProperty(navigator, 'maxTouchPoints', {
+          get: () => 5
+        });
+        Object.defineProperty(navigator, 'hardwareConcurrency', {
+          get: () => 8
+        });
+        Object.defineProperty(navigator, 'deviceMemory', {
+          get: () => 8
+        });
+        Object.defineProperty(navigator, 'connection', {
+          get: () => ({
+            effectiveType: '4g',
+            rtt: 50,
+            downlink: 10,
+            saveData: false
+          })
+        });
+        // Override window properties
+        Object.defineProperty(window, 'chrome', {
+          get: () => ({
+            runtime: {},
+            loadTimes: function() {},
+            csi: function() {},
+            app: {}
+          })
+        });
       JS
       
       # Add cookies to appear more like a real browser
       page.set_cookie({
         name: 'tcgplayer_session',
         value: '1',
+        domain: '.tcgplayer.com',
+        path: '/'
+      })
+     
+      # Add more cookies
+      page.set_cookie({
+        name: 'tcgplayer_visitor',
+        value: '1',
+        domain: '.tcgplayer.com',
+        path: '/'
+      })
+      page.set_cookie({
+        name: 'tcgplayer_preferences',
+        value: '{"currency":"USD","language":"en"}',
         domain: '.tcgplayer.com',
         path: '/'
       })
@@ -303,127 +369,146 @@ get '/prices' do
     retries = 0
     begin
       puts "Navigating to search URL: #{search_url}"
+      
+      # Log requests and responses
+      main_page.on('request', ->(request) {
+        puts "Request: #{request.method} #{request.url}"
+      })
+      main_page.on('response', ->(response) {
+        puts "Response: #{response.status} #{response.url}"
+        if response.url.include?('tcgplayer.com')
+          puts "Response headers: #{response.headers.inspect}"
+        end
+      })
+      
       response = main_page.goto(search_url, wait_until: 'networkidle0', timeout: 30000)
       puts "Search response status: #{response&.status}"
       
+      # Get the page content for debugging
+      content = main_page.content
+      puts "Page content preview: #{content[0..500]}"
+      
       # Check if we got a captcha or error page
       if main_page.url.include?('captcha') || main_page.url.include?('error')
+        puts "Got captcha/error page. URL: #{main_page.url}"
+        puts "Full page content: #{content}"
         raise "TCGPlayer returned a captcha or error page"
       end
       
       unless response&.ok?
+        puts "Response not OK. Status: #{response&.status}"
+        puts "Response headers: #{response&.headers&.inspect}"
         raise "Search failed with status #{response&.status}"
       end
       
       # Take a screenshot for debugging
-      main_page.screenshot(path: "search_#{card_name.gsub(/\s+/, '_')}.png")
-    rescue => e
-      if retries < 2
-        retries += 1
-        puts "Retrying search (attempt #{retries}): #{e.message}"
-        sleep(2)
-        retry
-      else
-        raise
-      end
-    end
-    
-    # Wait for search results with retry
-    search_results = []
-    3.times do |i|
-      # Wait for all search results to load
-      main_page.wait_for_selector('.search-result', timeout: 5000)
+      screenshot_path = "search_#{card_name.gsub(/\s+/, '_')}.png"
+      main_page.screenshot(path: screenshot_path)
+      puts "Saved screenshot to #{screenshot_path}"
       
-      # Get all search results
-      search_results = main_page.query_selector_all('.search-result')
-      break if search_results.any?
-      puts "Retry #{i + 1} waiting for search result..."
-      sleep(1)
-    end
-    
-    unless search_results.any?
-      return { error: "No search results found" }.to_json
-    end
-    
-    # Find the lowest priced result
-    lowest_price_result = nil
-    lowest_price = Float::INFINITY
-    
-    search_results.each do |result|
-      begin
-        # Get the price element
-        price_element = result.query_selector('.search-result__price')
-        next unless price_element
+      # Wait for search results with retry
+      search_results = []
+      3.times do |i|
+        # Wait for all search results to load
+        puts "Waiting for search results (attempt #{i + 1})..."
+        main_page.wait_for_selector('.search-result', timeout: 5000)
         
-        # Extract price text and convert to float
-        price_text = price_element.evaluate('el => el.textContent.trim()')
-        if price_text =~ /\$([\d,.]+)/
-          price = $1.gsub(',', '').to_f
+        # Get all search results
+        search_results = main_page.query_selector_all('.search-result')
+        puts "Found #{search_results.length} search results"
+        break if search_results.any?
+        puts "Retry #{i + 1} waiting for search result..."
+        sleep(1)
+      end
+      
+      unless search_results.any?
+        puts "No search results found. Page content: #{main_page.content[0..1000]}"
+        return { error: "No search results found" }.to_json
+      end
+      
+      # Find the lowest priced result
+      lowest_price_result = nil
+      lowest_price = Float::INFINITY
+      
+      search_results.each do |result|
+        begin
+          # Get the price element
+          price_element = result.query_selector('.search-result__price')
+          puts "Price element found: #{price_element ? 'yes' : 'no'}"
+          next unless price_element
           
-          # Update lowest price if this one is lower
-          if price < lowest_price
-            lowest_price = price
-            lowest_price_result = result
+          # Extract price text and convert to float
+          price_text = price_element.evaluate('el => el.textContent.trim()')
+          puts "Price text: #{price_text}"
+          if price_text =~ /\$([\d,.]+)/
+            price = $1.gsub(',', '').to_f
+            puts "Parsed price: #{price}"
+            
+            # Update lowest price if this one is lower
+            if price < lowest_price
+              lowest_price = price
+              lowest_price_result = result
+              puts "New lowest price: #{price}"
+            end
           end
+        rescue => e
+          puts "Error processing search result: #{e.message}"
+          next
         end
-      rescue => e
-        puts "Error processing search result: #{e.message}"
-        next
       end
-    end
-    
-    unless lowest_price_result
-      return { error: "Could not find valid prices in search results" }.to_json
-    end
-    
-    # Get the product URL from the lowest priced result
-    product_url = lowest_price_result.evaluate('el => el.querySelector("a[href*=\'/product/\']").href')
-    puts "Selected product with lowest price: $#{lowest_price}"
-    
-    # Process conditions sequentially instead of in parallel
-    conditions = ['Lightly Played', 'Near Mint']
-    prices = {}
-    
-    conditions.each do |condition|
-      # Create a new page for each condition
-      condition_page = context.new_page
-      pages << condition_page
       
-      condition_page.default_navigation_timeout = 30000
+      unless lowest_price_result
+        puts "No valid prices found in search results"
+        return { error: "Could not find valid prices in search results" }.to_json
+      end
       
-      begin
-        result = process_condition(condition_page, product_url, condition)
-        prices[condition] = result if result
-      ensure
-        # Don't close the page yet, we'll close all pages at the end
+      # Get the product URL from the lowest priced result
+      product_url = lowest_price_result.evaluate('el => el.querySelector("a[href*=\'/product/\']").href')
+      puts "Selected product with lowest price: $#{lowest_price}"
+      puts "Product URL: #{product_url}"
+      
+      # Process conditions sequentially instead of in parallel
+      conditions = ['Lightly Played', 'Near Mint']
+      prices = {}
+      
+      conditions.each do |condition|
+        # Create a new page for each condition
+        condition_page = context.new_page
+        pages << condition_page
+        
+        condition_page.default_navigation_timeout = 30000
+        
+        begin
+          puts "Processing condition: #{condition}"
+          result = process_condition(condition_page, product_url, condition)
+          puts "Condition result: #{result.inspect}"
+          prices[condition] = result if result
+        ensure
+          # Don't close the page yet, we'll close all pages at the end
+        end
       end
-    end
-    
-    if prices.empty?
-      return { error: 'No valid prices found' }.to_json
-    end
-    
-    { prices: prices }.to_json
-    
-  rescue => e
-    puts "Error in /prices endpoint: #{e.message}"
-    puts e.backtrace.join("\n")
-    { error: e.message }.to_json
-  ensure
-    # Clean up all pages
-    pages.each do |page|
-      begin
-        page.close if page
-      rescue => e
-        puts "Error closing page: #{e.message}"
+      
+      if prices.empty?
+        puts "No valid prices found for any condition"
+        return { error: 'No valid prices found' }.to_json
       end
-    end
-    
-    # Clean up context
-    begin
-      context.close if context
+      
+      puts "Final prices: #{prices.inspect}"
+      { prices: prices }.to_json
+      
     rescue => e
-      puts "Error closing browser context: #{e.message}"
+      puts "Error in /prices endpoint: #{e.message}"
+      puts e.backtrace.join("\n")
+      { error: e.message }.to_json
+    ensure
+      # Clean up all pages
+      pages.each do |page|
+        begin
+          page.close if page
+        rescue => e
+          puts "Error closing page: #{e.message}"
+        end
+      end
     end
   end
 end

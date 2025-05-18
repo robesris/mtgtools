@@ -829,58 +829,43 @@
   </div>
   <script>
     document.addEventListener('DOMContentLoaded', function() {
-      async function checkCommanderLegality(cardName) {
-        try {
-          const response = await fetch(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}`);
-          const data = await response.json();
-          if (data.legalities && data.legalities.commander) {
-            return data.legalities.commander;
-          }
-          return 'unknown';
-        } catch (error) {
-          console.error('Error checking legality:', error);
-          return 'unknown';
-        }
-      }
-
       async function updateCardPrices(cardElement) {
         const cardName = cardElement.querySelector('.card-name').textContent;
         const priceInfo = cardElement.querySelector('.price-info');
         priceInfo.innerHTML = '<span class="loading">Loading prices...</span>';
 
         try {
-          // Check legality first
-          const legality = await checkCommanderLegality(cardName);
-          const isLegal = legality === 'legal';
-
-          // Then fetch prices
-          const response = await fetch(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}`);
+          const response = await fetch(`http://localhost:4567/card_info?name=${encodeURIComponent(cardName)}`);
           const data = await response.json();
 
-          if (data.prices) {
-            const prices = data.prices;
-            let priceHtml = '';
+          if (data.error) {
+            throw new Error(data.error);
+          }
 
-            if (prices.usd) {
-              priceHtml += `<a href="${data.purchase_uris?.tcgplayer || '#'}" target="_blank">TCGPlayer: $${prices.usd}</a><br>`;
-            }
-            if (prices.usd_foil) {
-              priceHtml += `<a href="${data.purchase_uris?.tcgplayer || '#'}" target="_blank">TCGPlayer (Foil): $${prices.usd_foil}</a><br>`;
-            }
-            if (prices.usd_etched) {
-              priceHtml += `<a href="${data.purchase_uris?.tcgplayer || '#'}" target="_blank">TCGPlayer (Etched): $${prices.usd_etched}</a>`;
-            }
+          let priceHtml = '';
+          const prices = data.prices;
 
-            if (priceHtml) {
-              priceInfo.innerHTML = priceHtml;
-              if (!isLegal) {
-                priceInfo.classList.add('illegal');
-                priceInfo.innerHTML += `<div class="illegal-notice">Not legal in Commander (${legality})</div>`;
-              } else {
-                priceInfo.classList.remove('illegal');
-              }
+          if (prices['near mint']) {
+            priceHtml += `<a href="${data.tcgplayer_url}" target="_blank">TCGPlayer (NM): $${prices['near mint']}</a><br>`;
+          }
+          if (prices['lightly played']) {
+            priceHtml += `<a href="${data.tcgplayer_url}" target="_blank">TCGPlayer (LP): $${prices['lightly played']}</a><br>`;
+          }
+          if (prices['moderately played']) {
+            priceHtml += `<a href="${data.tcgplayer_url}" target="_blank">TCGPlayer (MP): $${prices['moderately played']}</a><br>`;
+          }
+          if (prices['heavily played']) {
+            priceHtml += `<a href="${data.tcgplayer_url}" target="_blank">TCGPlayer (HP): $${prices['heavily played']}</a>`;
+          }
+
+          if (priceHtml) {
+            priceInfo.innerHTML = priceHtml;
+            const isLegal = data.legality === 'legal';
+            if (!isLegal) {
+              priceInfo.classList.add('illegal');
+              priceInfo.innerHTML += `<div class="illegal-notice">Not legal in Commander (${data.legality})</div>`;
             } else {
-              priceInfo.textContent = 'No price data available';
+              priceInfo.classList.remove('illegal');
             }
           } else {
             priceInfo.textContent = 'No price data available';

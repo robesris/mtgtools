@@ -320,7 +320,7 @@ class CommanderCardScraper
     
     # Special case: hardcode multiverseid for INTUITION
     if card_name == "INTUITION"
-      multiverseid = 382
+      multiverseid = 397633
       local_image_path = File.join(@output_dir, 'card_images', "#{multiverseid}.jpg")
       unless File.exist?(local_image_path)
         image_url = "https://gatherer.wizards.com/Handlers/Image.ashx?multiverseid=#{multiverseid}&type=card"

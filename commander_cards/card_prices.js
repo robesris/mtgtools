@@ -2,89 +2,44 @@
 const TCG_API_KEY = 'YOUR_API_KEY_HERE'; // You'll need to replace this with your actual API key
 const TCG_API_URL = 'https://api.tcgplayer.com/v1.39.0';
 
-async function updatePrices(cardName, cardElement) {
+async function updateCardPrices(cardElement) {
+  const cardName = cardElement.querySelector('.card-name').textContent;
   const priceInfo = cardElement.querySelector('.price-info');
-  priceInfo.innerHTML = '<span class="loading">Loading prices</span>';
-  
-  // Start the loading animation
-  let dots = 0;
-  const loadingSpan = priceInfo.querySelector('.loading');
-  const loadingInterval = setInterval(() => {
-    dots = (dots + 1) % 4;
-    loadingSpan.textContent = 'Loading prices' + '.'.repeat(dots);
-  }, 500);
-  
+  priceInfo.innerHTML = '<span class="loading">Loading prices...</span>';
+
   try {
-    console.log(`Fetching prices for ${cardName}...`);
     const response = await fetch(`http://localhost:4567/prices?card=${encodeURIComponent(cardName)}`);
     const data = await response.json();
-    console.log('Received price data:', data);
-    
-    // Clear the loading animation
-    clearInterval(loadingInterval);
-    
+
     if (data.error) {
-      console.error('Price data error:', data.error);
       throw new Error(data.error);
     }
-    
-    if (data.prices) {
-      console.log('Processing prices:', data.prices);
-      let html = '';
-      
-      // Helper function to add price to HTML
-      const addPrice = (condition, price) => {
-        console.log(`Adding price for ${condition}:`, price);
-        if (html) html += ' | ';
-        // Format the condition for display
-        const displayCondition = condition
-          .replace('near mint', 'NM')
-          .replace('lightly played', 'LP')
-          .replace(' foil', ' Foil');
-        html += `${displayCondition}: <a href="${price.url}" target="_blank" class="price-link">${price.total}</a>`;
-      };
-      
-      // Process all prices in order: NM, LP, NM Foil, LP Foil
-      const conditionOrder = [
-        'near mint',
-        'lightly played',
-        'near mint foil',
-        'lightly played foil'
-      ];
-      
-      // First add prices in our preferred order
-      conditionOrder.forEach(condition => {
-        if (data.prices[condition]) {
-          addPrice(condition, data.prices[condition]);
-        }
-      });
-      
-      // Then add any other conditions we didn't expect
-      Object.entries(data.prices).forEach(([condition, price]) => {
-        if (!conditionOrder.includes(condition)) {
-          addPrice(condition, price);
-        }
-      });
-      
-      console.log('Final HTML:', html);
-      priceInfo.innerHTML = html || 'No prices found';
-      
-      // Store in localStorage for caching
-      const cacheData = {
-        timestamp: Date.now(),
-        prices: data.prices
-      };
-      localStorage.setItem(`price_${cardName}`, JSON.stringify(cacheData));
-      console.log('Cached price data:', cacheData);
+
+    let priceHtml = '';
+    const prices = data.prices;
+    const isLegal = true;  // We'll get legality info from TCGPlayer later
+
+    if (prices['Lightly Played']) {
+      priceHtml += `<a href="${prices['Lightly Played'].url}" target="_blank">TCGPlayer (LP): ${prices['Lightly Played'].total}</a><br>`;
+    }
+    if (prices['Near Mint']) {
+      priceHtml += `<a href="${prices['Near Mint'].url}" target="_blank">TCGPlayer (NM): ${prices['Near Mint'].total}</a>`;
+    }
+
+    if (priceHtml) {
+      priceInfo.innerHTML = priceHtml;
+      if (!isLegal) {
+        priceInfo.classList.add('illegal');
+        priceInfo.innerHTML += `<div class="illegal-notice">Not legal in Commander</div>`;
+      } else {
+        priceInfo.classList.remove('illegal');
+      }
     } else {
-      console.log('No prices found in data');
-      priceInfo.innerHTML = 'No prices found';
+      priceInfo.textContent = 'No price data available';
     }
   } catch (error) {
-    // Clear the loading animation on error too
-    clearInterval(loadingInterval);
     console.error('Error fetching prices:', error);
-    priceInfo.innerHTML = 'Error loading prices. Please make sure the price proxy server is running.';
+    priceInfo.textContent = 'Error loading prices';
   }
 }
 
@@ -198,7 +153,7 @@ function cardClickHandler() {
   const cardName = this.querySelector('.card-name')?.textContent;
   console.log(`Clicked card name: ${cardName}`);
   if (cardName) {
-    updatePrices(cardName, this);
+    updateCardPrices(this);
   } else {
     console.log('No card name found for clicked element');
   }
@@ -214,22 +169,32 @@ async function refreshAllPrices() {
   button.textContent = 'Refreshing...';
   
   // Create an array of promises for all price updates
-  const updatePromises = Array.from(cards).map(card => {
+  const updatePromises = Array.from(cards).map(async (card, index) => {
     const cardName = card.querySelector('.card-name')?.textContent;
     if (cardName) {
-      return updatePrices(cardName, card);
+      console.log(`Starting refresh for card ${index + 1}/${cards.length}: ${cardName}`);
+      try {
+        await updateCardPrices(card);
+        console.log(`Finished refreshing card ${index + 1}/${cards.length}: ${cardName}`);
+      } catch (err) {
+        console.error(`Error refreshing card ${index + 1}/${cards.length} (${cardName}):`, err);
+        // Re-throw so that the outer catch sees it
+        throw err;
+      }
+    } else {
+      console.warn(`Card ${index + 1}/${cards.length} has no name, skipping`);
     }
-    return Promise.resolve();
   });
   
   try {
-    // Wait for all updates to complete
-    await Promise.all(updatePromises);
-    console.log('All prices refreshed successfully');
+    // Wait for all updates to complete (even if some fail)
+    await Promise.allSettled(updatePromises);
+    console.log('All price refresh attempts completed');
   } catch (error) {
-    console.error('Error refreshing all prices:', error);
+    console.error('Unexpected error during refresh:', error);
   } finally {
-    // Re-enable the button
+    // Always re-enable the button, even if some updates failed
+    console.log('Re-enabling refresh button');
     button.disabled = false;
     button.textContent = 'Refresh All Prices';
   }
@@ -254,15 +219,27 @@ document.addEventListener('DOMContentLoaded', () => {
   // Set up observer for DOM changes
   const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
-      if (mutation.type === 'childList' && (mutation.target.classList.contains('card-grid') || mutation.target.closest('.card-grid'))) {
-         attachClickHandlers();
+      // Only re-attach if the mutation is adding/removing cards (not just updating price text)
+      if (mutation.type === 'childList' && 
+          (mutation.target.classList.contains('card-grid') || mutation.target.closest('.card-grid')) &&
+          // Check if the mutation is actually adding/removing card elements
+          Array.from(mutation.addedNodes).some(node => node.classList?.contains('card')) ||
+          Array.from(mutation.removedNodes).some(node => node.classList?.contains('card'))) {
+        console.log('Card grid structure changed, re-attaching handlers');
+        attachClickHandlers();
       }
     });
   });
 
   // Only observe if body exists
   if (document.body) {
-    observer.observe(document.body, { subtree: true, childList: true });
+    observer.observe(document.body, { 
+      subtree: true, 
+      childList: true,
+      // Don't observe character data or attributes changes
+      characterData: false,
+      attributes: false
+    });
   } else {
     console.error('Document body not found when setting up observer');
   }

@@ -80,7 +80,9 @@ def launch_browser
       '--disable-gpu',
       '--window-size=1920,1080',
       '--disable-blink-features=AutomationControlled',  # Hide automation
-      '--disable-features=IsolateOrigins,site-per-process'  # Disable site isolation
+      '--disable-features=IsolateOrigins,site-per-process',  # Disable site isolation
+      '--disable-web-security',  # Disable CORS
+      '--disable-features=IsolateOrigins,site-per-process,SameSiteByDefaultCookies,CookiesWithoutSameSiteMustBeSecure'  # Disable security features that might interfere
     ]
   )
   
@@ -95,7 +97,22 @@ def launch_browser
         Object.defineProperty(navigator, 'webdriver', {
           get: () => undefined
         });
+        // Override other automation detection
+        Object.defineProperty(navigator, 'plugins', {
+          get: () => [1, 2, 3, 4, 5]
+        });
+        Object.defineProperty(navigator, 'languages', {
+          get: () => ['en-US', 'en']
+        });
       JS
+      
+      # Add cookies to appear more like a real browser
+      page.set_cookie({
+        name: 'tcgplayer_session',
+        value: '1',
+        domain: '.tcgplayer.com',
+        path: '/'
+      })
     end
   })
   
@@ -285,10 +302,21 @@ get '/prices' do
     # Navigate to search page with retry logic
     retries = 0
     begin
+      puts "Navigating to search URL: #{search_url}"
       response = main_page.goto(search_url, wait_until: 'networkidle0', timeout: 30000)
+      puts "Search response status: #{response&.status}"
+      
+      # Check if we got a captcha or error page
+      if main_page.url.include?('captcha') || main_page.url.include?('error')
+        raise "TCGPlayer returned a captcha or error page"
+      end
+      
       unless response&.ok?
         raise "Search failed with status #{response&.status}"
       end
+      
+      # Take a screenshot for debugging
+      main_page.screenshot(path: "search_#{card_name.gsub(/\s+/, '_')}.png")
     rescue => e
       if retries < 2
         retries += 1

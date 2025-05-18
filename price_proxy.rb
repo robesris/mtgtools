@@ -381,8 +381,8 @@ def process_condition(page, product_url, condition, request_id)
       sleep(2)
       
       # Try to get price with simplified extraction
-      price_data = page.evaluate(<<~'JS')
-        function() {
+      price_data = page.evaluate(<<~'JS', cardName: cardName)
+        function(cardName) {
           function extractNumericPrice(text) {
             if (!text) return null;
             // Try to match price patterns like $1.23, $1,234.56, etc.
@@ -391,44 +391,106 @@ def process_condition(page, product_url, condition, request_id)
             return parseFloat(match[0].replace(/[$,]/g, ''));
           }
 
-          // Get the first listing item
-          const firstListing = document.querySelector('.listing-item');
-          if (!firstListing) return null;
-
-          // Get the price from this specific listing
-          const priceElement = firstListing.querySelector('.listing-item__listing-data__info__price');
-          if (!priceElement) return null;
-
-          const basePrice = extractNumericPrice(priceElement.textContent);
-          if (basePrice === null) return null;
-
-          // Get shipping info from the same listing
-          let shippingPrice = 0;
-          const shippingElement = firstListing.querySelector('.shipping-messages__price');
-          if (shippingElement) {
-            const shippingText = shippingElement.textContent.trim();
-            if (shippingText.toLowerCase().includes('free shipping')) {
-              shippingPrice = 0;
-            } else {
-              const price = extractNumericPrice(shippingText);
-              if (price !== null) {
-                shippingPrice = price;
+          function isExactCardMatch(title) {
+            // Convert both to lowercase for case-insensitive comparison
+            const searchTitle = title.toLowerCase();
+            const searchName = cardName.toLowerCase();
+            
+            // Check for art cards and proxies
+            if (searchTitle.includes('art card') || searchTitle.includes('proxy')) {
+              return false;
+            }
+            
+            // Find the card name in the title
+            const nameIndex = searchTitle.indexOf(searchName);
+            if (nameIndex === -1) return false;
+            
+            // Check if there are any characters before the card name
+            if (nameIndex > 0) {
+              const beforeName = searchTitle.slice(0, nameIndex).trim();
+              // If there are characters before the name, they must be separated by punctuation (not spaces)
+              if (beforeName && !/[\-\(\)\[\]\{\}\.,;:]$/.test(beforeName)) {
+                return false;
               }
             }
+            
+            // Check if there are any characters after the card name
+            const afterIndex = nameIndex + searchName.length;
+            if (afterIndex < searchTitle.length) {
+              const afterName = searchTitle.slice(afterIndex).trim();
+              // If there are characters after the name, they must be separated by punctuation (not spaces)
+              if (afterName && !/^[\-\(\)\[\]\{\}\.,;:]/.test(afterName)) {
+                return false;
+              }
+            }
+            
+            return true;
           }
 
-          const totalPrice = basePrice + shippingPrice;
+          // Get all listing items
+          const listings = Array.from(document.querySelectorAll('.listing-item'));
+          if (!listings.length) return null;
+
+          // Filter and sort listings
+          const validListings = listings
+            .map(listing => {
+              const titleElement = listing.querySelector('.listing-item__title');
+              const priceElement = listing.querySelector('.listing-item__listing-data__info__price');
+              const shippingElement = listing.querySelector('.shipping-messages__price');
+              
+              if (!titleElement || !priceElement) return null;
+              
+              const title = titleElement.textContent.trim();
+              if (!isExactCardMatch(title)) return null;
+              
+              const basePrice = extractNumericPrice(priceElement.textContent);
+              if (basePrice === null) return null;
+              
+              // Get shipping info from the same listing
+              let shippingPrice = 0;
+              if (shippingElement) {
+                const shippingText = shippingElement.textContent.trim();
+                if (shippingText.toLowerCase().includes('free shipping')) {
+                  shippingPrice = 0;
+                } else {
+                  const price = extractNumericPrice(shippingText);
+                  if (price !== null) {
+                    shippingPrice = price;
+                  }
+                }
+              }
+              
+              const totalPrice = basePrice + shippingPrice;
+              return {
+                listing,
+                title,
+                basePrice,
+                shippingPrice,
+                totalPrice,
+                priceElement,
+                shippingElement
+              };
+            })
+            .filter(listing => listing !== null)
+            .sort((a, b) => a.totalPrice - b.totalPrice);
+
+          if (!validListings.length) return null;
+
+          // Get the lowest priced valid listing
+          const lowestListing = validListings[0];
+          
           return {
-            price: `$${totalPrice.toFixed(2)}`,
+            price: `$${lowestListing.totalPrice.toFixed(2)}`,
             url: window.location.href,
             debug: {
-              basePrice,
-              shippingPrice,
-              totalPrice,
-              source: 'regular_listing',
+              basePrice: lowestListing.basePrice,
+              shippingPrice: lowestListing.shippingPrice,
+              totalPrice: lowestListing.totalPrice,
+              title: lowestListing.title,
+              source: 'lowest_valid_listing',
               rawText: {
-                price: priceElement.textContent.trim(),
-                shipping: shippingElement ? shippingElement.textContent.trim() : 'no shipping info'
+                price: lowestListing.priceElement.textContent.trim(),
+                shipping: lowestListing.shippingElement ? lowestListing.shippingElement.textContent.trim() : 'no shipping info'
               }
             }
           };

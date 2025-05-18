@@ -1155,20 +1155,31 @@ def process_condition(page, product_url, condition, request_id, card_name)
             # After taking screenshot, try to log the listings HTML
             begin
               listings_html = page.evaluate(<<~JS)
-                (function() {
+                function() {
                   try {
-                    // Find the "listings" text - look for exact match of "X listings"
-                    const listingsHeader = Array.from(document.querySelectorAll('*')).find(function(el) {
-                      return el.textContent && /^\\d+\\s+listings$/i.test(el.textContent.trim());
-                    });
+                    // Find the "listings" text
+                    var listingsHeader = null;
+                    var allElements = document.querySelectorAll('*');
+                    for (var i = 0; i < allElements.length; i++) {
+                      var el = allElements[i];
+                      if (el.textContent && /^\\d+\\s+listings$/i.test(el.textContent.trim())) {
+                        listingsHeader = el;
+                        break;
+                      }
+                    }
                     
                     if (!listingsHeader) {
+                      var allText = [];
+                      for (var i = 0; i < allElements.length; i++) {
+                        var el = allElements[i];
+                        if (el.textContent && el.textContent.includes('listings')) {
+                          allText.push(el.textContent.trim());
+                        }
+                      }
                       return { 
                         found: false, 
                         message: 'No listings header found matching pattern "X listings"',
-                        allText: Array.from(document.querySelectorAll('*'))
-                          .filter(function(el) { return el.textContent && el.textContent.includes('listings'); })
-                          .map(function(el) { return el.textContent.trim(); })
+                        allText: allText
                       };
                     }
 
@@ -1179,28 +1190,26 @@ def process_condition(page, product_url, condition, request_id, card_name)
                     var elementCount = 0;
                     
                     while (current && !foundAddToCart) {
-                      // Move to next element
                       current = current.nextElementSibling;
                       if (!current) break;
                       
-                      // Check if we hit an "Add to Cart" button
                       if (current.textContent && current.textContent.includes('Add to Cart')) {
                         foundAddToCart = true;
                         break;
                       }
                       
-                      // Add this element's HTML with its class names
                       html += '\\n<!-- Element ' + elementCount + ' -->\\n';
                       html += '<!-- Classes: ' + current.className + ' -->\\n';
                       html += current.outerHTML + '\\n';
                       elementCount++;
                     }
 
-                    // Get all elements with prices and their full context
-                    var priceElements = Array.from(document.querySelectorAll('*'))
-                      .filter(function(el) { return el.textContent && el.textContent.includes('$'); })
-                      .map(function(el) {
-                        return {
+                    // Get all elements with prices
+                    var priceElements = [];
+                    for (var i = 0; i < allElements.length; i++) {
+                      var el = allElements[i];
+                      if (el.textContent && el.textContent.includes('$')) {
+                        priceElements.push({
                           className: el.className,
                           text: el.textContent.trim(),
                           tagName: el.tagName,
@@ -1208,8 +1217,9 @@ def process_condition(page, product_url, condition, request_id, card_name)
                           grandparentClasses: el.parentElement && el.parentElement.parentElement ? 
                             el.parentElement.parentElement.className : null,
                           html: el.outerHTML
-                        };
-                      });
+                        });
+                      }
+                    }
 
                     return {
                       found: true,
@@ -1227,7 +1237,7 @@ def process_condition(page, product_url, condition, request_id, card_name)
                       stack: e.stack
                     };
                   }
-                })();
+                }
               JS
 
               if screenshot_count == 3  # Only log detailed HTML for the third screenshot

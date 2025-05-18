@@ -1,4 +1,5 @@
 require 'sinatra'
+require 'sinatra/cross_origin'
 require 'httparty'
 require 'nokogiri'
 require 'json'
@@ -8,6 +9,7 @@ require 'tmpdir'
 require 'fileutils'
 
 set :port, 4567
+set :bind, '0.0.0.0'
 set :public_folder, 'commander_cards'
 
 # Global browser instance
@@ -15,6 +17,47 @@ $browser = nil
 $browser_mutex = Mutex.new
 $browser_retry_count = 0
 MAX_RETRIES = 3
+
+# Initialize browser
+def init_browser
+  return if $browser
+  $browser = Puppeteer.launch(
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  )
+end
+
+# Cleanup browser
+def cleanup_browser
+  if $browser
+    begin
+      $browser.close
+    rescue => e
+      puts "Error closing browser: #{e.message}"
+    ensure
+      $browser = nil
+    end
+  end
+end
+
+# Handle shutdown signals
+['INT', 'TERM'].each do |signal|
+  Signal.trap(signal) do
+    puts "\nShutting down gracefully..."
+    cleanup_browser
+    exit
+  end
+end
+
+configure do
+  enable :cross_origin
+  set :allow_origin, "*"
+  set :allow_methods, [:get, :post, :options]
+  set :allow_credentials, true
+  set :max_age, "1728000"
+  set :expose_headers, ['Content-Type']
+  init_browser
+end
 
 # Enable CORS
 before do
@@ -340,20 +383,56 @@ get '/prices' do
     end
     
     # Wait for search results with retry
-    first_result = nil
+    search_results = []
     3.times do |i|
-      first_result = main_page.query_selector('a[href*="/product/"]')
-      break if first_result
+      # Wait for all search results to load
+      main_page.wait_for_selector('.search-result', timeout: 5000)
+      
+      # Get all search results
+      search_results = main_page.query_selector_all('.search-result')
+      break if search_results.any?
       puts "Retry #{i + 1} waiting for search result..."
       sleep(1)
     end
     
-    unless first_result
+    unless search_results.any?
       return { error: "No search results found" }.to_json
     end
     
-    # Get the product URL
-    product_url = first_result.evaluate('el => el.href')
+    # Find the lowest priced result
+    lowest_price_result = nil
+    lowest_price = Float::INFINITY
+    
+    search_results.each do |result|
+      begin
+        # Get the price element
+        price_element = result.query_selector('.search-result__price')
+        next unless price_element
+        
+        # Extract price text and convert to float
+        price_text = price_element.evaluate('el => el.textContent.trim()')
+        if price_text =~ /\$([\d,.]+)/
+          price = $1.gsub(',', '').to_f
+          
+          # Update lowest price if this one is lower
+          if price < lowest_price
+            lowest_price = price
+            lowest_price_result = result
+          end
+        end
+      rescue => e
+        puts "Error processing search result: #{e.message}"
+        next
+      end
+    end
+    
+    unless lowest_price_result
+      return { error: "Could not find valid prices in search results" }.to_json
+    end
+    
+    # Get the product URL from the lowest priced result
+    product_url = lowest_price_result.evaluate('el => el.querySelector("a[href*=\'/product/\']").href')
+    puts "Selected product with lowest price: $#{lowest_price}"
     
     # Process conditions sequentially instead of in parallel
     conditions = ['Lightly Played', 'Near Mint']
@@ -412,20 +491,7 @@ end
 
 # Clean up browser on server shutdown
 at_exit do
-  if $browser
-    begin
-      puts "Closing browser..."
-      # Clean up the Chrome profile directory
-      if profile_dir = $browser.instance_variable_get(:@profile_dir)
-        FileUtils.rm_rf(profile_dir)
-      end
-      $browser.disconnect if $browser.respond_to?(:disconnect)
-      # Kill any remaining Chrome processes
-      system("lsof -ti:9222 | xargs kill -9 2>/dev/null")
-    rescue => e
-      puts "Error closing browser: #{e.message}"
-    end
-  end
+  cleanup_browser
 end
 
 get '/' do

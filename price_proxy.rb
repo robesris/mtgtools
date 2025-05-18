@@ -910,7 +910,7 @@ get '/card_info' do
             $logger.info("Request #{request_id}: Processing condition: #{condition}")
             result = process_condition(condition_page, lowest_priced_product['url'], condition, request_id, card_name)
             $logger.info("Request #{request_id}: Condition result: #{result.inspect}")
-            if result
+            if result && result.is_a?(Hash) && result['success']
               prices[condition] = {
                 'price' => result['price'],
                 'url' => result['url']
@@ -1200,11 +1200,35 @@ def process_condition(page, product_url, condition, request_id, card_name)
                       };
                     }
 
+                    // Find the lowest price from the listings
+                    var lowestPrice = null;
+                    var lowestPriceUrl = null;
+                    
+                    listings.forEach(function(listing) {
+                      if (listing.basePrice) {
+                        var priceText = listing.basePrice.text;
+                        var priceMatch = priceText.match(/\\$([0-9.]+)/);
+                        if (priceMatch) {
+                          var price = parseFloat(priceMatch[1]);
+                          if (lowestPrice === null || price < lowestPrice) {
+                            lowestPrice = price;
+                            // Find the "Add to Cart" button in this listing
+                            var addToCartBtn = listing.container.querySelector('button[class*="add-to-cart"]');
+                            if (addToCartBtn) {
+                              lowestPriceUrl = window.location.href;
+                            }
+                          }
+                        }
+                      }
+                    });
+
                     return {
                       success: true,
                       found: true,
                       headerText: listingsHeader.textContent,
-                      listings: listings
+                      listings: listings,
+                      lowestPrice: lowestPrice ? lowestPrice.toFixed(2) : null,
+                      lowestPriceUrl: lowestPriceUrl
                     };
                   } catch (e) {
                     return { 
@@ -1270,6 +1294,15 @@ def process_condition(page, product_url, condition, request_id, card_name)
                 end
                 $logger.info("=== END OF LISTINGS INFO ===")
               end
+
+              # If we found listings with prices, return the result
+              if listings_html.is_a?(Hash) && listings_html['success'] && listings_html['lowestPrice']
+                return {
+                  'success' => true,
+                  'price' => listings_html['lowestPrice'],
+                  'url' => listings_html['lowestPriceUrl']
+                }
+              end
             rescue => e
               $logger.error("Request #{request_id}: Error evaluating listings HTML: #{e.message}")
               $logger.error(e.backtrace.join("\n"))
@@ -1306,12 +1339,19 @@ def process_condition(page, product_url, condition, request_id, card_name)
         $logger.error(e.backtrace.join("\n"))
       end
 
-      # Continue with existing price extraction logic...
+      # If we haven't found any listings with prices, return failure
+      return {
+        'success' => false,
+        'message' => 'No valid listings found after all screenshots'
+      }
 
     rescue => e
       $logger.error("Request #{request_id}: Error processing condition: #{e.message}")
       $logger.error(e.backtrace.join("\n"))
-      return nil
+      return {
+        'success' => false,
+        'message' => e.message
+      }
     end
   end
 end

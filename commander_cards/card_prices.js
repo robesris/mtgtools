@@ -204,6 +204,37 @@ function cardClickHandler() {
   }
 }
 
+// Add refresh all prices functionality
+async function refreshAllPrices() {
+  const button = document.getElementById('refresh-all-prices');
+  const cards = document.querySelectorAll('.card');
+  
+  // Disable the button while refreshing
+  button.disabled = true;
+  button.textContent = 'Refreshing...';
+  
+  // Create an array of promises for all price updates
+  const updatePromises = Array.from(cards).map(card => {
+    const cardName = card.querySelector('.card-name')?.textContent;
+    if (cardName) {
+      return updatePrices(cardName, card);
+    }
+    return Promise.resolve();
+  });
+  
+  try {
+    // Wait for all updates to complete
+    await Promise.all(updatePromises);
+    console.log('All prices refreshed successfully');
+  } catch (error) {
+    console.error('Error refreshing all prices:', error);
+  } finally {
+    // Re-enable the button
+    button.disabled = false;
+    button.textContent = 'Refresh All Prices';
+  }
+}
+
 // Wait for DOM to be fully loaded before initializing everything
 document.addEventListener('DOMContentLoaded', () => {
   console.log('DOM fully loaded, initializing...');
@@ -213,6 +244,12 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Attach click handlers
   attachClickHandlers();
+  
+  // Add refresh button handler
+  const refreshButton = document.getElementById('refresh-all-prices');
+  if (refreshButton) {
+    refreshButton.addEventListener('click', refreshAllPrices);
+  }
   
   // Set up observer for DOM changes
   const observer = new MutationObserver((mutations) => {

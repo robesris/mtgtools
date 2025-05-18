@@ -1183,29 +1183,6 @@ def process_condition(page, product_url, condition, request_id, card_name)
                       };
                     }
 
-                    // Get all content between the header and first "Add to Cart" button
-                    var current = listingsHeader;
-                    var html = "";
-                    var foundAddToCart = false;
-                    var elementCount = 0;
-                    
-                    while (current && !foundAddToCart) {
-                      current = current.nextElementSibling;
-                      if (!current) {
-                        break;
-                      }
-                      
-                      if (current.textContent && current.textContent.indexOf("Add to Cart") !== -1) {
-                        foundAddToCart = true;
-                        break;
-                      }
-                      
-                      html += "\\n<!-- Element " + elementCount + " -->\\n";
-                      html += "<!-- Classes: " + current.className + " -->\\n";
-                      html += current.outerHTML + "\\n";
-                      elementCount = elementCount + 1;
-                    }
-
                     // Get all elements with prices
                     var priceElements = [];
                     for (var i = 0; i < allElements.length; i++) {
@@ -1227,10 +1204,7 @@ def process_condition(page, product_url, condition, request_id, card_name)
                     return {
                       found: true,
                       headerText: listingsHeader.textContent,
-                      html: html,
-                      elementCount: elementCount,
-                      priceElements: priceElements,
-                      foundAddToCart: foundAddToCart
+                      priceElements: priceElements
                     };
                   } catch (e) {
                     return { 
@@ -1243,13 +1217,11 @@ def process_condition(page, product_url, condition, request_id, card_name)
                 }
               JS
 
-              if screenshot_count == 3  # Only log detailed HTML for the third screenshot
-                $logger.info("Request #{request_id}: === DETAILED LISTINGS HTML (3rd screenshot) ===")
+              if screenshot_count == 3  # Only log detailed info for the third screenshot
+                $logger.info("Request #{request_id}: === DETAILED LISTINGS INFO (3rd screenshot) ===")
                 $logger.info("  Found listings header: #{listings_html['found']}")
                 if listings_html['found']
                   $logger.info("  Header text: #{listings_html['headerText']}")
-                  $logger.info("  Number of elements: #{listings_html['elementCount']}")
-                  $logger.info("  Found Add to Cart button: #{listings_html['foundAddToCart']}")
                   $logger.info("  === PRICE ELEMENTS FOUND ===")
                   listings_html['priceElements'].each_with_index do |el, i|
                     $logger.info("  Price Element #{i + 1}:")
@@ -1259,15 +1231,13 @@ def process_condition(page, product_url, condition, request_id, card_name)
                     $logger.info("    Grandparent Classes: #{el['grandparentClasses']}")
                     $logger.info("    HTML: #{el['html']}")
                   end
-                  $logger.info("  === FULL HTML CONTENT ===")
-                  $logger.info(listings_html['html'])
                 elsif listings_html['error']
                   $logger.error("  Error evaluating listings: #{listings_html['error']}")
                   $logger.error("  Stack trace: #{listings_html['stack']}")
                 else
-                  $logger.error("  No listings found. All text containing 'listings': #{listings_html['allText']}")
+                  $logger.error("  No listings found. All text containing 'listing': #{listings_html['allText']}")
                 end
-                $logger.info("=== END OF LISTINGS HTML ===")
+                $logger.info("=== END OF LISTINGS INFO ===")
               end
             rescue => e
               $logger.error("Request #{request_id}: Error evaluating listings HTML: #{e.message}")
@@ -1283,6 +1253,29 @@ def process_condition(page, product_url, condition, request_id, card_name)
 
         # Small sleep to prevent tight loop
         sleep(0.1)
+      end
+
+      # After all screenshots are taken, log the entire HTML
+      begin
+        full_html = page.evaluate(<<~'JS')
+          function() {
+            return {
+              url: window.location.href,
+              title: document.title,
+              html: document.documentElement.outerHTML
+            };
+          }
+        JS
+
+        $logger.info("Request #{request_id}: === FULL PAGE HTML ===")
+        $logger.info("  URL: #{full_html['url']}")
+        $logger.info("  Title: #{full_html['title']}")
+        $logger.info("  === HTML CONTENT ===")
+        $logger.info(full_html['html'])
+        $logger.info("=== END OF FULL PAGE HTML ===")
+      rescue => e
+        $logger.error("Request #{request_id}: Error capturing full page HTML: #{e.message}")
+        $logger.error(e.backtrace.join("\n"))
       end
 
       # Continue with existing price extraction logic...

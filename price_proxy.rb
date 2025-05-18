@@ -84,29 +84,20 @@ def launch_browser
     ]
   )
   
-  # Set a realistic user agent
-  page = browser.new_page
-  page.set_user_agent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
-  
-  # Set additional headers to look more like a real browser
-  page.set_extra_http_headers({
-    'Accept-Language': 'en-US,en;q=0.9',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Connection': 'keep-alive',
-    'Upgrade-Insecure-Requests': '1',
-    'Sec-Fetch-Dest': 'document',
-    'Sec-Fetch-Mode': 'navigate',
-    'Sec-Fetch-Site': 'none',
-    'Sec-Fetch-User': '?1'
+  # Set a realistic user agent and headers for all new pages
+  browser.on('targetcreated', ->(target) {
+    if target.type == 'page'
+      page = target.page
+      page.set_user_agent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
+      
+      # Override navigator.webdriver to appear as a real browser
+      page.add_init_script(<<~JS)
+        Object.defineProperty(navigator, 'webdriver', {
+          get: () => undefined
+        });
+      JS
+    end
   })
-  
-  # Override navigator.webdriver to appear as a real browser
-  page.evaluate_on_new_document(<<~JS)
-    Object.defineProperty(navigator, 'webdriver', {
-      get: () => undefined
-    });
-  JS
   
   puts "Browser launched successfully"
   browser
@@ -370,13 +361,6 @@ get '/prices' do
       condition_page = context.new_page
       pages << condition_page
       
-      # Set viewport for condition page
-      condition_page.client.send_message('Emulation.setDeviceMetricsOverride', {
-        width: 1920,
-        height: 1080,
-        deviceScaleFactor: 1,
-        mobile: false
-      })
       condition_page.default_navigation_timeout = 30000
       
       begin

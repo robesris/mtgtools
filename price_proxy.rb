@@ -78,9 +78,35 @@ def launch_browser
       '--disable-dev-shm-usage',
       '--disable-accelerated-2d-canvas',
       '--disable-gpu',
-      '--window-size=1920,1080'
+      '--window-size=1920,1080',
+      '--disable-blink-features=AutomationControlled',  # Hide automation
+      '--disable-features=IsolateOrigins,site-per-process'  # Disable site isolation
     ]
   )
+  
+  # Set a realistic user agent
+  page = browser.new_page
+  page.set_user_agent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
+  
+  # Set additional headers to look more like a real browser
+  page.set_extra_http_headers({
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1'
+  })
+  
+  # Override navigator.webdriver to appear as a real browser
+  page.evaluate_on_new_document(<<~JS)
+    Object.defineProperty(navigator, 'webdriver', {
+      get: () => undefined
+    });
+  JS
   
   puts "Browser launched successfully"
   browser
@@ -252,20 +278,12 @@ get '/prices' do
     
     # Get browser instance
     browser = get_browser
-    context = browser.create_incognito_browser_context
+    # Use the default context instead of incognito
+    context = browser.default_browser_context
     
     # Create main page for search
     main_page = context.new_page
     pages << main_page
-    
-    # Set user agent and viewport
-    main_page.user_agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
-    main_page.client.send_message('Emulation.setDeviceMetricsOverride', {
-      width: 1920,
-      height: 1080,
-      deviceScaleFactor: 1,
-      mobile: false
-    })
     
     # Set a longer timeout for navigation
     main_page.default_navigation_timeout = 30000

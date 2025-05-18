@@ -118,25 +118,46 @@ def get_browser
       --disable-dev-shm-usage
       --disable-accelerated-2d-canvas
       --disable-gpu
-      --window-size=3000,2000
-      --start-maximized
       --disable-blink-features=AutomationControlled
       --disable-automation
       --disable-infobars
       --lang=en-US,en
       --user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36
     ],
-    ignore_default_args: ['--enable-automation'],
-    default_viewport: {
+    ignore_default_args: ['--enable-automation']
+  )
+  
+  # Create a test page to resize the browser
+  test_page = browser.new_page
+  begin
+    # Use CDP to set a large viewport
+    test_page.client.send_message('Emulation.setDeviceMetricsOverride', {
       width: 3000,
       height: 2000,
-      device_scale_factor: 1,
-      is_mobile: false,
-      has_touch: false,
-      is_landscape: true
-    }
-  )
-  puts "Browser launched"
+      deviceScaleFactor: 1,
+      mobile: false
+    })
+    
+    # Verify the viewport size
+    actual_viewport = test_page.evaluate(<<~JS)
+      function() {
+        return {
+          windowWidth: window.innerWidth,
+          windowHeight: window.innerHeight,
+          devicePixelRatio: window.devicePixelRatio,
+          screenWidth: window.screen.width,
+          screenHeight: window.screen.height,
+          viewportWidth: document.documentElement.clientWidth,
+          viewportHeight: document.documentElement.clientHeight
+        };
+      }
+    JS
+    puts "Browser viewport after resize: #{actual_viewport.inspect}"
+  ensure
+    test_page.close
+  end
+  
+  puts "Browser launched and resized"
   browser
 end
 

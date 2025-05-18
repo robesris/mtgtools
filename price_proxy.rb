@@ -112,7 +112,7 @@ def launch_browser
       page.set_user_agent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
       
       # Override navigator.webdriver to appear as a real browser
-      page.evaluateOnNewDocument(<<~JS)
+      page.evaluate_on_new_document(<<~JS)
         Object.defineProperty(navigator, 'webdriver', {
           get: () => undefined
         });

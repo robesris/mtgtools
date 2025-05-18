@@ -1157,19 +1157,26 @@ def process_condition(page, product_url, condition, request_id, card_name)
               listings_html = page.evaluate(<<~JS)
                 (function() {
                   try {
-                    // Find the "listings" text
+                    // Find the "listings" text - look for exact match of "X listings"
                     const listingsHeader = Array.from(document.querySelectorAll('*')).find(el => 
-                      el.textContent && el.textContent.includes('listings')
+                      el.textContent && /^\d+\s+listings$/i.test(el.textContent.trim())
                     );
                     
                     if (!listingsHeader) {
-                      return { found: false, message: 'No listings header found' };
+                      return { 
+                        found: false, 
+                        message: 'No listings header found matching pattern "X listings"',
+                        allText: Array.from(document.querySelectorAll('*'))
+                          .filter(el => el.textContent && el.textContent.includes('listings'))
+                          .map(el => el.textContent.trim())
+                      };
                     }
 
                     // Get all content between the header and first "Add to Cart" button
                     let current = listingsHeader;
                     let html = '';
                     let foundAddToCart = false;
+                    let elementCount = 0;
                     
                     while (current && !foundAddToCart) {
                       // Move to next element
@@ -1182,49 +1189,74 @@ def process_condition(page, product_url, condition, request_id, card_name)
                         break;
                       }
                       
-                      // Add this element's HTML
+                      // Add this element's HTML with its class names
+                      html += `\n<!-- Element ${elementCount} -->\n`;
+                      html += `<!-- Classes: ${current.className} -->\n`;
                       html += current.outerHTML + '\n';
+                      elementCount++;
                     }
 
-                    // Get all elements with prices
+                    // Get all elements with prices and their full context
                     const priceElements = Array.from(document.querySelectorAll('*'))
                       .filter(el => el.textContent && el.textContent.includes('$'))
                       .map(el => ({
                         className: el.className,
                         text: el.textContent.trim(),
-                        tagName: el.tagName
+                        tagName: el.tagName,
+                        parentClasses: el.parentElement ? el.parentElement.className : null,
+                        grandparentClasses: el.parentElement && el.parentElement.parentElement ? 
+                          el.parentElement.parentElement.className : null,
+                        html: el.outerHTML
                       }));
 
                     return {
                       found: true,
                       headerText: listingsHeader.textContent,
                       html: html,
-                      elementCount: html.split('<').length - 1,
-                      priceElements: priceElements
+                      elementCount: elementCount,
+                      priceElements: priceElements,
+                      foundAddToCart: foundAddToCart
                     };
                   } catch (e) {
                     return { 
                       found: false, 
                       error: e.toString(),
-                      message: 'Error evaluating listings HTML'
+                      message: 'Error evaluating listings HTML',
+                      stack: e.stack
                     };
                   }
                 })();
               JS
 
-              $logger.info("Request #{request_id}: Listings HTML at screenshot #{screenshot_count}:")
-              $logger.info("  Found listings header: #{listings_html['found']}")
-              if listings_html['found']
-                $logger.info("  Header text: #{listings_html['headerText']}")
-                $logger.info("  Number of elements: #{listings_html['elementCount']}")
-                $logger.info("  Price elements found: #{listings_html['priceElements'].inspect}")
-                $logger.info("  HTML content:")
-                $logger.info(listings_html['html'])
-              elsif listings_html['error']
-                $logger.error("  Error evaluating listings: #{listings_html['error']}")
+              if screenshot_count == 3  # Only log detailed HTML for the third screenshot
+                $logger.info("Request #{request_id}: === DETAILED LISTINGS HTML (3rd screenshot) ===")
+                $logger.info("  Found listings header: #{listings_html['found']}")
+                if listings_html['found']
+                  $logger.info("  Header text: #{listings_html['headerText']}")
+                  $logger.info("  Number of elements: #{listings_html['elementCount']}")
+                  $logger.info("  Found Add to Cart button: #{listings_html['foundAddToCart']}")
+                  $logger.info("  === PRICE ELEMENTS FOUND ===")
+                  listings_html['priceElements'].each_with_index do |el, i|
+                    $logger.info("  Price Element #{i + 1}:")
+                    $logger.info("    Text: #{el['text']}")
+                    $logger.info("    Classes: #{el['className']}")
+                    $logger.info("    Parent Classes: #{el['parentClasses']}")
+                    $logger.info("    Grandparent Classes: #{el['grandparentClasses']}")
+                    $logger.info("    HTML: #{el['html']}")
+                  end
+                  $logger.info("  === FULL HTML CONTENT ===")
+                  $logger.info(listings_html['html'])
+                elsif listings_html['error']
+                  $logger.error("  Error evaluating listings: #{listings_html['error']}")
+                  $logger.error("  Stack trace: #{listings_html['stack']}")
+                else
+                  $logger.error("  No listings found. All text containing 'listings': #{listings_html['allText']}")
+                end
+                $logger.info("=== END OF LISTINGS HTML ===")
               end
             rescue => e
               $logger.error("Request #{request_id}: Error evaluating listings HTML: #{e.message}")
+              $logger.error(e.backtrace.join("\n"))
             end
           rescue => e
             $logger.error("Request #{request_id}: Error taking screenshot: #{e.message}")

@@ -593,7 +593,13 @@ get '/prices' do
           puts "Processing condition: #{condition}"
           result = process_condition(condition_page, product_url, condition)
           puts "Condition result: #{result.inspect}"
-          prices[condition] = result if result
+          if result
+            # Only include the price and URL in the response, not the shipping info
+            prices[condition] = {
+              'price' => result['price'],
+              'url' => result['url']
+            }
+          end
         ensure
           # Don't close the page yet, we'll close all pages at the end
         end
@@ -605,7 +611,15 @@ get '/prices' do
       end
       
       puts "Final prices: #{prices.inspect}"
-      { prices: prices }.to_json
+      # Format the response to match the original style
+      formatted_prices = {}
+      prices.each do |condition, data|
+        formatted_prices[condition] = {
+          'text' => "#{condition}: #{data['price']}",
+          'url' => data['url']
+        }
+      end
+      { prices: formatted_prices }.to_json
       
     rescue => e
       puts "Error in /prices endpoint: #{e.message}"

@@ -244,3 +244,53 @@ document.addEventListener('DOMContentLoaded', () => {
     console.error('Document body not found when setting up observer');
   }
 }); 
+
+function updateCardPrices() {
+  const cards = document.querySelectorAll('.card');
+  cards.forEach(card => {
+    const cardName = card.querySelector('.card-name').textContent;
+    fetch(`/prices?card=${encodeURIComponent(cardName)}`)
+      .then(response => response.json())
+      .then(data => {
+        if (data.error) {
+          console.error(`Error fetching prices for ${cardName}:`, data.error);
+          return;
+        }
+        
+        const priceDiv = card.querySelector('.card-price');
+        if (!priceDiv) return;
+        
+        // Clear existing prices
+        priceDiv.innerHTML = '';
+        
+        // Add each condition's price
+        Object.entries(data.prices).forEach(([condition, info]) => {
+          const priceSpan = document.createElement('span');
+          priceSpan.className = 'price';
+          
+          // Split the text into condition and price parts
+          const [conditionText, priceText] = info.text.split(': ');
+          
+          // Add the condition text
+          priceSpan.appendChild(document.createTextNode(conditionText + ': '));
+          
+          // Create a link for just the price
+          const priceLink = document.createElement('a');
+          priceLink.href = info.url;
+          priceLink.target = '_blank';
+          priceLink.textContent = priceText;
+          priceSpan.appendChild(priceLink);
+          
+          // Add a separator between prices
+          if (Object.keys(data.prices).indexOf(condition) < Object.keys(data.prices).length - 1) {
+            priceSpan.appendChild(document.createTextNode(' | '));
+          }
+          
+          priceDiv.appendChild(priceSpan);
+        });
+      })
+      .catch(error => {
+        console.error(`Error fetching prices for ${cardName}:`, error);
+      });
+  });
+} 

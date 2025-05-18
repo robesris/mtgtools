@@ -1193,6 +1193,7 @@ def process_condition(page, product_url, condition, request_id, card_name)
                         }
                       }
                       return { 
+                        success: false,
                         found: false, 
                         message: "No listings header found matching pattern \"X Listing(s)\"",
                         allText: allText,
@@ -1201,16 +1202,19 @@ def process_condition(page, product_url, condition, request_id, card_name)
                     }
 
                     return {
+                      success: true,
                       found: true,
                       headerText: listingsHeader.textContent,
                       listings: listings
                     };
                   } catch (e) {
                     return { 
+                      success: false,
                       found: false, 
                       error: e.toString(),
                       message: "Error evaluating listings HTML",
-                      stack: e.stack
+                      stack: e.stack,
+                      listings: []
                     };
                   }
                 }
@@ -1218,29 +1222,31 @@ def process_condition(page, product_url, condition, request_id, card_name)
 
               if screenshot_count == 3  # Only log detailed info for the third screenshot
                 $logger.info("Request #{request_id}: === DETAILED LISTINGS INFO (3rd screenshot) ===")
-                $logger.info("  Found listings header: #{listings_html['found']}")
-                if listings_html['found']
-                  $logger.info("  Header text: #{listings_html['headerText']}")
-                  $logger.info("  === LISTINGS FOUND ===")
-                  listings_html['listings'].each do |listing|
-                    $logger.info("  Listing #{listing['index'] + 1}:")
-                    $logger.info("    Container Classes: #{listing['containerClasses']}")
-                    if listing['basePrice']
-                      $logger.info("    Base Price: #{listing['basePrice']['text']}")
-                      $logger.info("    Base Price Classes: #{listing['basePrice']['classes']}")
+                if listings_html['success']
+                  $logger.info("  Found listings header: #{listings_html['found']}")
+                  if listings_html['found']
+                    $logger.info("  Header text: #{listings_html['headerText']}")
+                    $logger.info("  === LISTINGS FOUND ===")
+                    listings_html['listings'].each do |listing|
+                      $logger.info("  Listing #{listing['index'] + 1}:")
+                      $logger.info("    Container Classes: #{listing['containerClasses']}")
+                      if listing['basePrice']
+                        $logger.info("    Base Price: #{listing['basePrice']['text']}")
+                        $logger.info("    Base Price Classes: #{listing['basePrice']['classes']}")
+                      end
+                      if listing['shipping']
+                        $logger.info("    Shipping: #{listing['shipping']['text']}")
+                        $logger.info("    Shipping Classes: #{listing['shipping']['classes']}")
+                      end
+                      $logger.info("    HTML: #{listing['html']}")
                     end
-                    if listing['shipping']
-                      $logger.info("    Shipping: #{listing['shipping']['text']}")
-                      $logger.info("    Shipping Classes: #{listing['shipping']['classes']}")
-                    end
-                    $logger.info("    HTML: #{listing['html']}")
                   end
                 elsif listings_html['error']
                   $logger.error("  Error evaluating listings: #{listings_html['error']}")
                   $logger.error("  Stack trace: #{listings_html['stack']}")
                 else
                   $logger.error("  No listings found. All text containing 'listing': #{listings_html['allText']}")
-                  if listings_html['listings'].any?
+                  if listings_html['listings'] && listings_html['listings'].any?
                     $logger.info("  However, found #{listings_html['listings'].length} listing items:")
                     listings_html['listings'].each do |listing|
                       $logger.info("    Listing #{listing['index'] + 1}:")

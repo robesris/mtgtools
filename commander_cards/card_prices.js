@@ -4,13 +4,24 @@ const TCG_API_URL = 'https://api.tcgplayer.com/v1.39.0';
 
 async function updatePrices(cardName, cardElement) {
   const priceInfo = cardElement.querySelector('.price-info');
-  priceInfo.innerHTML = '<span class="loading">Loading prices...</span>';
+  priceInfo.innerHTML = '<span class="loading">Loading prices</span>';
+  
+  // Start the loading animation
+  let dots = 0;
+  const loadingSpan = priceInfo.querySelector('.loading');
+  const loadingInterval = setInterval(() => {
+    dots = (dots + 1) % 4;
+    loadingSpan.textContent = 'Loading prices' + '.'.repeat(dots);
+  }, 500);
   
   try {
     console.log(`Fetching prices for ${cardName}...`);
     const response = await fetch(`http://localhost:4567/prices?card=${encodeURIComponent(cardName)}`);
     const data = await response.json();
     console.log('Received price data:', data);
+    
+    // Clear the loading animation
+    clearInterval(loadingInterval);
     
     if (data.error) {
       console.error('Price data error:', data.error);
@@ -70,6 +81,8 @@ async function updatePrices(cardName, cardElement) {
       priceInfo.innerHTML = 'No prices found';
     }
   } catch (error) {
+    // Clear the loading animation on error too
+    clearInterval(loadingInterval);
     console.error('Error fetching prices:', error);
     priceInfo.innerHTML = 'Error loading prices. Please make sure the price proxy server is running.';
   }

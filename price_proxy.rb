@@ -1158,84 +1158,51 @@ def process_condition(page, product_url, condition, request_id, card_name)
                       var basePrice = item.querySelector('.listing-item__listing-data__info__price');
                       var shipping = item.querySelector('.shipping-messages__price');
                       
-                      listings.push({
-                        index: index,
-                        containerClasses: item.className,
-                        basePrice: basePrice ? {
-                          text: basePrice.textContent.trim(),
-                          classes: basePrice.className
-                        } : null,
-                        shipping: shipping ? {
-                          text: shipping.textContent.trim(),
-                          classes: shipping.className
-                        } : null
-                      });
-                    });
-
-                    // Find the "listings" text (case insensitive, handles both singular and plural)
-                    var listingsHeader = null;
-                    var allElements = document.querySelectorAll("*");
-                    for (var i = 0; i < allElements.length; i++) {
-                      var el = allElements[i];
-                      if (el.textContent && /^[0-9]+\\s+[Ll]isting[s]?$/i.test(el.textContent.trim())) {
-                        listingsHeader = el;
-                        break;
-                      }
-                    }
-                    
-                    if (!listingsHeader) {
-                      var allText = [];
-                      for (var i = 0; i < allElements.length; i++) {
-                        var el = allElements[i];
-                        if (el.textContent && /[Ll]isting[s]?/i.test(el.textContent)) {
-                          allText.push(el.textContent.trim());
-                        }
-                      }
-                      return { 
-                        success: false,
-                        found: false, 
-                        message: "No listings header found matching pattern \"X Listing(s)\"",
-                        allText: allText,
-                        listings: listings
-                      };
-                    }
-
-                    // Find the lowest price from the listings
-                    var lowestPrice = null;
-                    var lowestPriceUrl = null;
-                    
-                    listings.forEach(function(listing) {
-                      if (listing.basePrice) {
-                        var priceText = listing.basePrice.text;
+                      if (basePrice) {
+                        var priceText = basePrice.textContent.trim();
                         var priceMatch = priceText.match(/\\$([0-9.]+)/);
                         if (priceMatch) {
                           var price = parseFloat(priceMatch[1]);
-                          if (lowestPrice === null || price < lowestPrice) {
-                            lowestPrice = price;
-                            // Find the "Add to Cart" button in this listing
-                            var addToCartBtn = listing.container.querySelector('button[class*="add-to-cart"]');
-                            if (addToCartBtn) {
-                              lowestPriceUrl = window.location.href;
-                            }
-                          }
+                          listings.push({
+                            index: index,
+                            price: price,
+                            priceText: priceText,
+                            shipping: shipping ? shipping.textContent.trim() : null
+                          });
                         }
                       }
                     });
 
+                    // Sort listings by price
+                    listings.sort((a, b) => a.price - b.price);
+
+                    if (listings.length > 0) {
+                      var lowest = listings[0];
+                      return {
+                        success: true,
+                        found: true,
+                        lowestPrice: lowest.price.toFixed(2),
+                        lowestPriceUrl: window.location.href,
+                        totalListings: listings.length,
+                        listings: listings.map(l => ({
+                          price: l.price.toFixed(2),
+                          shipping: l.shipping
+                        }))
+                      };
+                    }
+
                     return {
-                      success: true,
-                      found: true,
-                      headerText: listingsHeader.textContent,
-                      listings: listings,
-                      lowestPrice: lowestPrice ? lowestPrice.toFixed(2) : null,
-                      lowestPriceUrl: lowestPriceUrl
+                      success: false,
+                      found: false,
+                      message: "No valid listings with prices found",
+                      listings: []
                     };
                   } catch (e) {
                     return { 
                       success: false,
                       found: false, 
                       error: e.toString(),
-                      message: "Error evaluating listings HTML",
+                      message: "Error evaluating listings",
                       stack: e.stack,
                       listings: []
                     };
@@ -1246,62 +1213,31 @@ def process_condition(page, product_url, condition, request_id, card_name)
               if screenshot_count == 3  # Only log detailed info for the third screenshot
                 $logger.info("Request #{request_id}: === DETAILED LISTINGS INFO (3rd screenshot) ===")
                 if listings_html.is_a?(Hash) && listings_html['success']
-                  $logger.info("  Found listings header: #{listings_html['found']}")
-                  if listings_html['found']
-                    $logger.info("  Header text: #{listings_html['headerText']}")
-                    $logger.info("  === LISTINGS FOUND ===")
-                    if listings_html['listings'].is_a?(Array)
-                      listings_html['listings'].each do |listing|
-                        if listing.is_a?(Hash)
-                          $logger.info("  Listing #{listing['index'] + 1}:")
-                          $logger.info("    Container Classes: #{listing['containerClasses']}")
-                          if listing['basePrice'].is_a?(Hash)
-                            $logger.info("    Base Price: #{listing['basePrice']['text']}")
-                            $logger.info("    Base Price Classes: #{listing['basePrice']['classes']}")
-                          end
-                          if listing['shipping'].is_a?(Hash)
-                            $logger.info("    Shipping: #{listing['shipping']['text']}")
-                            $logger.info("    Shipping Classes: #{listing['shipping']['classes']}")
-                          end
-                        end
-                      end
+                  $logger.info("  Found #{listings_html['totalListings']} valid listings")
+                  if listings_html['listings'].is_a?(Array)
+                    listings_html['listings'].each_with_index do |listing, index|
+                      $logger.info("  Listing #{index + 1}:")
+                      $logger.info("    Price: $#{listing['price']}")
+                      $logger.info("    Shipping: #{listing['shipping']}") if listing['shipping']
                     end
                   end
+                  $logger.info("  Lowest price: $#{listings_html['lowestPrice']}")
                 elsif listings_html.is_a?(Hash) && listings_html['error']
                   $logger.error("  Error evaluating listings: #{listings_html['error']}")
                   $logger.error("  Stack trace: #{listings_html['stack']}")
                 else
-                  if listings_html.is_a?(Hash)
-                    $logger.error("  No listings found. All text containing 'listing': #{listings_html['allText']}")
-                    if listings_html['listings'].is_a?(Array) && listings_html['listings'].any?
-                      $logger.info("  However, found #{listings_html['listings'].length} listing items:")
-                      listings_html['listings'].each do |listing|
-                        if listing.is_a?(Hash)
-                          $logger.info("    Listing #{listing['index'] + 1}:")
-                          $logger.info("      Container Classes: #{listing['containerClasses']}")
-                          if listing['basePrice'].is_a?(Hash)
-                            $logger.info("      Base Price: #{listing['basePrice']['text']}")
-                          end
-                          if listing['shipping'].is_a?(Hash)
-                            $logger.info("      Shipping: #{listing['shipping']['text']}")
-                          end
-                        end
-                      end
-                    end
-                  else
-                    $logger.error("  Unexpected response type from JavaScript evaluation: #{listings_html.class}")
-                  end
+                  $logger.error("  No valid listings found")
                 end
                 $logger.info("=== END OF LISTINGS INFO ===")
               end
 
               # If we found listings with prices, return the result
               if listings_html.is_a?(Hash) && listings_html['success'] && listings_html['lowestPrice']
-                $logger.info("Request #{request_id}: Found valid price: $#{listings_html['lowestPrice']}")
+                $logger.info("Request #{request_id}: Found valid price: $#{listings_html['lowestPrice']} from #{listings_html['totalListings']} listings")
                 return {
                   'success' => true,
-                  'price' => "$#{listings_html['lowestPrice']}",  # Add $ prefix back
-                  'url' => listings_html['lowestPriceUrl'] || product_url  # Fallback to product_url if no specific URL found
+                  'price' => "$#{listings_html['lowestPrice']}",
+                  'url' => listings_html['lowestPriceUrl']
                 }
               end
             rescue => e

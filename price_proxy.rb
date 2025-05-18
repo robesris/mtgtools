@@ -1154,15 +1154,15 @@ def process_condition(page, product_url, condition, request_id, card_name)
 
             # After taking screenshot, try to log the listings HTML
             begin
-              listings_html = page.evaluate(<<~JS)
+              listings_html = page.evaluate(<<~'JS')
                 function() {
                   try {
                     // Find the "listings" text
                     var listingsHeader = null;
-                    var allElements = document.querySelectorAll('*');
+                    var allElements = document.querySelectorAll("*");
                     for (var i = 0; i < allElements.length; i++) {
                       var el = allElements[i];
-                      if (el.textContent && /^\\d+\\s+listings$/i.test(el.textContent.trim())) {
+                      if (el.textContent && /^[0-9]+\\s+listings$/i.test(el.textContent.trim())) {
                         listingsHeader = el;
                         break;
                       }
@@ -1172,51 +1172,54 @@ def process_condition(page, product_url, condition, request_id, card_name)
                       var allText = [];
                       for (var i = 0; i < allElements.length; i++) {
                         var el = allElements[i];
-                        if (el.textContent && el.textContent.includes('listings')) {
+                        if (el.textContent && el.textContent.indexOf("listings") !== -1) {
                           allText.push(el.textContent.trim());
                         }
                       }
                       return { 
                         found: false, 
-                        message: 'No listings header found matching pattern "X listings"',
+                        message: "No listings header found matching pattern \"X listings\"",
                         allText: allText
                       };
                     }
 
                     // Get all content between the header and first "Add to Cart" button
                     var current = listingsHeader;
-                    var html = '';
+                    var html = "";
                     var foundAddToCart = false;
                     var elementCount = 0;
                     
                     while (current && !foundAddToCart) {
                       current = current.nextElementSibling;
-                      if (!current) break;
+                      if (!current) {
+                        break;
+                      }
                       
-                      if (current.textContent && current.textContent.includes('Add to Cart')) {
+                      if (current.textContent && current.textContent.indexOf("Add to Cart") !== -1) {
                         foundAddToCart = true;
                         break;
                       }
                       
-                      html += '\\n<!-- Element ' + elementCount + ' -->\\n';
-                      html += '<!-- Classes: ' + current.className + ' -->\\n';
-                      html += current.outerHTML + '\\n';
-                      elementCount++;
+                      html += "\\n<!-- Element " + elementCount + " -->\\n";
+                      html += "<!-- Classes: " + current.className + " -->\\n";
+                      html += current.outerHTML + "\\n";
+                      elementCount = elementCount + 1;
                     }
 
                     // Get all elements with prices
                     var priceElements = [];
                     for (var i = 0; i < allElements.length; i++) {
                       var el = allElements[i];
-                      if (el.textContent && el.textContent.includes('$')) {
+                      if (el.textContent && el.textContent.indexOf("$") !== -1) {
+                        var parentEl = el.parentElement;
+                        var grandparentEl = parentEl ? parentEl.parentElement : null;
                         priceElements.push({
-                          className: el.className,
+                          className: el.className || "",
                           text: el.textContent.trim(),
-                          tagName: el.tagName,
-                          parentClasses: el.parentElement ? el.parentElement.className : null,
-                          grandparentClasses: el.parentElement && el.parentElement.parentElement ? 
-                            el.parentElement.parentElement.className : null,
-                          html: el.outerHTML
+                          tagName: el.tagName || "",
+                          parentClasses: parentEl ? (parentEl.className || "") : null,
+                          grandparentClasses: grandparentEl ? (grandparentEl.className || "") : null,
+                          html: el.outerHTML || ""
                         });
                       }
                     }
@@ -1233,7 +1236,7 @@ def process_condition(page, product_url, condition, request_id, card_name)
                     return { 
                       found: false, 
                       error: e.toString(),
-                      message: 'Error evaluating listings HTML',
+                      message: "Error evaluating listings HTML",
                       stack: e.stack
                     };
                   }

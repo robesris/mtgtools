@@ -138,6 +138,14 @@ def get_browser
         begin
           page = target.page
           
+          # Set viewport size for each new page
+          page.client.send_message('Emulation.setDeviceMetricsOverride', {
+            width: 3000,
+            height: 2000,
+            deviceScaleFactor: 1,
+            mobile: false
+          })
+          
           # Disable frame handling for this page
           page.evaluate(<<~JS)
             function() {
@@ -201,6 +209,22 @@ def get_browser
           page.on('console') do |msg|
             $logger.debug("Browser console: #{msg.text}")
           end
+          
+          # Log the viewport size after setting it
+          actual_viewport = page.evaluate(<<~JS)
+            function() {
+              return {
+                windowWidth: window.innerWidth,
+                windowHeight: window.innerHeight,
+                devicePixelRatio: window.devicePixelRatio,
+                screenWidth: window.screen.width,
+                screenHeight: window.screen.height,
+                viewportWidth: document.documentElement.clientWidth,
+                viewportHeight: document.documentElement.clientHeight
+              };
+            }
+          JS
+          $logger.info("New page viewport after resize: #{actual_viewport.inspect}")
         rescue => e
           $logger.error("Error setting up new page: #{e.message}")
         end

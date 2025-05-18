@@ -910,7 +910,7 @@ get '/card_info' do
             $logger.info("Request #{request_id}: Processing condition: #{condition}")
             result = process_condition(condition_page, lowest_priced_product['url'], condition, request_id, card_name)
             $logger.info("Request #{request_id}: Condition result: #{result.inspect}")
-            if result
+            if result && result.is_a?(Hash) && result['success']
               prices[condition] = {
                 'price' => result['price'],
                 'url' => result['url']
@@ -1301,12 +1301,20 @@ def process_condition(page, product_url, condition, request_id, card_name)
         $logger.error(e.backtrace.join("\n"))
       end
 
-      # Continue with existing price extraction logic...
+      # If we haven't found any listings with prices, return failure
+      $logger.error("Request #{request_id}: No valid listings found after all screenshots")
+      return {
+        'success' => false,
+        'message' => 'No valid listings found after all screenshots'
+      }
 
     rescue => e
       $logger.error("Request #{request_id}: Error processing condition: #{e.message}")
       $logger.error(e.backtrace.join("\n"))
-      return nil
+      return {
+        'success' => false,
+        'message' => e.message
+      }
     end
   end
 end

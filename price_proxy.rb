@@ -100,10 +100,10 @@ def get_browser
       
       $logger.info("Initializing new browser instance")
       
-      $logger.info("Launching browser in headless mode with viewport: 2560x1440")
+      $logger.info("Launching browser in headless shell mode with viewport: 2560x1440")
       begin
         $browser = Puppeteer.launch(
-          headless: true,  # Use the older headless mode
+          headless: 'shell',  # Use chrome-headless-shell for better performance in automation
           args: %w[
             --no-sandbox
             --disable-setuid-sandbox

@@ -1138,119 +1138,104 @@ def process_condition(page, product_url, condition, request_id, card_name)
       $logger.info("  - [class*='inventory']")
       $logger.info("  - [class*='product-listing']")
 
-      # Main loop - continue until we find listings or hit max screenshots
-      while (Time.now - start_time) < max_wait_time && screenshot_count < max_screenshots
+      # Main loop - continue until we hit max screenshots
+      while screenshot_count < max_screenshots
         current_time = Time.now
         elapsed = current_time - start_time
 
         # Take screenshot every 2 seconds
         if (current_time - last_screenshot_time) >= screenshot_interval
-          screenshot_path = "loading_sequence_#{condition}_#{screenshot_count}_#{Time.now.to_i}.png"
-          page.screenshot(path: screenshot_path, full_page: true)
-          $logger.info("Request #{request_id}: Saved screenshot #{screenshot_count} at #{elapsed.round(1)}s")
-          screenshot_count += 1
-          last_screenshot_time = current_time
+          begin
+            screenshot_path = "loading_sequence_#{condition}_#{screenshot_count}_#{Time.now.to_i}.png"
+            page.screenshot(path: screenshot_path, full_page: true)
+            $logger.info("Request #{request_id}: Saved screenshot #{screenshot_count} at #{elapsed.round(1)}s")
+            screenshot_count += 1
+            last_screenshot_time = current_time
 
-          # After taking screenshot, log the listings HTML
-          listings_html = page.evaluate(<<~JS)
-            function() {
-              // Find the "18 listings" text
-              const listingsHeader = Array.from(document.querySelectorAll('*')).find(el => 
-                el.textContent.includes('listings')
-              );
-              
-              if (!listingsHeader) {
-                return { found: false, message: 'No listings header found' };
-              }
+            # After taking screenshot, try to log the listings HTML
+            begin
+              listings_html = page.evaluate(<<~JS)
+                (function() {
+                  try {
+                    // Find the "listings" text
+                    const listingsHeader = Array.from(document.querySelectorAll('*')).find(el => 
+                      el.textContent && el.textContent.includes('listings')
+                    );
+                    
+                    if (!listingsHeader) {
+                      return { found: false, message: 'No listings header found' };
+                    }
 
-              // Get all content between the header and first "Add to Cart" button
-              let current = listingsHeader;
-              let html = '';
-              let foundAddToCart = false;
-              
-              while (current && !foundAddToCart) {
-                // Move to next element
-                current = current.nextElementSibling;
-                if (!current) break;
-                
-                // Check if we hit an "Add to Cart" button
-                if (current.textContent.includes('Add to Cart')) {
-                  foundAddToCart = true;
-                  break;
-                }
-                
-                // Add this element's HTML
-                html += current.outerHTML + '\n';
-              }
+                    // Get all content between the header and first "Add to Cart" button
+                    let current = listingsHeader;
+                    let html = '';
+                    let foundAddToCart = false;
+                    
+                    while (current && !foundAddToCart) {
+                      // Move to next element
+                      current = current.nextElementSibling;
+                      if (!current) break;
+                      
+                      // Check if we hit an "Add to Cart" button
+                      if (current.textContent && current.textContent.includes('Add to Cart')) {
+                        foundAddToCart = true;
+                        break;
+                      }
+                      
+                      // Add this element's HTML
+                      html += current.outerHTML + '\n';
+                    }
 
-              return {
-                found: true,
-                headerText: listingsHeader.textContent,
-                html: html,
-                elementCount: html.split('<').length - 1,
-                classes: Array.from(document.querySelectorAll('*'))
-                  .filter(el => el.textContent.includes('$'))
-                  .map(el => el.className)
-                  .filter(Boolean)
-              };
-            }
-          JS
+                    // Get all elements with prices
+                    const priceElements = Array.from(document.querySelectorAll('*'))
+                      .filter(el => el.textContent && el.textContent.includes('$'))
+                      .map(el => ({
+                        className: el.className,
+                        text: el.textContent.trim(),
+                        tagName: el.tagName
+                      }));
 
-          $logger.info("Request #{request_id}: Listings HTML at screenshot #{screenshot_count}:")
-          $logger.info("  Found listings header: #{listings_html['found']}")
-          if listings_html['found']
-            $logger.info("  Header text: #{listings_html['headerText']}")
-            $logger.info("  Number of elements: #{listings_html['elementCount']}")
-            $logger.info("  Classes found with prices: #{listings_html['classes'].inspect}")
-            $logger.info("  HTML content:")
-            $logger.info(listings_html['html'])
+                    return {
+                      found: true,
+                      headerText: listingsHeader.textContent,
+                      html: html,
+                      elementCount: html.split('<').length - 1,
+                      priceElements: priceElements
+                    };
+                  } catch (e) {
+                    return { 
+                      found: false, 
+                      error: e.toString(),
+                      message: 'Error evaluating listings HTML'
+                    };
+                  }
+                })();
+              JS
+
+              $logger.info("Request #{request_id}: Listings HTML at screenshot #{screenshot_count}:")
+              $logger.info("  Found listings header: #{listings_html['found']}")
+              if listings_html['found']
+                $logger.info("  Header text: #{listings_html['headerText']}")
+                $logger.info("  Number of elements: #{listings_html['elementCount']}")
+                $logger.info("  Price elements found: #{listings_html['priceElements'].inspect}")
+                $logger.info("  HTML content:")
+                $logger.info(listings_html['html'])
+              elsif listings_html['error']
+                $logger.error("  Error evaluating listings: #{listings_html['error']}")
+              end
+            rescue => e
+              $logger.error("Request #{request_id}: Error evaluating listings HTML: #{e.message}")
+            end
+          rescue => e
+            $logger.error("Request #{request_id}: Error taking screenshot: #{e.message}")
+            # Still increment the counter to ensure we don't get stuck
+            screenshot_count += 1
+            last_screenshot_time = current_time
           end
-        end
-
-        # Check for listings with expanded selectors
-        listings_result = page.evaluate(<<~JS)
-          function() {
-            // Get all possible listing elements with expanded selectors
-            const listings = document.querySelectorAll(
-              '.listing-item, .price-point, [class*="listing"], [class*="price"], ' +
-              '.inventory__price, .inventory__price-with-shipping, ' +
-              '.product-listing, .product-listing__price, ' +
-              '[class*="inventory"], [class*="product-listing"]'
-            );
-            
-            // Check if any listing has actual content
-            const hasContent = Array.from(listings).some(listing => {
-              const priceText = listing.textContent.trim();
-              return priceText && priceText.includes('$') && priceText.match(/\$\d+\.\d{2}/);
-            });
-
-            return {
-              hasListings: listings.length > 0,
-              hasContent: hasContent,
-              listingCount: listings.length,
-              listingClasses: Array.from(listings).map(el => el.className),
-              listingHTML: Array.from(listings).map(el => el.outerHTML.substring(0, 200)),
-              elapsedTime: (new Date() - window.performance.timing.navigationStart) / 1000
-            };
-          }
-        JS
-
-        $logger.info("Request #{request_id}: Listings check at #{elapsed.round(1)}s: #{listings_result.inspect}")
-
-        # Only consider it found if we have listings WITH content
-        if listings_result['hasListings'] && listings_result['hasContent']
-          found_listings = true
-          $logger.info("Request #{request_id}: Found listings with content after #{elapsed.round(1)}s")
-          break
         end
 
         # Small sleep to prevent tight loop
         sleep(0.1)
-      end
-
-      if !found_listings
-        $logger.error("Request #{request_id}: Timed out waiting for listings after #{screenshot_count} screenshots (#{Time.now - start_time}s)")
-        return nil
       end
 
       # Continue with existing price extraction logic...

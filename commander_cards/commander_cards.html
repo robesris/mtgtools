@@ -15,6 +15,7 @@
       gap: 20px;
       max-width: 1800px;
       margin: 0 auto;
+      position: relative;
     }
     .filter-tray {
       width: 200px;
@@ -25,6 +26,45 @@
       height: fit-content;
       position: sticky;
       top: 20px;
+      transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+      transform-origin: left center;
+      flex-shrink: 0;
+    }
+    .filter-tray.collapsed {
+      transform: translateX(-195px);
+      opacity: 0.7;
+    }
+    .filter-tray.collapsed:hover {
+      opacity: 1;
+    }
+    .filter-toggle {
+      position: absolute;
+      right: -30px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: white;
+      border: none;
+      border-radius: 0 4px 4px 0;
+      padding: 10px 5px;
+      cursor: pointer;
+      box-shadow: 2px 0 4px rgba(0,0,0,0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 60px;
+      z-index: 1;
+    }
+    .filter-toggle:hover {
+      background: #f5f5f5;
+    }
+    .filter-toggle::after {
+      content: "◀";
+      font-size: 12px;
+      transition: transform 0.3s ease-in-out;
+    }
+    .filter-tray.collapsed .filter-toggle::after {
+      transform: rotate(180deg);
     }
     .filter-tray h2 {
       margin: 0 0 15px 0;
@@ -60,6 +100,10 @@
       flex: 1;
       margin: 0 auto;
       padding: 0 20px;
+      transition: margin-left 0.3s ease-in-out;
+    }
+    .container.expanded {
+      margin-left: -200px;
     }
     .card-grid {
       display: grid;
@@ -248,6 +292,30 @@
 
       // Initial visibility update
       updateVisibility();
+    });
+  </script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const filterTray = document.querySelector('.filter-tray');
+      const container = document.querySelector('.container');
+      const toggleButton = document.createElement('button');
+      toggleButton.className = 'filter-toggle';
+      toggleButton.setAttribute('aria-label', 'Toggle filter tray');
+      filterTray.appendChild(toggleButton);
+
+      // Load saved state from localStorage
+      const savedState = localStorage.getItem('filterTrayCollapsed');
+      if (savedState === 'true') {
+        filterTray.classList.add('collapsed');
+        container.classList.add('expanded');
+      }
+
+      toggleButton.addEventListener('click', function() {
+        filterTray.classList.toggle('collapsed');
+        container.classList.toggle('expanded');
+        // Save state to localStorage
+        localStorage.setItem('filterTrayCollapsed', filterTray.classList.contains('collapsed'));
+      });
     });
   </script>
 </head>

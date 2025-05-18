@@ -378,28 +378,34 @@ get '/prices' do
     begin
       puts "Navigating to search URL: #{search_url}"
       
-      # Log requests and responses
+      # Only log important requests and responses
       main_page.on('request') do |request|
-        puts "Request: #{request.method} #{request.url}"
+        if request.url.include?('tcgplayer.com/search') || request.url.include?('tcgplayer.com/product')
+          puts "\nMaking request to: #{request.url}"
+        end
       end
       main_page.on('response') do |response|
-        puts "Response: #{response.status} #{response.url}"
-        if response.url.include?('tcgplayer.com')
-          puts "Response headers: #{response.headers.inspect}"
+        if response.url.include?('tcgplayer.com/search') || response.url.include?('tcgplayer.com/product')
+          puts "Response from #{response.url}: #{response.status}"
+          if response.status != 200
+            puts "Error response headers: #{response.headers.inspect}"
+          end
         end
       end
       
       response = main_page.goto(search_url, wait_until: 'networkidle0', timeout: 30000)
-      puts "Search response status: #{response&.status}"
+      puts "\nSearch page loaded with status: #{response&.status}"
       
-      # Get the page content for debugging
-      content = main_page.content
-      puts "Page content preview: #{content[0..500]}"
+      # Only log content if there's an error
+      if response&.status != 200
+        content = main_page.content
+        puts "Error page content: #{content[0..1000]}"
+      end
       
       # Check if we got a captcha or error page
       if main_page.url.include?('captcha') || main_page.url.include?('error')
         puts "Got captcha/error page. URL: #{main_page.url}"
-        puts "Full page content: #{content}"
+        puts "Error page content: #{main_page.content[0..1000]}"
         raise "TCGPlayer returned a captcha or error page"
       end
       
@@ -412,23 +418,23 @@ get '/prices' do
       # Take a screenshot for debugging
       screenshot_path = "search_#{card_name.gsub(/\s+/, '_')}.png"
       main_page.screenshot(path: screenshot_path)
-      puts "Saved screenshot to #{screenshot_path}"
+      puts "\nSaved search results screenshot to #{screenshot_path}"
       
       # Wait for search results with retry
       search_results = []
       3.times do |i|
         # Wait for all search results to load
-        puts "Waiting for search results (attempt #{i + 1})..."
+        puts "\nLooking for search results (attempt #{i + 1})..."
         main_page.wait_for_selector('.search-result, .product-grid__card, .product-card', timeout: 5000)
         
         # Get all search results
         search_results = main_page.query_selector_all('.search-result, .product-grid__card, .product-card')
-        puts "Found #{search_results.length} search results"
+        puts "Found #{search_results.length} potential card listings"
         
         # Log the HTML of the first result for debugging
         if search_results.any?
           first_result = search_results.first
-          puts "\nFirst result HTML structure:"
+          puts "\nAnalyzing first result structure..."
           puts first_result.evaluate('el => {
             const getElementInfo = (el) => {
               const classes = Array.from(el.classList).join(" ");
@@ -451,7 +457,7 @@ get '/prices' do
           }')
           
           # Also log all elements that might contain prices
-          puts "\nPotential price elements:"
+          puts "\nLooking for price elements..."
           main_page.evaluate('() => {
             const elements = document.querySelectorAll("[class*=\'price\'], [data-testid*=\'price\']");
             return Array.from(elements).map(el => ({
@@ -460,17 +466,19 @@ get '/prices' do
               html: el.outerHTML
             }));
           }').each do |el|
-            puts "- #{el["selector"]}: #{el["text"]}"
+            if el["text"].match?(/\$?\d+\.?\d*/)
+              puts "Found price element: #{el["selector"]} with value #{el["text"]}"
+            end
           end
         end
         
         break if search_results.any?
-        puts "Retry #{i + 1} waiting for search result..."
+        puts "No results found, retrying..."
         sleep(1)
       end
       
       unless search_results.any?
-        puts "No search results found. Page content: #{main_page.content[0..1000]}"
+        puts "\nNo search results found. Check screenshot at #{screenshot_path} for details."
         return { error: "No search results found" }.to_json
       end
       
@@ -491,17 +499,13 @@ get '/prices' do
             .price-point__amount,
             .product-card__price
           ')
-          puts "Price element found: #{price_element ? 'yes' : 'no'}"
           if price_element
-            puts "Price element HTML: #{price_element.evaluate('el => el.outerHTML')}"
+            price_text = price_element.evaluate('el => el.textContent.trim()')
+            puts "\nFound price: #{price_text}"
           end
           next unless price_element
           
           # Extract price text and convert to float
-          price_text = price_element.evaluate('el => el.textContent.trim()')
-          puts "Price text: #{price_text}"
-          
-          # Try different price formats
           price = nil
           if price_text =~ /\$([\d,.]+)/
             price = $1.gsub(',', '').to_f
@@ -510,8 +514,6 @@ get '/prices' do
           end
           
           if price
-            puts "Parsed price: #{price}"
-            
             # Get the product name for verification
             name_element = result.query_selector('
               .search-result__name, 
@@ -523,33 +525,42 @@ get '/prices' do
             ')
             if name_element
               name_text = name_element.evaluate('el => el.textContent.trim()')
-              puts "Product name: #{name_text}"
+              puts "\nFound matching card '#{name_text}' at $#{price}"
               
               # Only update if this is the card we're looking for
               if name_text.downcase.include?(card_name.downcase)
                 if price < lowest_price
                   lowest_price = price
                   lowest_price_result = result
-                  puts "New lowest price for #{card_name}: #{price}"
+                else
+                  # Only log non-matches if they're close
+                  if name_text.downcase.include?(card_name.downcase.split.first) || 
+                     card_name.downcase.split.first.include?(name_text.downcase.split.first)
+                    puts "Skipping similar card '#{name_text}'"
+                  end
                 end
               else
-                puts "Skipping #{name_text} - not matching #{card_name}"
+                # Only log non-matches if they're close
+                if name_text.downcase.include?(card_name.downcase.split.first) || 
+                   card_name.downcase.split.first.include?(name_text.downcase.split.first)
+                  puts "Skipping similar card '#{name_text}'"
+                end
               end
             end
           end
         rescue => e
-          puts "Error processing search result: #{e.message}"
+          puts "\nError processing a search result: #{e.message}"
           next
         end
       end
       
       unless lowest_price_result
-        puts "No valid prices found in search results"
-        puts "Available product names:"
+        puts "\nNo matching cards found with valid prices. Available cards:"
         search_results.each do |result|
           name_element = result.query_selector('.search-result__name, .product-name, [data-testid="product-name"]')
           if name_element
-            puts "- #{name_element.evaluate('el => el.textContent.trim()')}"
+            name = name_element.evaluate('el => el.textContent.trim()')
+            puts "- #{name}"
           end
         end
         return { error: "Could not find valid prices in search results" }.to_json
@@ -562,8 +573,7 @@ get '/prices' do
       }')
       
       unless product_url
-        puts "Could not find product URL in result"
-        puts "Result HTML: #{lowest_price_result.evaluate('el => el.outerHTML')}"
+        puts "\nError: Could not find product URL for the selected card"
         return { error: "Could not find product URL" }.to_json
       end
       

@@ -419,11 +419,18 @@ get '/prices' do
       3.times do |i|
         # Wait for all search results to load
         puts "Waiting for search results (attempt #{i + 1})..."
-        main_page.wait_for_selector('.search-result', timeout: 5000)
+        main_page.wait_for_selector('.search-result, .product-grid__card', timeout: 5000)
         
         # Get all search results
-        search_results = main_page.query_selector_all('.search-result')
+        search_results = main_page.query_selector_all('.search-result, .product-grid__card')
         puts "Found #{search_results.length} search results"
+        
+        # Log the HTML of the first result for debugging
+        if search_results.any?
+          first_result = search_results.first
+          puts "First result HTML: #{first_result.evaluate('el => el.outerHTML')}"
+        end
+        
         break if search_results.any?
         puts "Retry #{i + 1} waiting for search result..."
         sleep(1)
@@ -440,23 +447,42 @@ get '/prices' do
       
       search_results.each do |result|
         begin
-          # Get the price element
-          price_element = result.query_selector('.search-result__price')
+          # Get the price element with multiple possible selectors
+          price_element = result.query_selector('.search-result__price, .product-price, [data-testid="product-price"]')
           puts "Price element found: #{price_element ? 'yes' : 'no'}"
           next unless price_element
           
           # Extract price text and convert to float
           price_text = price_element.evaluate('el => el.textContent.trim()')
           puts "Price text: #{price_text}"
+          
+          # Try different price formats
+          price = nil
           if price_text =~ /\$([\d,.]+)/
             price = $1.gsub(',', '').to_f
+          elsif price_text =~ /([\d,.]+)/
+            price = $1.gsub(',', '').to_f
+          end
+          
+          if price
             puts "Parsed price: #{price}"
             
-            # Update lowest price if this one is lower
-            if price < lowest_price
-              lowest_price = price
-              lowest_price_result = result
-              puts "New lowest price: #{price}"
+            # Get the product name for verification
+            name_element = result.query_selector('.search-result__name, .product-name, [data-testid="product-name"]')
+            if name_element
+              name_text = name_element.evaluate('el => el.textContent.trim()')
+              puts "Product name: #{name_text}"
+              
+              # Only update if this is the card we're looking for
+              if name_text.downcase.include?(card_name.downcase)
+                if price < lowest_price
+                  lowest_price = price
+                  lowest_price_result = result
+                  puts "New lowest price for #{card_name}: #{price}"
+                end
+              else
+                puts "Skipping #{name_text} - not matching #{card_name}"
+              end
             end
           end
         rescue => e
@@ -467,13 +493,27 @@ get '/prices' do
       
       unless lowest_price_result
         puts "No valid prices found in search results"
+        puts "Available product names:"
+        search_results.each do |result|
+          name_element = result.query_selector('.search-result__name, .product-name, [data-testid="product-name"]')
+          if name_element
+            puts "- #{name_element.evaluate('el => el.textContent.trim()')}"
+          end
+        end
         return { error: "Could not find valid prices in search results" }.to_json
       end
       
       # Get the product URL from the lowest priced result
-      product_url = lowest_price_result.evaluate('el => el.querySelector("a[href*=\'/product/\']").href')
-      puts "Selected product with lowest price: $#{lowest_price}"
-      puts "Product URL: #{product_url}"
+      product_url = lowest_price_result.evaluate('el => {
+        const link = el.querySelector("a[href*=\'/product/\'], a[href*=\'/p/\']");
+        return link ? link.href : null;
+      }')
+      
+      unless product_url
+        puts "Could not find product URL in result"
+        puts "Result HTML: #{lowest_price_result.evaluate('el => el.outerHTML')}"
+        return { error: "Could not find product URL" }.to_json
+      end
       
       # Process conditions sequentially instead of in parallel
       conditions = ['Lightly Played', 'Near Mint']

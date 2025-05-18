@@ -78,26 +78,58 @@ def get_browser
           Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
           Object.defineProperty(navigator, 'plugins', { 
             get: () => [
-              { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer' },
-              { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai' },
-              { name: 'Native Client', filename: 'internal-nacl-plugin' }
+              { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+              { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: 'Portable Document Format' },
+              { name: 'Native Client', filename: 'internal-nacl-plugin', description: 'Native Client Executable' }
             ]
           });
           Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
           
-          // Add Chrome-specific properties
+          // Add Chrome-specific properties with more realistic values
           window.chrome = {
-            runtime: {},
-            loadTimes: function() {},
-            csi: function() {},
-            app: {}
+            runtime: {
+              OnInstalledReason: { INSTALL: 'install', UPDATE: 'update', CHROME_UPDATE: 'chrome_update', SHARED_MODULE_UPDATE: 'shared_module_update' },
+              OnRestartRequiredReason: { APP_UPDATE: 'app_update', OS_UPDATE: 'os_update', PERIODIC: 'periodic' },
+              PlatformArch: { ARM: 'arm', ARM64: 'arm64', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
+              PlatformNaclArch: { ARM: 'arm', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
+              PlatformOs: { ANDROID: 'android', CROS: 'cros', LINUX: 'linux', MAC: 'mac', OPENBSD: 'openbsd', WIN: 'win' },
+              RequestUpdateCheckStatus: { THROTTLED: 'throttled', NO_UPDATE: 'no_update', UPDATE_AVAILABLE: 'update_available' }
+            },
+            loadTimes: function() {
+              return {
+                commitLoadTime: 0,
+                connectionInfo: 'h2',
+                finishDocumentLoadTime: 0,
+                finishLoadTime: 0,
+                firstPaintAfterLoadTime: 0,
+                navigationType: 'Other',
+                npnNegotiatedProtocol: 'h2',
+                requestTime: 0,
+                startLoadTime: 0,
+                wasAlternateProtocolAvailable: false,
+                wasFetchedViaSpdy: true,
+                wasNpnNegotiated: true
+              };
+            },
+            csi: function() {
+              return {
+                onloadT: 0,
+                pageT: 0,
+                startE: 0,
+                tran: 15
+              };
+            },
+            app: {
+              InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' },
+              RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' }
+            }
           };
           
-          // Override permissions
+          // Override permissions with more realistic behavior
           const originalQuery = window.navigator.permissions.query;
           window.navigator.permissions.query = (parameters) => (
             parameters.name === 'notifications' ?
-              Promise.resolve({ state: Notification.permission }) :
+              Promise.resolve({ state: Notification.permission, onchange: null }) :
               originalQuery(parameters)
           );
           
@@ -105,6 +137,19 @@ def get_browser
           Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' });
           Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
           Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+          Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 0 });
+          Object.defineProperty(navigator, 'vendor', { get: () => 'Google Inc.' });
+          Object.defineProperty(navigator, 'userAgentData', {
+            get: () => ({
+              brands: [
+                { brand: 'Chromium', version: '123' },
+                { brand: 'Google Chrome', version: '123' },
+                { brand: 'Not(A:Brand', version: '24' }
+              ],
+              mobile: false,
+              platform: 'macOS'
+            })
+          });
           
           // Override WebGL to appear more realistic
           const getParameter = WebGLRenderingContext.prototype.getParameter;
@@ -116,6 +161,57 @@ def get_browser
               return 'Intel Iris OpenGL Engine';
             }
             return getParameter.apply(this, arguments);
+          };
+
+          // Add human-like mouse movement
+          const originalMouseMove = MouseEvent.prototype.initMouseEvent;
+          MouseEvent.prototype.initMouseEvent = function(type, ...args) {
+            const event = originalMouseMove.apply(this, [type, ...args]);
+            Object.defineProperty(event, 'movementX', { get: () => Math.floor(Math.random() * 10) - 5 });
+            Object.defineProperty(event, 'movementY', { get: () => Math.floor(Math.random() * 10) - 5 });
+            return event;
+          };
+
+          // Add random delays to network requests
+          const originalFetch = window.fetch;
+          window.fetch = async function(...args) {
+            await new Promise(resolve => setTimeout(resolve, Math.random() * 1000 + 500));
+            return originalFetch.apply(this, args);
+          };
+
+          // Add random scroll behavior
+          const originalScroll = window.scroll;
+          window.scroll = function(...args) {
+            setTimeout(() => originalScroll.apply(this, args), Math.random() * 500);
+          };
+        JS
+
+        # Add human-like behavior to page interactions
+        page.evaluate_on_new_document(<<~JS)
+          // Random delays between actions
+          window.humanDelay = async () => {
+            const delay = Math.random() * 2000 + 1000;  // 1-3 seconds
+            await new Promise(resolve => setTimeout(resolve, delay));
+          };
+
+          // Random mouse movements
+          window.humanMouseMove = async (element) => {
+            const rect = element.getBoundingClientRect();
+            const x = rect.left + rect.width / 2 + (Math.random() * 10 - 5);
+            const y = rect.top + rect.height / 2 + (Math.random() * 10 - 5);
+            
+            // Create and dispatch mouse events
+            ['mouseover', 'mouseenter', 'mousemove', 'mousedown', 'mouseup', 'click'].forEach(eventType => {
+              const event = new MouseEvent(eventType, {
+                view: window,
+                bubbles: true,
+                cancelable: true,
+                clientX: x,
+                clientY: y
+              });
+              element.dispatchEvent(event);
+              await humanDelay();
+            });
           };
         JS
         
@@ -646,13 +742,44 @@ def process_condition(page, product_url, condition, request_id, card_name)
     $logger.info("Request #{request_id}: Navigating to filtered URL: #{filtered_url}")
     
     begin
+      # Add random delay before navigation
+      sleep(rand(2..4))
+      
       # Wait for network to be idle and for the page to be fully loaded
       response = page.goto(filtered_url, wait_until: 'networkidle0')
       $logger.info("Request #{request_id}: Product page response status: #{response.status}")
       
-      # Wait specifically for listing items
+      # First define the scroll function with proper async/await syntax
+      page.evaluate(<<~JS)
+        window.humanScroll = async function() {
+          const maxScroll = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+          const steps = Math.floor(Math.random() * 5) + 3;  // 3-7 scroll steps
+          
+          for (let i = 0; i < steps; i++) {
+            const targetScroll = (maxScroll * (i + 1)) / steps;
+            await new Promise(resolve => {
+              window.scrollTo({
+                top: targetScroll,
+                behavior: 'smooth'
+              });
+              setTimeout(resolve, Math.random() * 1000 + 500);
+            });
+          }
+        };
+      JS
+      
+      # Execute the scroll function with proper error handling
       begin
-        page.wait_for_selector('.listing-item', timeout: 30000)  # Increased to 30 seconds
+        page.evaluate('(async () => { try { await window.humanScroll(); } catch(e) { console.error("Scroll error:", e); } })()')
+        # Wait for scroll to complete
+        sleep(2)
+      rescue => e
+        $logger.error("Request #{request_id}: Error during scroll: #{e.message}")
+      end
+      
+      # Wait specifically for listing items with increased timeout
+      begin
+        page.wait_for_selector('.listing-item', timeout: 45000)  # Increased to 45 seconds
         $logger.info("Request #{request_id}: Listing items found")
         
         # Get all listings and their prices

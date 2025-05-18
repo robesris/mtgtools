@@ -69,114 +69,23 @@ end
 def launch_browser
   puts "Launching new browser instance..."
   
-  # First, try to kill any existing Chrome processes on port 9222
-  begin
-    system("lsof -ti:9222 | xargs kill -9 2>/dev/null")
-    sleep(1)  # Wait for port to be freed
-  rescue => e
-    puts "Warning: Could not clean up port 9222: #{e.message}"
-  end
+  # Launch browser directly with Puppeteer
+  browser = Puppeteer.launch(
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--disable-gpu',
+      '--window-size=1920,1080'
+    ]
+  )
   
-  # Create a temporary directory for Chrome profile
-  chrome_profile_dir = File.join(Dir.tmpdir, "chrome-automation-#{Process.pid}")
-  FileUtils.mkdir_p(chrome_profile_dir) unless Dir.exist?(chrome_profile_dir)
-  
-  # Launch Chrome manually first to ensure it's running
-  chrome_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-  unless File.exist?(chrome_path)
-    raise "Chrome not found at #{chrome_path}. Please install Google Chrome."
-  end
-  
-  # Build Chrome launch command with explicit path and arguments
-  chrome_args = [
-    "--remote-debugging-port=9222",
-    "--remote-debugging-address=127.0.0.1",
-    "--user-data-dir=#{chrome_profile_dir}",
-    "--no-first-run",
-    "--no-default-browser-check",
-    "--disable-gpu",
-    "--disable-software-rasterizer",
-    "--disable-dev-shm-usage",
-    "--disable-extensions",
-    "--disable-background-networking",
-    "--disable-background-timer-throttling",
-    "--disable-backgrounding-occluded-windows",
-    "--disable-breakpad",
-    "--disable-component-extensions-with-background-pages",
-    "--disable-features=TranslateUI,BlinkGenPropertyTrees",
-    "--disable-ipc-flooding-protection",
-    "--disable-renderer-backgrounding",
-    "--enable-features=NetworkService,NetworkServiceInProcess",
-    "--force-color-profile=srgb",
-    "--metrics-recording-only",
-    "--mute-audio",
-    "--no-sandbox",
-    "--window-size=1920,1080",
-    "--bwsi",  # Browser without sign-in
-    "--no-default-browser-check",
-    "--no-first-run",
-    "--no-service-autorun",
-    "--password-store=basic",
-    "--use-mock-keychain"
-  ]
-  
-  # Use system with array form to properly handle spaces in path
-  puts "Launching Chrome with profile directory: #{chrome_profile_dir}"
-  pid = Process.spawn(chrome_path, *chrome_args, [:out, :err] => "/dev/null")
-  Process.detach(pid)
-  
-  # Wait for Chrome to start and port to be available
-  max_wait = 10
-  wait_time = 0
-  while wait_time < max_wait
-    begin
-      TCPSocket.new('127.0.0.1', 9222).close
-      puts "Chrome is running and port 9222 is available"
-      break
-    rescue Errno::ECONNREFUSED
-      wait_time += 1
-      if wait_time >= max_wait
-        # Clean up profile directory on failure
-        FileUtils.rm_rf(chrome_profile_dir)
-        raise "Chrome failed to start - port 9222 not available after #{max_wait} seconds"
-      end
-      puts "Waiting for Chrome to start... (#{wait_time}/#{max_wait})"
-      sleep(1)
-    end
-  end
-  
-  # Try to connect to Chrome with retries
-  retries = 0
-  max_retries = 3
-  browser = nil
-  
-  while retries < max_retries
-    begin
-      browser = Puppeteer.connect(browser_url: 'http://127.0.0.1:9222')
-      puts "Browser connected successfully"
-      break
-    rescue => e
-      retries += 1
-      if retries < max_retries
-        puts "Connection attempt #{retries} failed: #{e.message}"
-        sleep(1)
-      else
-        # Clean up profile directory on failure
-        FileUtils.rm_rf(chrome_profile_dir)
-        puts "Failed to connect after #{max_retries} attempts"
-        raise
-      end
-    end
-  end
-  
-  # Store the profile directory for cleanup
-  browser.instance_variable_set(:@profile_dir, chrome_profile_dir)
-  
+  puts "Browser launched successfully"
   browser
 rescue => e
-  # Clean up profile directory on any error
-  FileUtils.rm_rf(chrome_profile_dir) if defined?(chrome_profile_dir)
-  puts "Error connecting to browser: #{e.message}"
+  puts "Error launching browser: #{e.message}"
   raise
 end
 

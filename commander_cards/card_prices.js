@@ -149,7 +149,7 @@ function loadCachedPrices() {
       console.log(`No cache found for ${cardName}`);
       const priceInfo = card.querySelector('.price-info');
       if (priceInfo) {
-        priceInfo.innerHTML = '';
+        priceInfo.innerHTML = 'Click to load prices';
       }
     }
   });

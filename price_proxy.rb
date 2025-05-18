@@ -1154,7 +1154,39 @@ def process_condition(page, product_url, condition, request_id, card_name)
                     var listingItems = document.querySelectorAll('.listing-item');
                     var listings = [];
                     
-                    // Process first listing immediately
+                    // First, collect all listings for logging
+                    listingItems.forEach(function(item, index) {
+                      var basePrice = item.querySelector('.listing-item__listing-data__info__price');
+                      var shipping = item.querySelector('.shipping-messages__price');
+                      
+                      listings.push({
+                        index: index,
+                        containerClasses: item.className,
+                        basePrice: basePrice ? {
+                          text: basePrice.textContent.trim(),
+                          classes: basePrice.className
+                        } : null,
+                        shipping: shipping ? {
+                          text: shipping.textContent.trim(),
+                          classes: shipping.className
+                        } : null,
+                        html: item.outerHTML
+                      });
+                    });
+
+                    // Find the "listings" text (case insensitive, handles both singular and plural)
+                    var listingsHeader = null;
+                    var allElements = document.querySelectorAll("*");
+                    for (var i = 0; i < allElements.length; i++) {
+                      var el = allElements[i];
+                      if (el.textContent && /^[0-9]+\\s+[Ll]isting[s]?$/i.test(el.textContent.trim())) {
+                        listingsHeader = el;
+                        break;
+                      }
+                    }
+
+                    // Process first listing for price extraction
+                    var priceData = null;
                     if (listingItems.length > 0) {
                       var firstItem = listingItems[0];
                       var basePrice = firstItem.querySelector('.listing-item__listing-data__info__price');
@@ -1169,14 +1201,7 @@ def process_condition(page, product_url, condition, request_id, card_name)
                           var shippingMatch = shippingText.match(/\\$([0-9.]+)/);
                           var shippingPrice = shippingMatch ? parseFloat(shippingMatch[1]) : 0;
                           
-                          // Log what we found
-                          console.log('Found first listing:', {
-                            basePrice: priceText,
-                            shipping: shippingText,
-                            totalPrice: (price + shippingPrice).toFixed(2)
-                          });
-                          
-                          return {
+                          priceData = {
                             success: true,
                             found: true,
                             price: (price + shippingPrice).toFixed(2),
@@ -1191,11 +1216,17 @@ def process_condition(page, product_url, condition, request_id, card_name)
                       }
                     }
 
-                    // If we get here, we didn't find a valid price
+                    // Return both the listings data and price data
                     return {
-                      success: false,
-                      found: false,
-                      message: "No valid price found in first listing"
+                      success: true,
+                      found: true,
+                      headerText: listingsHeader ? listingsHeader.textContent : null,
+                      listings: listings,
+                      priceData: priceData || {
+                        success: false,
+                        found: false,
+                        message: "No valid price found in first listing"
+                      }
                     };
                   } catch (e) {
                     console.error('Error processing listing:', e);
@@ -1213,29 +1244,46 @@ def process_condition(page, product_url, condition, request_id, card_name)
               if screenshot_count == 3  # Only log detailed info for the third screenshot
                 $logger.info("Request #{request_id}: === DETAILED LISTINGS INFO (3rd screenshot) ===")
                 if listings_html.is_a?(Hash) && listings_html['success']
-                  $logger.info("  Found valid price: $#{listings_html['price']}")
-                  if listings_html['details']
-                    $logger.info("  Details:")
-                    $logger.info("    Base Price: $#{listings_html['details']['basePrice']}")
-                    $logger.info("    Shipping: $#{listings_html['details']['shippingPrice']}")
-                    $logger.info("    Shipping Text: #{listings_html['details']['shippingText']}")
+                  $logger.info("  Found listings header: #{listings_html['headerText']}")
+                  $logger.info("  === LISTINGS FOUND ===")
+                  listings_html['listings'].each do |listing|
+                    $logger.info("  Listing #{listing['index'] + 1}:")
+                    $logger.info("    Container Classes: #{listing['containerClasses']}")
+                    if listing['basePrice']
+                      $logger.info("    Base Price: #{listing['basePrice']['text']}")
+                      $logger.info("    Base Price Classes: #{listing['basePrice']['classes']}")
+                    end
+                    if listing['shipping']
+                      $logger.info("    Shipping: #{listing['shipping']['text']}")
+                      $logger.info("    Shipping Classes: #{listing['shipping']['classes']}")
+                    end
+                    $logger.info("    HTML: #{listing['html']}")
+                  end
+
+                  # Log price data if found
+                  if listings_html['priceData'] && listings_html['priceData']['success']
+                    $logger.info("  === PRICE DATA ===")
+                    $logger.info("    Total Price: $#{listings_html['priceData']['price']}")
+                    $logger.info("    Base Price: $#{listings_html['priceData']['details']['basePrice']}")
+                    $logger.info("    Shipping: $#{listings_html['priceData']['details']['shippingPrice']}")
+                    $logger.info("    Shipping Text: #{listings_html['priceData']['details']['shippingText']}")
                   end
                 elsif listings_html.is_a?(Hash) && listings_html['error']
                   $logger.error("  Error evaluating listing: #{listings_html['error']}")
                   $logger.error("  Stack trace: #{listings_html['stack']}")
                 else
-                  $logger.error("  No valid price found: #{listings_html['message']}")
+                  $logger.error("  No valid data found: #{listings_html['message']}")
                 end
                 $logger.info("=== END OF LISTINGS INFO ===")
               end
 
               # If we found a valid price, return it immediately
-              if listings_html.is_a?(Hash) && listings_html['success']
-                $logger.info("Request #{request_id}: Found valid price: $#{listings_html['price']}")
+              if listings_html.is_a?(Hash) && listings_html['success'] && listings_html['priceData'] && listings_html['priceData']['success']
+                $logger.info("Request #{request_id}: Found valid price: $#{listings_html['priceData']['price']}")
                 return {
                   'success' => true,
-                  'price' => "$#{listings_html['price']}",
-                  'url' => listings_html['url']
+                  'price' => "$#{listings_html['priceData']['price']}",
+                  'url' => listings_html['priceData']['url']
                 }
               end
             rescue => e

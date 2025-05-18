@@ -356,97 +356,133 @@ def process_condition(page, product_url, condition, request_id)
   begin
     # Navigate to the product page with condition filter
     condition_param = URI.encode_www_form_component(condition)
-    filtered_url = "#{product_url}?Condition=#{condition_param}&Language=English"  # Add Language=English to match TCGPlayer's URL structure
+    filtered_url = "#{product_url}?Condition=#{condition_param}&Language=English"
     $logger.info("Request #{request_id}: Navigating to filtered URL: #{filtered_url}")
     
     begin
-      response = page.goto(filtered_url, wait_until: 'domcontentloaded')  # Changed from networkidle0 to domcontentloaded
+      # Wait for network to be idle and for the page to be fully loaded
+      response = page.goto(filtered_url, wait_until: 'networkidle0')
       $logger.info("Request #{request_id}: Product page response status: #{response.status}")
-      $logger.info("Request #{request_id}: Navigation completed, waiting for price elements...")
       
-      # Give a short time for dynamic content
-      sleep(1)  # Reduced from 2 to 1 second
-      
-      # Try to get price with updated selectors
-      price_data = page.evaluate(<<~JS)
-        function() {
-          const priceSelectors = [
-            '.price-point__data',
-            '.price-point',
-            '.product-details__price',
-            '.product-price',
-            '.market-price__value',
-            '.market-price',
-            '.list-price__value',
-            '.list-price',
-            '.price',
-            '[data-testid="price-point"]',
-            '[data-testid="product-price"]',
-            '[class*="price"]',
-            '[class*="Price"]'
-          ]
-          
-          // Try each selector
-          for (let selector of priceSelectors) {
-            const elements = document.querySelectorAll(selector)
-            for (let el of elements) {
-              const text = el.textContent.trim()
-              if (text.includes('$') && !isNaN(parseFloat(text.replace(/[^0-9.]/g, '')))) {
-                return {
-                  price: text,
-                  url: window.location.href
-                }
-              }
-            }
-          }
-          
-          // Fallback: find any element with a price
-          const allElements = document.querySelectorAll('*')
-          for (let el of allElements) {
-            const text = el.textContent.trim()
-            if (text.includes('$') && !isNaN(parseFloat(text.replace(/[^0-9.]/g, '')))) {
-              return {
-                price: text,
-                url: window.location.href
-              }
-            }
-          }
-          
-          return null
-        }
-      JS
-      
-      unless price_data
-        $logger.error("Request #{request_id}: Could not find price after trying all selectors")
+      # Wait for either price element to appear
+      begin
+        page.wait_for_selector('.listing-item__listing-data__info__price, .spotlight__price', timeout: 10000)
+        $logger.info("Request #{request_id}: Price elements found")
+      rescue => e
+        $logger.error("Request #{request_id}: Timeout waiting for price elements: #{e.message}")
+        # Take a screenshot for debugging
         screenshot_path = "price_error_#{condition}_#{Time.now.to_i}.png"
         page.screenshot(path: screenshot_path)
-        $logger.info("Request #{request_id}: Saved price error screenshot to #{screenshot_path}")
+        $logger.info("Request #{request_id}: Saved error screenshot to #{screenshot_path}")
         return nil
       end
       
-      $logger.info("Request #{request_id}: Found price data: #{price_data.inspect}")
+      # Give extra time for dynamic content to stabilize
+      sleep(2)
       
-      # Clean up the price data
-      price_data['price'] = price_data['price'].gsub(/[^\d.]/, '')
+      # Try to get price with updated selectors and more robust extraction
+      price_data = page.evaluate(<<~'JS')
+        function() {
+          function extractNumericPrice(text) {
+            if (!text) return null;
+            // Try to match price patterns like $1.23, $1,234.56, etc.
+            const match = text.match(/\$[\d,]+(\.\d{2})?/);
+            if (!match) return null;
+            return parseFloat(match[0].replace(/[$,]/g, ''));
+          }
+
+          function getShippingPrice() {
+            // Try multiple shipping price selectors
+            const shippingSelectors = [
+              '.shipping-messages__price',
+              '.spotlight__shipping',
+              '.listing-item__shipping',
+              '[data-testid="shipping-price"]'
+            ];
+            
+            for (const selector of shippingSelectors) {
+              const element = document.querySelector(selector);
+              if (element) {
+                const text = element.textContent.trim();
+                if (text.toLowerCase().includes('free shipping')) {
+                  return 0;
+                }
+                const price = extractNumericPrice(text);
+                if (price !== null) {
+                  return price;
+                }
+              }
+            }
+            
+            return 0; // Default to 0 if no shipping price found
+          }
+
+          // Try multiple price selectors
+          const priceSelectors = [
+            '.listing-item__listing-data__info__price',
+            '.spotlight__price',
+            '[data-testid="price"]',
+            '.price-point__price',
+            '.product-price'
+          ];
+          
+          for (const selector of priceSelectors) {
+            const element = document.querySelector(selector);
+            if (element) {
+              const basePrice = extractNumericPrice(element.textContent);
+              if (basePrice !== null) {
+                const shippingPrice = getShippingPrice();
+                const totalPrice = basePrice + shippingPrice;
+                return {
+                  price: `$${totalPrice.toFixed(2)}`,
+                  url: window.location.href,
+                  debug: {
+                    basePrice,
+                    shippingPrice,
+                    totalPrice,
+                    source: selector,
+                    rawText: element.textContent.trim()
+                  }
+                };
+              }
+            }
+          }
+          
+          // If no price found, try to get any price-like text on the page
+          const allText = document.body.innerText;
+          const priceMatch = allText.match(/\$[\d,]+(\.\d{2})?/);
+          if (priceMatch) {
+            const basePrice = parseFloat(priceMatch[0].replace(/[$,]/g, ''));
+            return {
+              price: `$${basePrice.toFixed(2)}`,
+              url: window.location.href,
+              debug: {
+                basePrice,
+                shippingPrice: 0,
+                totalPrice: basePrice,
+                source: 'fallback_text_search',
+                rawText: priceMatch[0]
+              }
+            };
+          }
+          
+          return null;
+        }
+      JS
       
-      return price_data
+      if price_data
+        $logger.info("Request #{request_id}: Found price data: #{price_data.inspect}")
+        return price_data
+      else
+        $logger.error("Request #{request_id}: No price data found")
+        return nil
+      end
       
-    rescue Puppeteer::TimeoutError => e
-      $logger.error("Request #{request_id}: Timeout navigating to product page for #{condition}: #{e.message}")
-      return nil
     rescue => e
-      $logger.error("Request #{request_id}: Error navigating to product page for #{condition}: #{e.message}")
+      $logger.error("Request #{request_id}: Error processing condition: #{e.message}")
       $logger.error(e.backtrace.join("\n"))
       return nil
     end
-    
-  rescue => e
-    $logger.error("Request #{request_id}: Error processing condition #{condition}: #{e.message}")
-    $logger.error(e.backtrace.join("\n"))
-    screenshot_path = "condition_error_#{condition}_#{Time.now.to_i}.png"
-    page.screenshot(path: screenshot_path)
-    $logger.info("Request #{request_id}: Saved condition error screenshot to #{screenshot_path}")
-    return nil
   end
 end
 

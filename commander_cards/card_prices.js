@@ -2,20 +2,18 @@
 const TCG_API_KEY = 'YOUR_API_KEY_HERE'; // You'll need to replace this with your actual API key
 const TCG_API_URL = 'https://api.tcgplayer.com/v1.39.0';
 
+// Update the updateCardPrices function to use server-provided prices
 async function updateCardPrices(cardElement) {
   const cardName = cardElement.querySelector('.card-name').textContent;
   const priceInfo = cardElement.querySelector('.price-info');
   
-  // If we already have prices displayed, don't fetch again
-  if (priceInfo.querySelector('.price-link')) {
-    console.log('Prices already loaded for', cardName);
-    return;
-  }
-  
   priceInfo.innerHTML = '<span class="loading">Loading prices...</span>';
 
   try {
-    const response = await fetch(`http://localhost:4567/prices?card=${encodeURIComponent(cardName)}`);
+    const response = await fetch(`http://localhost:4567/card_info?card=${encodeURIComponent(cardName)}`);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
     const data = await response.json();
 
     if (data.error) {
@@ -24,38 +22,40 @@ async function updateCardPrices(cardElement) {
 
     let priceHtml = '';
     const prices = data.prices;
-    const isLegal = true;  // We'll get legality info from TCGPlayer later
+    const isLegal = data.legality === 'legal';
 
-    // Add each condition's price
-    Object.entries(prices).forEach(([condition, info], index, array) => {
-      // Format the price with the condition and make only the price clickable
-      priceHtml += `${condition}: <a href="${info.url}" target="_blank" class="price-link">$${info.price}</a>`;
-      
-      // Add separator between prices
-      if (index < array.length - 1) {
-        priceHtml += ' | ';
-      }
-    });
+    if (prices) {
+      Object.entries(prices).forEach(([condition, priceData]) => {
+        if (priceData && priceData.price) {
+          const displayCondition = condition
+            .replace('Near Mint', 'NM')
+            .replace('Lightly Played', 'LP');
+          priceHtml += `<a href="${priceData.url}" target="_blank">TCGPlayer (${displayCondition}): ${priceData.price}</a><br>`;
+        }
+      });
+    }
 
     if (priceHtml) {
       priceInfo.innerHTML = priceHtml;
-      // Cache the prices
-      localStorage.setItem(`price_${cardName}`, JSON.stringify({
-        prices: data.prices,
-        timestamp: Date.now()
-      }));
       if (!isLegal) {
         priceInfo.classList.add('illegal');
-        priceInfo.innerHTML += `<div class="illegal-notice">Not legal in Commander</div>`;
+        priceInfo.innerHTML += `<div class="illegal-notice">Not legal in Commander (${data.legality})</div>`;
       } else {
         priceInfo.classList.remove('illegal');
       }
+
+      // Cache the price data
+      const cacheData = {
+        prices: prices,
+        timestamp: Date.now()
+      };
+      localStorage.setItem(`price_${cardName}`, JSON.stringify(cacheData));
     } else {
       priceInfo.textContent = 'No price data available';
     }
   } catch (error) {
-    console.error('Error fetching prices:', error);
-    priceInfo.textContent = 'Error loading prices';
+    console.error('Error updating prices:', error);
+    priceInfo.textContent = `Error: ${error.message}`;
   }
 }
 

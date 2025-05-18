@@ -163,6 +163,15 @@
     .price-info a:hover {
       text-decoration: underline;
     }
+    .price-info.illegal a {
+      color: #d32f2f;
+    }
+    .price-info.illegal .illegal-notice {
+      color: #d32f2f;
+      font-size: 0.9em;
+      margin-top: 4px;
+      font-style: italic;
+    }
     .loading {
       color: #999;
       font-style: italic;
@@ -818,5 +827,93 @@
       </div>
     </div>
   </div>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      async function checkCommanderLegality(cardName) {
+        try {
+          const response = await fetch(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}`);
+          const data = await response.json();
+          if (data.legalities && data.legalities.commander) {
+            return data.legalities.commander;
+          }
+          return 'unknown';
+        } catch (error) {
+          console.error('Error checking legality:', error);
+          return 'unknown';
+        }
+      }
+
+      async function updateCardPrices(cardElement) {
+        const cardName = cardElement.querySelector('.card-name').textContent;
+        const priceInfo = cardElement.querySelector('.price-info');
+        priceInfo.innerHTML = '<span class="loading">Loading prices...</span>';
+
+        try {
+          // Check legality first
+          const legality = await checkCommanderLegality(cardName);
+          const isLegal = legality === 'legal';
+
+          // Then fetch prices
+          const response = await fetch(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}`);
+          const data = await response.json();
+
+          if (data.prices) {
+            const prices = data.prices;
+            let priceHtml = '';
+
+            if (prices.usd) {
+              priceHtml += `<a href="${data.purchase_uris?.tcgplayer || '#'}" target="_blank">TCGPlayer: $${prices.usd}</a><br>`;
+            }
+            if (prices.usd_foil) {
+              priceHtml += `<a href="${data.purchase_uris?.tcgplayer || '#'}" target="_blank">TCGPlayer (Foil): $${prices.usd_foil}</a><br>`;
+            }
+            if (prices.usd_etched) {
+              priceHtml += `<a href="${data.purchase_uris?.tcgplayer || '#'}" target="_blank">TCGPlayer (Etched): $${prices.usd_etched}</a>`;
+            }
+
+            if (priceHtml) {
+              priceInfo.innerHTML = priceHtml;
+              if (!isLegal) {
+                priceInfo.classList.add('illegal');
+                priceInfo.innerHTML += `<div class="illegal-notice">Not legal in Commander (${legality})</div>`;
+              } else {
+                priceInfo.classList.remove('illegal');
+              }
+            } else {
+              priceInfo.textContent = 'No price data available';
+            }
+          } else {
+            priceInfo.textContent = 'No price data available';
+          }
+        } catch (error) {
+          console.error('Error fetching prices:', error);
+          priceInfo.textContent = 'Error loading prices';
+        }
+      }
+
+      // Update click handlers for cards
+      document.querySelectorAll('.card').forEach(card => {
+        card.addEventListener('click', function() {
+          updateCardPrices(this);
+        });
+      });
+
+      // Update refresh all prices button
+      document.getElementById('refresh-all-prices').addEventListener('click', function() {
+        this.disabled = true;
+        const cards = document.querySelectorAll('.card');
+        let completed = 0;
+
+        cards.forEach(card => {
+          updateCardPrices(card).finally(() => {
+            completed++;
+            if (completed === cards.length) {
+              this.disabled = false;
+            }
+          });
+        });
+      });
+    });
+  </script>
 </body>
 </html>

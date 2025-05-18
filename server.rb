@@ -31,35 +31,33 @@ get '/card_info' do
     )
     page = browser.new_page
 
-    # First check Scryfall for legality
-    page.goto("https://scryfall.com/search?q=!#{URI.encode_www_form_component(card_name)}")
-    page.wait_for_selector('.card-grid-item', timeout: 5000)
-    
-    # Click the first card to get to its page
-    page.click('.card-grid-item')
-    page.wait_for_selector('.card-details', timeout: 5000)
-
-    # Get legality info
-    legality = 'unknown'
-    begin
-      legality_section = page.query_selector('.card-legality')
-      if legality_section
-        commander_row = legality_section.query_selector('tr:has-text("Commander")')
-        if commander_row
-          legality = commander_row.query_selector('td:last-child').text.strip.downcase
-        end
-      end
-    rescue => e
-      puts "Error getting legality: #{e.message}"
-    end
-
-    # Get price info from TCGPlayer
+    # Get price and legality info from TCGPlayer
     page.goto("https://www.tcgplayer.com/search/magic/product?q=#{URI.encode_www_form_component(card_name)}")
     page.wait_for_selector('.search-result', timeout: 5000)
     
     # Click the first result
     page.click('.search-result')
     page.wait_for_selector('.price-points', timeout: 5000)
+
+    # Get legality info
+    legality = 'legal'  # Default to legal unless we find otherwise
+    begin
+      # Click the Legality tab in product details
+      legality_tab = page.query_selector('button:has-text("Legality")')
+      if legality_tab
+        legality_tab.click
+        page.wait_for_selector('.legality-table', timeout: 5000)
+        
+        # Find the Commander row in the legality table
+        commander_row = page.query_selector('.legality-table tr:has-text("Commander")')
+        if commander_row
+          status = commander_row.query_selector('td:last-child')&.text&.strip&.downcase
+          legality = status if status && status != 'legal'
+        end
+      end
+    rescue => e
+      puts "Error getting legality: #{e.message}"
+    end
 
     # Get prices
     prices = {}

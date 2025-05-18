@@ -17,52 +17,21 @@ end
 def launch_browser
   puts "Launching browser..."
   browser = Puppeteer.launch(
-    headless: true,
+    headless: false,  # Use visible browser
     executable_path: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--disable-gpu',
       '--window-size=1920x1080',
-      '--disable-web-security',
-      '--disable-features=IsolateOrigins,site-per-process',
-      '--disable-logging',
-      '--log-level=3',
-      '--silent',
-      '--disable-background-networking',
-      '--disable-background-timer-throttling',
-      '--disable-backgrounding-occluded-windows',
-      '--disable-breakpad',
-      '--disable-component-extensions-with-background-pages',
-      '--disable-extensions',
-      '--disable-features=TranslateUI,BlinkGenPropertyTrees',
-      '--disable-ipc-flooding-protection',
-      '--disable-renderer-backgrounding',
-      '--enable-features=NetworkService,NetworkServiceInProcess',
-      '--force-color-profile=srgb',
-      '--metrics-recording-only',
-      '--mute-audio',
-      '--disable-notifications',
-      '--disable-popup-blocking',
-      '--disable-save-password-bubble',
-      '--disable-translate',
-      '--disable-web-security',
-      '--ignore-certificate-errors',
-      '--no-first-run',
-      '--no-default-browser-check',
-      '--no-experiments',
-      '--no-pings',
-      '--no-sandbox',
-      '--no-service-autorun',
-      '--no-zygote',
-      '--password-store=basic',
-      '--use-mock-keychain',
-      '--disable-blink-features=AutomationControlled'
+      '--start-maximized',
+      '--disable-blink-features=AutomationControlled',
+      '--disable-automation',
+      '--disable-infobars',
+      '--lang=en-US,en',
+      '--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
     ],
     ignore_default_args: ['--enable-automation'],
-    dumpio: true  # Enable logging of browser process stdout/stderr
+    default_viewport: nil  # Let the window size be natural
   )
   puts "Browser launched"
   browser
@@ -137,6 +106,21 @@ def wait_for_page_load(page, condition)
   end
 end
 
+# Add some random mouse movements to look more human
+def simulate_human_behavior(page)
+  # Move mouse randomly
+  page.mouse.move(rand(100..800), rand(100..600))
+  sleep(rand(0.5..1.5))
+  page.mouse.move(rand(100..800), rand(100..600))
+  sleep(rand(0.5..1.5))
+  
+  # Scroll a bit
+  page.evaluate('window.scrollBy(0, 100)')
+  sleep(rand(0.5..1.5))
+  page.evaluate('window.scrollBy(0, -50)')
+  sleep(rand(0.5..1.5))
+end
+
 get '/prices' do
   content_type :json
   
@@ -166,33 +150,82 @@ get '/prices' do
     page = context.new_page
     
     # Set user agent
-    page.set_user_agent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
+    page.set_user_agent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
+    
+    # Add a longer initial delay
+    sleep(5)  # Wait longer before first interaction
     
     # Initialize prices hash
     prices = {}
     
-    # Search for each condition
-    ['lightly played', 'near mint'].each do |condition|
-      puts "Searching for #{condition} condition..."
+    # Search by card name only (no condition filter)
+    search_url = "https://www.tcgplayer.com/search/magic/product?q=#{URI.encode_www_form_component(card_name)}&Language=English&view=grid&productLineName=magic&setName=product"
+    puts "Using search URL: #{search_url}"
+    
+    # Navigate to search page
+    response = page.goto(search_url, wait_until: 'domcontentloaded', timeout: 30000)
+    unless response&.ok?
+      puts "Search page returned status #{response&.status}"
+      return { error: "Search failed with status #{response&.status}" }.to_json
+    end
+    
+    # Wait for network to be idle naturally
+    sleep(rand(2..4))
+    
+    # Simulate more human behavior after page load
+    simulate_human_behavior(page)
+    
+    # Find and click the first search result (lowest price)
+    puts "Looking for first search result..."
+    first_result = page.query_selector('a[href*="/product/"]')
+    unless first_result
+      puts "No search result found"
+      return { error: "No search results found" }.to_json
+    end
+    
+    # Get the product URL before clicking
+    product_url = first_result.evaluate('el => el.href')
+    puts "Found product URL: #{product_url}"
+    
+    # Click the result and wait for navigation
+    puts "Clicking first result..."
+    first_result.click
+    sleep(rand(2..4))  # Wait for navigation
+    
+    # Wait for the product page to load
+    puts "Waiting for product page to load..."
+    begin
+      page.wait_for_selector('.product-details, [data-testid="product-details"]', timeout: 10000)
+      puts "Product page loaded"
+    rescue => e
+      puts "Error waiting for product page: #{e.message}"
+      return { error: "Product page failed to load" }.to_json
+    end
+    
+    # Process each condition
+    ['Lightly Played', 'Near Mint'].each do |condition|
+      puts "Filtering for #{condition} condition..."
+      
+      # Add condition to the product URL
       condition_param = URI.encode_www_form_component(condition)
-      search_url = "https://www.tcgplayer.com/search/magic/product?q=#{URI.encode_www_form_component(card_name)}&Condition=#{condition_param}&Language=English"
+      filtered_url = "#{product_url}&Condition=#{condition_param}"
+      puts "Using filtered URL: #{filtered_url}"
       
-      puts "Using search URL: #{search_url}"
-      
-      # Navigate to search page
-      response = page.goto(search_url, wait_until: 'networkidle0', timeout: 30000)
+      # Navigate to the filtered product page
+      response = page.goto(filtered_url, wait_until: 'domcontentloaded', timeout: 30000)
       unless response&.ok?
-        puts "Search page returned status #{response&.status} for #{condition}"
+        puts "Filtered page returned status #{response&.status}"
         next
       end
       
-      # Add a small delay to ensure browser is ready
-      sleep(3)
+      # Wait for the page to load
+      sleep(rand(2..4))
       
-      # Get the first listing directly
+      # Look for the listing on the filtered product page
+      puts "Looking for listing on filtered product page..."
       first_listing = page.query_selector('.listing-item__listing-data__info')
       unless first_listing
-        puts "No listing found for #{condition}"
+        puts "No #{condition} listing found on product page"
         next
       end
       
@@ -238,17 +271,17 @@ get '/prices' do
                el.textContent.toLowerCase().includes("foil");
       }')
       
-      # Add foil suffix if needed
-      condition_key = is_foil ? "#{condition} foil" : condition
+      # Add foil suffix if needed, but keep condition capitalization
+      condition_key = is_foil ? "#{condition} Foil" : condition
       
       puts "Normalized condition: #{condition_key} (Total: $#{total})"
       
-      # Store the price
+      # Store the price with the filtered URL
       prices[condition_key] = {
         'price' => price_text,
         'shipping' => shipping,
         'total' => sprintf('$%.2f', total),
-        'url' => search_url
+        'url' => filtered_url
       }
       puts "Added price for #{condition_key}: #{prices[condition_key]}"
     end
@@ -277,7 +310,7 @@ get '/prices' do
     puts e.backtrace.join("\n")
     { error: e.message }.to_json
   ensure
-    # Clean up resources only after all conditions are processed
+    # Clean up resources
     if page
       begin
         puts "Closing page..."

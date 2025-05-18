@@ -133,8 +133,8 @@ function attachClickHandlers() {
   
   cards.forEach((card, index) => {
     console.log(`Attaching click handler to card ${index + 1}`);
-    card.removeEventListener('click', cardClickHandler);
-    card.addEventListener('click', cardClickHandler);
+    card.removeEventListener('click', (e) => cardClickHandler.call(card, e));
+    card.addEventListener('click', (e) => cardClickHandler.call(card, e));
     
     // Add click handlers to price links to stop event propagation
     const priceLinks = card.querySelectorAll('.price-link');
@@ -148,7 +148,7 @@ function attachClickHandlers() {
   console.log('Finished attaching click handlers');
 }
 
-function cardClickHandler() {
+function cardClickHandler(e) {
   console.log('Card clicked');
   const cardName = this.querySelector('.card-name')?.textContent;
   console.log(`Clicked card name: ${cardName}`);

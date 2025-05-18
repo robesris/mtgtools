@@ -1125,18 +1125,11 @@ def process_condition(page, product_url, condition, request_id, card_name)
       screenshot_count += 1
       last_screenshot_time = Time.now
 
-      # Log our current selectors
-      $logger.info("Request #{request_id}: Current listing selectors:")
-      $logger.info("  - .listing-item")
-      $logger.info("  - .price-point")
-      $logger.info("  - [class*='listing']")
-      $logger.info("  - [class*='price']")
-      $logger.info("  - .inventory__price")
-      $logger.info("  - .inventory__price-with-shipping")
-      $logger.info("  - .product-listing")
-      $logger.info("  - .product-listing__price")
-      $logger.info("  - [class*='inventory']")
-      $logger.info("  - [class*='product-listing']")
+      # Log our current selectors for the product page
+      $logger.info("Request #{request_id}: Current product page selectors:")
+      $logger.info("  Container: .listing-item")
+      $logger.info("  Base Price: .listing-item__listing-data__info__price")
+      $logger.info("  Shipping: .shipping-messages__price")
 
       # Main loop - continue until we hit max screenshots
       while screenshot_count < max_screenshots
@@ -1157,6 +1150,29 @@ def process_condition(page, product_url, condition, request_id, card_name)
               listings_html = page.evaluate(<<~'JS')
                 function() {
                   try {
+                    // Find all listing items
+                    var listingItems = document.querySelectorAll('.listing-item');
+                    var listings = [];
+                    
+                    listingItems.forEach(function(item, index) {
+                      var basePrice = item.querySelector('.listing-item__listing-data__info__price');
+                      var shipping = item.querySelector('.shipping-messages__price');
+                      
+                      listings.push({
+                        index: index,
+                        containerClasses: item.className,
+                        basePrice: basePrice ? {
+                          text: basePrice.textContent.trim(),
+                          classes: basePrice.className
+                        } : null,
+                        shipping: shipping ? {
+                          text: shipping.textContent.trim(),
+                          classes: shipping.className
+                        } : null,
+                        html: item.outerHTML
+                      });
+                    });
+
                     // Find the "listings" text (case insensitive, handles both singular and plural)
                     var listingsHeader = null;
                     var allElements = document.querySelectorAll("*");
@@ -1179,32 +1195,15 @@ def process_condition(page, product_url, condition, request_id, card_name)
                       return { 
                         found: false, 
                         message: "No listings header found matching pattern \"X Listing(s)\"",
-                        allText: allText
+                        allText: allText,
+                        listings: listings
                       };
-                    }
-
-                    // Get all elements with prices
-                    var priceElements = [];
-                    for (var i = 0; i < allElements.length; i++) {
-                      var el = allElements[i];
-                      if (el.textContent && el.textContent.indexOf("$") !== -1) {
-                        var parentEl = el.parentElement;
-                        var grandparentEl = parentEl ? parentEl.parentElement : null;
-                        priceElements.push({
-                          className: el.className || "",
-                          text: el.textContent.trim(),
-                          tagName: el.tagName || "",
-                          parentClasses: parentEl ? (parentEl.className || "") : null,
-                          grandparentClasses: grandparentEl ? (grandparentEl.className || "") : null,
-                          html: el.outerHTML || ""
-                        });
-                      }
                     }
 
                     return {
                       found: true,
                       headerText: listingsHeader.textContent,
-                      priceElements: priceElements
+                      listings: listings
                     };
                   } catch (e) {
                     return { 
@@ -1222,20 +1221,38 @@ def process_condition(page, product_url, condition, request_id, card_name)
                 $logger.info("  Found listings header: #{listings_html['found']}")
                 if listings_html['found']
                   $logger.info("  Header text: #{listings_html['headerText']}")
-                  $logger.info("  === PRICE ELEMENTS FOUND ===")
-                  listings_html['priceElements'].each_with_index do |el, i|
-                    $logger.info("  Price Element #{i + 1}:")
-                    $logger.info("    Text: #{el['text']}")
-                    $logger.info("    Classes: #{el['className']}")
-                    $logger.info("    Parent Classes: #{el['parentClasses']}")
-                    $logger.info("    Grandparent Classes: #{el['grandparentClasses']}")
-                    $logger.info("    HTML: #{el['html']}")
+                  $logger.info("  === LISTINGS FOUND ===")
+                  listings_html['listings'].each do |listing|
+                    $logger.info("  Listing #{listing['index'] + 1}:")
+                    $logger.info("    Container Classes: #{listing['containerClasses']}")
+                    if listing['basePrice']
+                      $logger.info("    Base Price: #{listing['basePrice']['text']}")
+                      $logger.info("    Base Price Classes: #{listing['basePrice']['classes']}")
+                    end
+                    if listing['shipping']
+                      $logger.info("    Shipping: #{listing['shipping']['text']}")
+                      $logger.info("    Shipping Classes: #{listing['shipping']['classes']}")
+                    end
+                    $logger.info("    HTML: #{listing['html']}")
                   end
                 elsif listings_html['error']
                   $logger.error("  Error evaluating listings: #{listings_html['error']}")
                   $logger.error("  Stack trace: #{listings_html['stack']}")
                 else
                   $logger.error("  No listings found. All text containing 'listing': #{listings_html['allText']}")
+                  if listings_html['listings'].any?
+                    $logger.info("  However, found #{listings_html['listings'].length} listing items:")
+                    listings_html['listings'].each do |listing|
+                      $logger.info("    Listing #{listing['index'] + 1}:")
+                      $logger.info("      Container Classes: #{listing['containerClasses']}")
+                      if listing['basePrice']
+                        $logger.info("      Base Price: #{listing['basePrice']['text']}")
+                      end
+                      if listing['shipping']
+                        $logger.info("      Shipping: #{listing['shipping']['text']}")
+                      end
+                    end
+                  end
                 end
                 $logger.info("=== END OF LISTINGS INFO ===")
               end

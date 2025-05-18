@@ -43,7 +43,7 @@ def get_browser
       $logger.info("Initializing browser...")
       begin
         $browser = Puppeteer.launch(
-          headless: false,
+          headless: true,
           args: ['--no-sandbox', '--disable-setuid-sandbox']
         )
         $logger.info("Browser initialized successfully")

@@ -366,10 +366,10 @@ def process_condition(page, product_url, condition, request_id)
       
       # Wait for the regular listing price element to appear
       begin
-        page.wait_for_selector('.listing-item__listing-data__info__price', timeout: 10000)
-        $logger.info("Request #{request_id}: Price element found")
+        page.wait_for_selector('.listing-item', timeout: 10000)
+        $logger.info("Request #{request_id}: Listing items found")
       rescue => e
-        $logger.error("Request #{request_id}: Timeout waiting for price element: #{e.message}")
+        $logger.error("Request #{request_id}: Timeout waiting for listing items: #{e.message}")
         # Take a screenshot for debugging
         screenshot_path = "price_error_#{condition}_#{Time.now.to_i}.png"
         page.screenshot(path: screenshot_path)
@@ -391,62 +391,47 @@ def process_condition(page, product_url, condition, request_id)
             return parseFloat(match[0].replace(/[$,]/g, ''));
           }
 
-          function getShippingPrice() {
-            // Try to get shipping price from regular listings
-            const shippingElement = document.querySelector('.shipping-messages__price');
-            if (shippingElement) {
-              const text = shippingElement.textContent.trim();
-              if (text.toLowerCase().includes('free shipping')) {
-                return 0;
-              }
-              const price = extractNumericPrice(text);
+          // Get the first listing item
+          const firstListing = document.querySelector('.listing-item');
+          if (!firstListing) return null;
+
+          // Get the price from this specific listing
+          const priceElement = firstListing.querySelector('.listing-item__listing-data__info__price');
+          if (!priceElement) return null;
+
+          const basePrice = extractNumericPrice(priceElement.textContent);
+          if (basePrice === null) return null;
+
+          // Get shipping info from the same listing
+          let shippingPrice = 0;
+          const shippingElement = firstListing.querySelector('.shipping-messages__price');
+          if (shippingElement) {
+            const shippingText = shippingElement.textContent.trim();
+            if (shippingText.toLowerCase().includes('free shipping')) {
+              shippingPrice = 0;
+            } else {
+              const price = extractNumericPrice(shippingText);
               if (price !== null) {
-                return price;
+                shippingPrice = price;
               }
             }
-            return 0; // Default to 0 if no shipping price found
           }
 
-          // Get the first regular listing price
-          const priceElement = document.querySelector('.listing-item__listing-data__info__price');
-          if (priceElement) {
-            const basePrice = extractNumericPrice(priceElement.textContent);
-            if (basePrice !== null) {
-              const shippingPrice = getShippingPrice();
-              const totalPrice = basePrice + shippingPrice;
-              return {
-                price: `$${totalPrice.toFixed(2)}`,
-                url: window.location.href,
-                debug: {
-                  basePrice,
-                  shippingPrice,
-                  totalPrice,
-                  source: 'regular_listing',
-                  rawText: priceElement.textContent.trim()
-                }
-              };
-            }
-          }
-          
-          // If no price found, try to get any price-like text on the page as fallback
-          const allText = document.body.innerText;
-          const priceMatch = allText.match(/\$[\d,]+(\.\d{2})?/);
-          if (priceMatch) {
-            const basePrice = parseFloat(priceMatch[0].replace(/[$,]/g, ''));
-            return {
-              price: `$${basePrice.toFixed(2)}`,
-              url: window.location.href,
-              debug: {
-                basePrice,
-                shippingPrice: 0,
-                totalPrice: basePrice,
-                source: 'fallback_text_search',
-                rawText: priceMatch[0]
+          const totalPrice = basePrice + shippingPrice;
+          return {
+            price: `$${totalPrice.toFixed(2)}`,
+            url: window.location.href,
+            debug: {
+              basePrice,
+              shippingPrice,
+              totalPrice,
+              source: 'regular_listing',
+              rawText: {
+                price: priceElement.textContent.trim(),
+                shipping: shippingElement ? shippingElement.textContent.trim() : 'no shipping info'
               }
-            };
-          }
-          
-          return null;
+            }
+          };
         }
       JS
       

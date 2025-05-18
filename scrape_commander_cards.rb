@@ -12,6 +12,7 @@ require 'json'
 class CommanderCardScraper
   BASE_URL = 'https://gatherer.wizards.com/Pages/Search/Default.aspx'
   CACHE_FILE = 'commander_card_cache.json'
+  PRICE_CACHE_FILE = 'commander_card_prices.json'
   IMAGE_CACHE_DIR = 'commander_card_images'
   
   def initialize
@@ -20,6 +21,7 @@ class CommanderCardScraper
     @output_dir = 'commander_cards'
     @image_path = File.join(@output_dir, 'commander_cards.jpg')
     @card_cache = load_cache
+    @price_cache = load_price_cache
     FileUtils.mkdir_p(@output_dir)
     FileUtils.mkdir_p(IMAGE_CACHE_DIR)
     
@@ -103,6 +105,21 @@ class CommanderCardScraper
 
   def save_cache
     File.write(CACHE_FILE, JSON.pretty_generate(@card_cache))
+  end
+
+  def load_price_cache
+    if File.exist?(PRICE_CACHE_FILE)
+      JSON.parse(File.read(PRICE_CACHE_FILE))
+    else
+      {}
+    end
+  rescue JSON::ParserError
+    puts "Warning: Price cache file corrupted, starting with empty cache"
+    {}
+  end
+
+  def save_price_cache
+    File.write(PRICE_CACHE_FILE, JSON.pretty_generate(@price_cache))
   end
 
   def download_image
@@ -566,6 +583,78 @@ class CommanderCardScraper
     nil
   end
 
+  def get_card_prices(card_name)
+    # Skip if we have recent cached prices (less than 24 hours old)
+    if @price_cache[card_name] && @price_cache[card_name]['timestamp'] > (Time.now - 86400).to_i
+      return @price_cache[card_name]['prices']
+    end
+
+    # Convert card name to TCGPlayer format (lowercase, spaces to hyphens)
+    tcg_name = card_name.downcase.gsub(/[^a-z0-9\s-]/, '').gsub(/\s+/, '-')
+    url = "https://www.tcgplayer.com/search/magic/product?q=#{URI.encode_www_form_component(tcg_name)}"
+    
+    begin
+      response = HTTParty.get(url, {
+        headers: {
+          'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+      })
+      
+      doc = Nokogiri::HTML(response.body)
+      
+      # Find the first product card that matches our search
+      product_card = doc.at_css('.product-card')
+      return nil unless product_card
+      
+      # Get the product URL
+      product_url = product_card.at_css('a')['href']
+      return nil unless product_url
+      
+      # Get the product page to find prices
+      product_response = HTTParty.get(product_url, {
+        headers: {
+          'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+      })
+      
+      product_doc = Nokogiri::HTML(product_response.body)
+      
+      # Find price rows for LP and NM
+      prices = {}
+      product_doc.css('.price-point').each do |price_point|
+        condition = price_point.at_css('.condition')&.text&.strip&.downcase
+        next unless ['lightly played', 'near mint'].include?(condition)
+        
+        price = price_point.at_css('.price')&.text&.strip
+        shipping = price_point.at_css('.shipping')&.text&.strip
+        total = if shipping && shipping =~ /(\$[\d.]+)/
+          price.to_f + $1.gsub('$', '').to_f
+        else
+          price.to_f
+        end
+        
+        prices[condition] = {
+          'price' => price,
+          'shipping' => shipping,
+          'total' => sprintf('$%.2f', total),
+          'url' => product_url
+        }
+      end
+      
+      # Cache the prices
+      @price_cache[card_name] = {
+        'timestamp' => Time.now.to_i,
+        'prices' => prices
+      }
+      save_price_cache
+      
+      prices
+    rescue => e
+      puts "Error getting prices for #{card_name}: #{e.message}"
+      nil
+    end
+  end
+
   def generate_html(card_names)
     html = <<~HTML
       <!DOCTYPE html>
@@ -600,6 +689,11 @@ class CommanderCardScraper
             display: flex;
             flex-direction: column;
             align-items: center;
+            cursor: pointer;
+            transition: transform 0.2s;
+          }
+          .card:hover {
+            transform: translateY(-5px);
           }
           .card-image-container {
             width: 100%;
@@ -622,6 +716,25 @@ class CommanderCardScraper
             padding: 0 5px;
             width: 100%;
             box-sizing: border-box;
+          }
+          .price-info {
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #666;
+            width: 100%;
+            text-align: left;
+            padding: 0 5px;
+          }
+          .price-info a {
+            color: #0066cc;
+            text-decoration: none;
+          }
+          .price-info a:hover {
+            text-decoration: underline;
+          }
+          .loading {
+            color: #999;
+            font-style: italic;
           }
           h1 {
             color: #2c3e50;
@@ -671,6 +784,7 @@ class CommanderCardScraper
             }
           }
         </style>
+        <script src="card_prices.js"></script>
       </head>
       <body>
         <div class="container">
@@ -680,10 +794,25 @@ class CommanderCardScraper
 
     card_names.each do |name|
       image_path = get_card_image(name)
+      prices = @price_cache[name]&.dig('prices')
+      
+      price_html = if prices
+        html = []
+        if prices['near mint']
+          nm = prices['near mint']
+          html << "NM: <a href=\"#{nm['url']}\" target=\"_blank\">#{nm['total']}</a>"
+        end
+        if prices['lightly played']
+          lp = prices['lightly played']
+          html << "LP: <a href=\"#{lp['url']}\" target=\"_blank\">#{lp['total']}</a>"
+        end
+        html.join(' | ') || 'No prices found'
+      else
+        'Click to load prices'
+      end
+      
       if image_path
-        # Get just the filename from the full path
         image_filename = File.basename(image_path)
-        # Create a relative path from the HTML file to the image
         relative_path = "../#{IMAGE_CACHE_DIR}/#{image_filename}"
         html += <<~HTML
           <div class="card">
@@ -691,6 +820,7 @@ class CommanderCardScraper
             <div class="card-image-container">
               <img src="#{relative_path}" alt="#{name}">
             </div>
+            <div class="price-info">#{price_html}</div>
           </div>
         HTML
       else
@@ -700,6 +830,7 @@ class CommanderCardScraper
             <div class="card-image-container">
               <div class="not-found">Image not found</div>
             </div>
+            <div class="price-info">#{price_html}</div>
           </div>
         HTML
       end

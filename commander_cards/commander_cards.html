@@ -30,6 +30,11 @@
       display: flex;
       flex-direction: column;
       align-items: center;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    .card:hover {
+      transform: translateY(-5px);
     }
     .card-image-container {
       width: 100%;
@@ -52,6 +57,25 @@
       padding: 0 5px;
       width: 100%;
       box-sizing: border-box;
+    }
+    .price-info {
+      margin-top: 10px;
+      font-size: 0.9em;
+      color: #666;
+      width: 100%;
+      text-align: left;
+      padding: 0 5px;
+    }
+    .price-info a {
+      color: #0066cc;
+      text-decoration: none;
+    }
+    .price-info a:hover {
+      text-decoration: underline;
+    }
+    .loading {
+      color: #999;
+      font-style: italic;
     }
     h1 {
       color: #2c3e50;
@@ -101,6 +125,7 @@
       }
     }
   </style>
+  <script src="card_prices.js"></script>
 </head>
 <body>
   <div class="container">
@@ -111,366 +136,427 @@
   <div class="card-image-container">
     <img src="../commander_card_images/479531.jpg" alt="DRANNITH MAGISTRATE">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">ENLIGHTENED TUTOR</div>
   <div class="card-image-container">
     <img src="../commander_card_images/598880.jpg" alt="ENLIGHTENED TUTOR">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">HUMILITY</div>
   <div class="card-image-container">
     <img src="../commander_card_images/397614.jpg" alt="HUMILITY">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">SERRA'S SANCTUM</div>
   <div class="card-image-container">
     <img src="../commander_card_images/9674.jpg" alt="SERRA'S SANCTUM">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">SMOTHERING TITHE</div>
   <div class="card-image-container">
     <img src="../commander_card_images/632392.jpg" alt="SMOTHERING TITHE">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">TEFERI'S PROTECTION</div>
   <div class="card-image-container">
     <img src="../commander_card_images/573392.jpg" alt="TEFERI'S PROTECTION">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">CYCLONIC RIFT</div>
   <div class="card-image-container">
     <img src="../commander_card_images/643047.jpg" alt="CYCLONIC RIFT">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">CONSECRATED SPHINX</div>
   <div class="card-image-container">
     <img src="../commander_card_images/571376.jpg" alt="CONSECRATED SPHINX">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">EXPROPRIATE</div>
   <div class="card-image-container">
     <img src="../commander_card_images/677358.jpg" alt="EXPROPRIATE">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">FORCE OF WILL</div>
   <div class="card-image-container">
     <img src="../commander_card_images/600969.jpg" alt="FORCE OF WILL">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">GUARDIANSHIP</div>
   <div class="card-image-container">
     <img src="../commander_card_images/624776.jpg" alt="GUARDIANSHIP">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">GIFTS UNGIVEN</div>
   <div class="card-image-container">
     <img src="../commander_card_images/571384.jpg" alt="GIFTS UNGIVEN">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">INTUITION</div>
   <div class="card-image-container">
     <img src="../commander_card_images/382.jpg" alt="INTUITION">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">JIN-GITAXIAS, CORE AUGUR</div>
   <div class="card-image-container">
     <img src="../commander_card_images/611316.jpg" alt="JIN-GITAXIAS, CORE AUGUR">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">MYSTICAL TUTOR</div>
   <div class="card-image-container">
     <img src="../commander_card_images/600972.jpg" alt="MYSTICAL TUTOR">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">NARSET, PARTER OF VEILS</div>
   <div class="card-image-container">
     <img src="../commander_card_images/677708.jpg" alt="NARSET, PARTER OF VEILS">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">RHYSTIC STUDY</div>
   <div class="card-image-container">
     <img src="../commander_card_images/632453.jpg" alt="RHYSTIC STUDY">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">SWAY OF THE STARS</div>
   <div class="card-image-container">
     <img src="../commander_card_images/74034.jpg" alt="SWAY OF THE STARS">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">THASSA'S ORACLE</div>
   <div class="card-image-container">
     <img src="../commander_card_images/677452.jpg" alt="THASSA'S ORACLE">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">URZA, LORD HIGH ARTIFICER</div>
   <div class="card-image-container">
     <img src="../commander_card_images/677521.jpg" alt="URZA, LORD HIGH ARTIFICER">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">AD NAUSEAM</div>
   <div class="card-image-container">
     <img src="../commander_card_images/489749.jpg" alt="AD NAUSEAM">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">BRAIDS, CABAL MINION</div>
   <div class="card-image-container">
     <img src="../commander_card_images/526244.jpg" alt="BRAIDS, CABAL MINION">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">BOLAS'S CITADEL</div>
   <div class="card-image-container">
     <img src="../commander_card_images/677715.jpg" alt="BOLAS'S CITADEL">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">DEMONIC TUTOR</div>
   <div class="card-image-container">
     <img src="../commander_card_images/622758.jpg" alt="DEMONIC TUTOR">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">IMPERIAL SEAL</div>
   <div class="card-image-container">
     <img src="../commander_card_images/571412.jpg" alt="IMPERIAL SEAL">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">NECROPOTENCE</div>
   <div class="card-image-container">
     <img src="../commander_card_images/632459.jpg" alt="NECROPOTENCE">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">OPPOSITION AGENT</div>
   <div class="card-image-container">
     <img src="../commander_card_images/497661.jpg" alt="OPPOSITION AGENT">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">ORCISH BOWMASTERS</div>
   <div class="card-image-container">
     <img src="../commander_card_images/619720.jpg" alt="ORCISH BOWMASTERS">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">TERGRID, GOD OF FRIGHT</div>
   <div class="card-image-container">
     <img src="../commander_card_images/507654.jpg" alt="TERGRID, GOD OF FRIGHT">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">VAMPIRIC TUTOR</div>
   <div class="card-image-container">
     <img src="../commander_card_images/598982.jpg" alt="VAMPIRIC TUTOR">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">DEFLECTING SWAT</div>
   <div class="card-image-container">
     <img src="../commander_card_images/626387.jpg" alt="DEFLECTING SWAT">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">GAMBLE</div>
   <div class="card-image-container">
     <img src="../commander_card_images/651682.jpg" alt="GAMBLE">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">JESKA'S WILL</div>
   <div class="card-image-container">
     <img src="../commander_card_images/650250.jpg" alt="JESKA'S WILL">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">UNDERWORLD BREACH</div>
   <div class="card-image-container">
     <img src="../commander_card_images/677477.jpg" alt="UNDERWORLD BREACH">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">CROP ROTATION</div>
   <div class="card-image-container">
     <img src="../commander_card_images/599028.jpg" alt="CROP ROTATION">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">FOOD CHAIN</div>
   <div class="card-image-container">
     <img src="../commander_card_images/571480.jpg" alt="FOOD CHAIN">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">GAEA'S CRADLE</div>
   <div class="card-image-container">
     <img src="../commander_card_images/10422.jpg" alt="GAEA'S CRADLE">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">NATURAL ORDER</div>
   <div class="card-image-container">
     <img src="../commander_card_images/677487.jpg" alt="NATURAL ORDER">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">SEEDBORN MUSE</div>
   <div class="card-image-container">
     <img src="../commander_card_images/696424.jpg" alt="SEEDBORN MUSE">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">SURVIVAL OF THE FITTEST</div>
   <div class="card-image-container">
     <img src="../commander_card_images/397535.jpg" alt="SURVIVAL OF THE FITTEST">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">VORINCLEX, VOICE OF HUNGER</div>
   <div class="card-image-container">
     <img src="../commander_card_images/611334.jpg" alt="VORINCLEX, VOICE OF HUNGER">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">WORLDLY TUTOR</div>
   <div class="card-image-container">
     <img src="../commander_card_images/600993.jpg" alt="WORLDLY TUTOR">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">AURA SHARDS</div>
   <div class="card-image-container">
     <img src="../commander_card_images/247184.jpg" alt="AURA SHARDS">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">COALITION VICTORY</div>
   <div class="card-image-container">
     <img src="../commander_card_images/109718.jpg" alt="COALITION VICTORY">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">KINNAN, BONDER PRODIGY</div>
   <div class="card-image-container">
     <img src="../commander_card_images/479712.jpg" alt="KINNAN, BONDER PRODIGY">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">GRAND ARBITER AUGUSTIN IV</div>
   <div class="card-image-container">
     <img src="../commander_card_images/571554.jpg" alt="GRAND ARBITER AUGUSTIN IV">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">NOTION THIEF</div>
   <div class="card-image-container">
     <img src="../commander_card_images/660844.jpg" alt="NOTION THIEF">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">WINOTA, JOINER OF FORCES</div>
   <div class="card-image-container">
     <img src="../commander_card_images/479736.jpg" alt="WINOTA, JOINER OF FORCES">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">YURIKO, THE TIGER'S SHADOW</div>
   <div class="card-image-container">
     <img src="../commander_card_images/627828.jpg" alt="YURIKO, THE TIGER'S SHADOW">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">ANCIENT TOMB</div>
   <div class="card-image-container">
     <img src="../commander_card_images/622589.jpg" alt="ANCIENT TOMB">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">CHROME MOX</div>
   <div class="card-image-container">
     <img src="../commander_card_images/693218.jpg" alt="CHROME MOX">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">FIELD OF THE DEAD</div>
   <div class="card-image-container">
     <img src="../commander_card_images/651686.jpg" alt="FIELD OF THE DEAD">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">GLACIAL CHASM</div>
   <div class="card-image-container">
     <img src="../commander_card_images/288996.jpg" alt="GLACIAL CHASM">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">GRIM MONOLITH</div>
   <div class="card-image-container">
     <img src="../commander_card_images/12626.jpg" alt="GRIM MONOLITH">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">LION'S EYE DIAMOND</div>
   <div class="card-image-container">
     <img src="../commander_card_images/383000.jpg" alt="LION'S EYE DIAMOND">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">MANA VAULT</div>
   <div class="card-image-container">
     <img src="../commander_card_images/573056.jpg" alt="MANA VAULT">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">MOX DIAMOND</div>
   <div class="card-image-container">
     <img src="../commander_card_images/397482.jpg" alt="MOX DIAMOND">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">MISHRA'S WORKSHOP</div>
   <div class="card-image-container">
     <img src="../commander_card_images/383015.jpg" alt="MISHRA'S WORKSHOP">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">PANOPTIC MIRROR</div>
   <div class="card-image-container">
     <img src="../commander_card_images/47930.jpg" alt="PANOPTIC MIRROR">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">THE ONE RING</div>
   <div class="card-image-container">
     <img src="../commander_card_images/636332.jpg" alt="THE ONE RING">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
 <div class="card">
   <div class="card-name">THE TABERNACLE AT PENDRELL VALE</div>
   <div class="card-image-container">
     <img src="../commander_card_images/201236.jpg" alt="THE TABERNACLE AT PENDRELL VALE">
   </div>
+  <div class="price-info">Click to load prices</div>
 </div>
     </div>
     <div class="source">

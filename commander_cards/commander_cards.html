@@ -829,62 +829,12 @@
   </div>
   <script>
     document.addEventListener('DOMContentLoaded', function() {
-      async function updateCardPrices(cardElement) {
-        const cardName = cardElement.querySelector('.card-name').textContent;
-        const priceInfo = cardElement.querySelector('.price-info');
-        priceInfo.innerHTML = '<span class="loading">Loading prices...</span>';
-
-        try {
-          const response = await fetch(`http://localhost:4567/prices?card=${encodeURIComponent(cardName)}`);
-          const data = await response.json();
-
-          if (data.error) {
-            throw new Error(data.error);
-          }
-
-          let priceHtml = '';
-          const prices = data.prices;
-
-          if (prices['Near Mint']) {
-            priceHtml += `<a href="${prices['Near Mint'].url}" target="_blank">TCGPlayer (NM): ${prices['Near Mint'].total}</a><br>`;
-          }
-          if (prices['Lightly Played']) {
-            priceHtml += `<a href="${prices['Lightly Played'].url}" target="_blank">TCGPlayer (LP): ${prices['Lightly Played'].total}</a>`;
-          }
-
-          if (priceHtml) {
-            priceInfo.innerHTML = priceHtml;
-            priceInfo.classList.remove('illegal');
-          } else {
-            priceInfo.textContent = 'No price data available';
-          }
-        } catch (error) {
-          console.error('Error fetching prices:', error);
-          priceInfo.textContent = 'Error loading prices';
-        }
-      }
-
-      // Update click handlers for cards
-      document.querySelectorAll('.card').forEach(card => {
-        card.addEventListener('click', function() {
-          updateCardPrices(this);
-        });
-      });
-
-      // Update refresh all prices button
+      // Remove the duplicate updateCardPrices function and event handlers
+      // They are already defined in card_prices.js
+      
+      // Just keep the refresh button handler
       document.getElementById('refresh-all-prices').addEventListener('click', function() {
-        this.disabled = true;
-        const cards = document.querySelectorAll('.card');
-        let completed = 0;
-
-        cards.forEach(card => {
-          updateCardPrices(card).finally(() => {
-            completed++;
-            if (completed === cards.length) {
-              this.disabled = false;
-            }
-          });
-        });
+        refreshAllPrices();  // This function is defined in card_prices.js
       });
     });
   </script>

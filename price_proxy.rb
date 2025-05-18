@@ -1159,7 +1159,7 @@ def process_condition(page, product_url, condition, request_id, card_name)
                   try {
                     // Find the "listings" text - look for exact match of "X listings"
                     const listingsHeader = Array.from(document.querySelectorAll('*')).find(el => 
-                      el.textContent && /^\d+\s+listings$/i.test(el.textContent.trim())
+                      el.textContent && /^\\d+\\s+listings$/i.test(el.textContent.trim())
                     );
                     
                     if (!listingsHeader) {
@@ -1190,9 +1190,9 @@ def process_condition(page, product_url, condition, request_id, card_name)
                       }
                       
                       // Add this element's HTML with its class names
-                      html += `\n<!-- Element ${elementCount} -->\n`;
-                      html += `<!-- Classes: ${current.className} -->\n`;
-                      html += current.outerHTML + '\n';
+                      html += '\\n<!-- Element ' + elementCount + ' -->\\n';
+                      html += '<!-- Classes: ' + current.className + ' -->\\n';
+                      html += current.outerHTML + '\\n';
                       elementCount++;
                     }
 

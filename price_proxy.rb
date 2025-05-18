@@ -57,9 +57,8 @@ end
 $logger.info("=== Starting new price proxy server session ===")
 $logger.info("Log file cleared and initialized")
 
-# Global browser instance and context tracking
+# Global browser instance and tracking
 $browser = nil
-$browser_contexts = Concurrent::Hash.new  # Track active contexts
 $browser_mutex = Mutex.new
 $browser_retry_count = 0
 MAX_RETRIES = 3
@@ -71,18 +70,6 @@ $request_mutex = Mutex.new
 
 # Cleanup browser without mutex lock
 def cleanup_browser_internal
-  # Clean up all active contexts
-  $browser_contexts.each do |request_id, context_data|
-    begin
-      $logger.info("Cleaning up browser context for request #{request_id}")
-      context_data[:context].close if context_data[:context]
-    rescue => e
-      $logger.error("Error closing browser context for request #{request_id}: #{e.message}")
-    ensure
-      $browser_contexts.delete(request_id)
-    end
-  end
-  
   if $browser
     begin
       $logger.info("Cleaning up browser...")
@@ -104,162 +91,196 @@ def cleanup_browser
   end
 end
 
-# Get or initialize browser
+# Get or initialize browser with strict mutex locking
 def get_browser
-  if $browser.nil? || !$browser.connected?
-    $logger.info("Initializing new browser instance")
-    $browser = Puppeteer.launch(
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--disable-gpu',
-        '--window-size=1920,1080',
-        '--disable-web-security',
-        '--disable-features=IsolateOrigins,site-per-process',
-        '--disable-features=site-per-process',  # Disable site isolation
-        '--disable-features=IsolateOrigins',    # Disable origin isolation
-        '--disable-features=CrossSiteDocumentBlocking',  # Disable cross-site blocking
-        '--disable-features=CrossSiteDocumentBlockingAlways'        # Disable cross-site blocking
-      ],
-      ignore_default_args: ['--enable-automation']
-    )
-    
-    # Set up global browser settings
-    $browser.on('targetcreated') do |target|
-      if target.type == 'page'
-        begin
-          page = target.page
-          
-          # Disable frame handling for this page
-          page.evaluate(<<~JS)
-            function() {
-              // Disable iframe creation
-              const originalCreateElement = document.createElement;
-              document.createElement = function(tagName) {
-                if (tagName.toLowerCase() === 'iframe') {
-                  console.log('Prevented iframe creation');
-                  return null;
-                }
-                return originalCreateElement.apply(this, arguments);
-              };
-              
-              // Block frame navigation
-              window.addEventListener('beforeunload', (event) => {
-                if (window !== window.top) {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  return false;
-                }
-              }, true);
-              
-              // Block frame creation via innerHTML
-              const originalInnerHTML = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
-              Object.defineProperty(Element.prototype, 'innerHTML', {
-                set: function(value) {
-                  if (typeof value === 'string' && value.includes('<iframe')) {
-                    console.log('Prevented iframe creation via innerHTML');
-                    return;
-                  }
-                  originalInnerHTML.set.call(this, value);
-                },
-                get: originalInnerHTML.get
-              });
-            }
-          JS
-          
-          # Set viewport for each new page
-          page.viewport = Puppeteer::Viewport.new(
-            width: 1920,
-            height: 1080,
+  $browser_mutex.synchronize do
+    if $browser.nil? || !$browser.connected?
+      # First, ensure any existing browser is properly closed
+      cleanup_browser_internal if $browser
+      
+      $logger.info("Initializing new browser instance")
+      
+      $logger.info("Launching browser in headless mode with viewport: 2560x1440")
+      begin
+        $browser = Puppeteer.launch(
+          headless: true,  # Use the older headless mode
+          args: %w[
+            --no-sandbox
+            --disable-setuid-sandbox
+            --disable-dev-shm-usage
+            --disable-accelerated-2d-canvas
+            --disable-gpu
+            --window-size=2560,1440
+            --start-maximized
+            --force-device-scale-factor=1
+            --disable-web-security
+            --disable-features=CrossSiteDocumentBlocking
+            --disable-features=CrossSiteDocumentBlockingAlways
+            --user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
+          ],
+          default_viewport: {
+            width: 2560,
+            height: 1440,
             device_scale_factor: 1,
             is_mobile: false,
             has_touch: false,
             is_landscape: true
-          )
-          
-          # Set timeouts for each new page
-          page.set_default_navigation_timeout(30000)  # 30 seconds
-          page.set_default_timeout(30000)  # 30 seconds
-          
-          # Add a small random delay before each navigation
-          page.on('request') do |request|
-            if request.navigation_request?
-              # Block iframe requests
-              if request.frame && request.frame.parent_frame
-                $logger.info("Blocking iframe request: #{request.url}")
-                request.abort
-                next
-              end
-              sleep(rand(1..3))
-            end
-          end
-
-          # Add error handling for page crashes
-          page.on('error') do |err|
-            $logger.error("Page error: #{err.message}")
-          end
-
-          # Add console logging
-          page.on('console') do |msg|
-            $logger.debug("Browser console: #{msg.text}")
-          end
-        rescue => e
-          $logger.error("Error setting up new page: #{e.message}")
-        end
-      end
-    end
-  end
-  $browser
-end
-
-# Add a method to create a new context with proper tracking
-def create_browser_context(request_id)
-  browser = get_browser
-  context = browser.create_incognito_browser_context
-  
-  # Track the context
-  $browser_contexts[request_id] = {
-    context: context,
-    created_at: Time.now,
-    pages: []
-  }
-  
-  # Listen for target destruction to track when pages are closed
-  context.on('targetdestroyed') do |target|
-    if target.type == 'page'
-      $logger.info("Request #{request_id}: Page destroyed in context")
-      # Remove the page from our tracking if it exists
-      if $browser_contexts[request_id]
-        $browser_contexts[request_id][:pages].delete_if { |page| page.target == target }
-      end
-    end
-  end
-  
-  # Listen for target creation to track new pages
-  context.on('targetcreated') do |target|
-    if target.type == 'page'
-      begin
-        page = target.page
-        if $browser_contexts[request_id]
-          $browser_contexts[request_id][:pages] << page
-          $logger.info("Request #{request_id}: New page created in context")
-        end
+          },
+          ignore_default_args: ['--enable-automation']
+        )
+        
+        # Log the actual viewport after creating a test page
+        test_page = $browser.new_page
+        actual_viewport = test_page.evaluate(<<~JS)
+          function() {
+            return {
+              windowWidth: window.innerWidth,
+              windowHeight: window.innerHeight,
+              devicePixelRatio: window.devicePixelRatio,
+              screenWidth: window.screen.width,
+              screenHeight: window.screen.height,
+              viewportWidth: document.documentElement.clientWidth,
+              viewportHeight: document.documentElement.clientHeight,
+              userAgent: navigator.userAgent
+            };
+          }
+        JS
+        $logger.info("Browser viewport settings: #{actual_viewport.inspect}")
+        test_page.close
+        
+        # Reset retry count on successful initialization
+        $browser_retry_count = 0
       rescue => e
-        $logger.error("Request #{request_id}: Error handling new page: #{e.message}")
+        $logger.error("Failed to initialize browser: #{e.message}")
+        $browser_retry_count += 1
+        if $browser_retry_count >= MAX_RETRIES
+          raise "Failed to initialize browser after #{MAX_RETRIES} attempts: #{e.message}"
+        end
+        # Force cleanup and retry
+        cleanup_browser_internal
+        sleep(1)  # Brief pause before retry
+        retry
       end
     end
+    $browser
   end
-  
-  context
 end
 
-# Add a method to create a new page with proper settings
-def create_page
-  browser = get_browser
-  page = browser.new_page
+# Handle shutdown signals
+['INT', 'TERM'].each do |signal|
+  Signal.trap(signal) do
+    $logger.info("\nShutting down gracefully...")
+    cleanup_browser  # This is fine as it's not called from within a mutex lock
+    exit
+  end
+end
+
+# Clean up browser on server shutdown
+at_exit do
+  cleanup_browser
+end
+
+configure do
+  enable :cross_origin
+  set :allow_origin, "*"
+  set :allow_methods, [:get, :post, :options]
+  set :allow_credentials, true
+  set :max_age, "1728000"
+  set :expose_headers, ['Content-Type']
+  
+  # Suppress non-critical errors in terminal output
+  set :show_exceptions, false  # Disable default error handling
+  set :dump_errors, false      # Disable error dumping
+  set :raise_errors, true      # Raise errors instead of showing them
+  set :logging, false          # Disable default logging
+  
+  # Custom error handler
+  error do |e|
+    # List of non-critical errors to suppress
+    non_critical_errors = [
+      'Frame not found during evaluation',
+      'Protocol error',
+      'Target closed',
+      'Target destroyed',
+      'No target with given id found',
+      'Frame was detached',
+      'Frame was removed',
+      'Frame was not found',
+      'Navigation timeout',
+      'Target closed',
+      'Session closed',
+      'Connection closed',
+      'Browser closed',
+      'Context closed'
+    ]
+    
+    # Check if this is a non-critical error
+    if non_critical_errors.any? { |msg| e.message.include?(msg) }
+      # Log to file but don't show in terminal
+      $logger.warn("Suppressed non-critical error: #{e.message}")
+      # Return a clean error response
+      content_type :json
+      { error: 'Request failed', details: 'Internal server error' }.to_json
+    else
+      # For critical errors, log and show in terminal
+      $logger.error("Critical error: #{e.message}")
+      $logger.error(e.backtrace.join("\n"))
+      # Return a clean error response
+      content_type :json
+      { error: 'Request failed', details: 'Internal server error' }.to_json
+    end
+  end
+end
+
+# Override Sinatra's default logging
+class Sinatra::Base
+  def self.logger
+    $logger
+  end
+end
+
+# Disable Rack's default logging
+use Rack::CommonLogger, $logger
+
+# Add a custom logging middleware that only logs important requests
+class CustomLogger
+  def initialize(app)
+    @app = app
+  end
+
+  def call(env)
+    # Only log non-asset requests
+    if !env['PATH_INFO'].start_with?('/card_images/', '/card_prices.js')
+      $logger.info("#{env['REQUEST_METHOD']} #{env['PATH_INFO']}")
+    end
+    @app.call(env)
+  end
+end
+
+use CustomLogger
+
+# Enable CORS
+before do
+  response.headers["Access-Control-Allow-Origin"] = "*"
+  response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+  response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+end
+
+# Add a method to set up a new page with proper settings
+def setup_page(page, request_id)
+  # Set viewport for the page
+  page.viewport = Puppeteer::Viewport.new(
+    width: 2560,
+    height: 1440,
+    device_scale_factor: 1,
+    is_mobile: false,
+    has_touch: false,
+    is_landscape: true
+  )
+  
+  # Set timeouts for the page
+  page.set_default_navigation_timeout(30000)  # 30 seconds
+  page.set_default_timeout(30000)  # 30 seconds
   
   # Disable frame handling for this page
   page.evaluate(<<~JS)
@@ -282,143 +303,79 @@ def create_page
           return false;
         }
       }, true);
+      
+      // Block frame creation via innerHTML
+      const originalInnerHTML = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+      Object.defineProperty(Element.prototype, 'innerHTML', {
+        set: function(value) {
+          if (typeof value === 'string' && value.includes('<iframe')) {
+            console.log('Prevented iframe creation via innerHTML');
+            return;
+          }
+          originalInnerHTML.set.call(this, value);
+        },
+        get: originalInnerHTML.get
+      });
     }
   JS
   
-  # Set viewport for the new page
-  page.viewport = Puppeteer::Viewport.new(
-    width: 1920,
-    height: 1080,
-    device_scale_factor: 1,
-    is_mobile: false,
-    has_touch: false,
-    is_landscape: true
-  )
-  
-  # Set up page-specific settings
-  page.set_default_navigation_timeout(30000)
-  page.set_default_timeout(30000)
-  
-  # Set up request interception
+  # Enable request interception
   page.request_interception = true
   
-  # Add proper headers for TCGPlayer
+  # Add request handling
   page.on('request') do |request|
-    # Block iframe requests
-    if request.frame && request.frame.parent_frame
-      $logger.info("Blocking iframe request: #{request.url}")
-      request.abort
-      next
-    end
-    
-    headers = request.headers.merge({
-      'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-      'Accept-Language' => 'en-US,en;q=0.9',
-      'Accept-Encoding' => 'gzip, deflate, br',
-      'Connection' => 'keep-alive',
-      'Upgrade-Insecure-Requests' => '1',
-      'Sec-Fetch-Dest' => 'document',
-      'Sec-Fetch-Mode' => 'navigate',
-      'Sec-Fetch-Site' => 'none',
-      'Sec-Fetch-User' => '?1',
-      'Cache-Control' => 'max-age=0'
-    })
-
-    if request.navigation_request? && !request.redirect_chain.empty?
-      # Only prevent redirects to error pages
-      if request.url.include?('uhoh')
-        $logger.info("Request #{request_id}: Preventing redirect to error page: #{request.url}")
+    if request.navigation_request?
+      # Block iframe requests
+      if request.frame && request.frame.parent_frame
+        $logger.info("Request #{request_id}: Blocking iframe request: #{request.url}")
         request.abort
+        next
+      end
+      
+      # Add proper headers for TCGPlayer
+      headers = request.headers.merge({
+        'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language' => 'en-US,en;q=0.9',
+        'Accept-Encoding' => 'gzip, deflate, br',
+        'Connection' => 'keep-alive',
+        'Upgrade-Insecure-Requests' => '1',
+        'Sec-Fetch-Dest' => 'document',
+        'Sec-Fetch-Mode' => 'navigate',
+        'Sec-Fetch-Site' => 'none',
+        'Sec-Fetch-User' => '?1',
+        'Cache-Control' => 'max-age=0'
+      })
+
+      if !request.redirect_chain.empty?
+        # Only prevent redirects to error pages
+        if request.url.include?('uhoh')
+          $logger.info("Request #{request_id}: Preventing redirect to error page: #{request.url}")
+          request.abort
+        else
+          $logger.info("Request #{request_id}: Allowing redirect to: #{request.url}")
+          request.continue(headers: headers)
+        end
       else
-        $logger.info("Request #{request_id}: Allowing redirect to: #{request.url}")
+        # Allow all other requests, including API calls
         request.continue(headers: headers)
       end
     else
-      # Allow all other requests, including API calls
-      request.continue(headers: headers)
+      request.continue
     end
   end
 
-  # Add error handling
+  # Add error handling for page crashes
   page.on('error') do |err|
-    $logger.error("Page error: #{err.message}")
+    $logger.error("Request #{request_id}: Page error: #{err.message}")
   end
 
   # Add console logging
   page.on('console') do |msg|
-    $logger.debug("Browser console: #{msg.text}")
+    $logger.debug("Request #{request_id}: Browser console: #{msg.text}")
   end
-
+  
   page
-end
-
-# Add a method to handle rate limiting
-def handle_rate_limit(page, request_id)
-  begin
-    # Check if we're being rate limited using valid DOM selectors
-    rate_limit_check = page.evaluate(<<~JS)
-      function() {
-        // Get all error messages
-        const errorMessages = Array.from(document.querySelectorAll('.error-message, .rate-limit-message, [class*="error"], [class*="rate-limit"]'));
-        
-        // Check if any error message contains rate limit text
-        const hasRateLimit = errorMessages.some(element => {
-          const text = element.textContent.toLowerCase();
-          return text.includes('rate limit') || text.includes('too many requests');
-        });
-        
-        // Check for error pages
-        const hasErrorPage = document.querySelector('.error-page, .uhoh-page, [class*="error-page"]') !== null;
-        
-        return {
-          hasRateLimit,
-          hasErrorPage,
-          currentUrl: window.location.href,
-          errorMessages: errorMessages.map(el => el.textContent.trim())
-        };
-      }
-    JS
-    
-    if rate_limit_check['hasRateLimit'] || rate_limit_check['hasErrorPage']
-      $logger.warn("Request #{request_id}: Rate limit detected, waiting...")
-      $logger.info("Request #{request_id}: Error messages found: #{rate_limit_check['errorMessages'].inspect}")
-      # Take a longer break if we hit rate limiting
-      sleep(rand(10..15))
-      # Try refreshing the page
-      page.reload(wait_until: 'networkidle0')
-      return true
-    end
-  rescue => e
-    $logger.error("Request #{request_id}: Error checking rate limit: #{e.message}")
-    $logger.error("Request #{request_id}: Rate limit check error details: #{e.backtrace.join("\n")}")
-  end
-  false
-end
-
-# Handle shutdown signals
-['INT', 'TERM'].each do |signal|
-  Signal.trap(signal) do
-    $logger.info("\nShutting down gracefully...")
-    cleanup_browser  # This is fine as it's not called from within a mutex lock
-    exit
-  end
-end
-
-configure do
-  enable :cross_origin
-  set :allow_origin, "*"
-  set :allow_methods, [:get, :post, :options]
-  set :allow_credentials, true
-  set :max_age, "1728000"
-  set :expose_headers, ['Content-Type']
-end
-
-# Enable CORS
-before do
-  response.headers["Access-Control-Allow-Origin"] = "*"
-  response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-  response.headers["Access-Control-Allow-Headers"] = "Content-Type"
 end
 
 # Get both card legality and prices in a single request
@@ -471,52 +428,15 @@ get '/card_info' do
       legality = 'unknown'
     end
 
-    # Get or initialize browser and create context
+    # Get or initialize browser
     browser = get_browser
-    context = create_browser_context(request_id)
     
     begin
-      # Create a new page for the search
-      search_page = context.new_page
-      $browser_contexts[request_id][:pages] << search_page
+      # Use the persistent page instead of creating a new one
+      page = $persistent_page
       
-      # Enable request interception to prevent redirects
-      search_page.request_interception = true
-      search_page.on('request') do |request|
-        # Add proper headers for TCGPlayer
-        headers = request.headers.merge({
-          'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-          'Accept-Language' => 'en-US,en;q=0.9',
-          'Accept-Encoding' => 'gzip, deflate, br',
-          'Connection' => 'keep-alive',
-          'Upgrade-Insecure-Requests' => '1',
-          'Sec-Fetch-Dest' => 'document',
-          'Sec-Fetch-Mode' => 'navigate',
-          'Sec-Fetch-Site' => 'none',
-          'Sec-Fetch-User' => '?1',
-          'Cache-Control' => 'max-age=0'
-        })
-
-        if request.navigation_request? && !request.redirect_chain.empty?
-          # Only prevent redirects to error pages
-          if request.url.include?('uhoh')
-            $logger.info("Request #{request_id}: Preventing redirect to error page: #{request.url}")
-            request.abort
-          else
-            $logger.info("Request #{request_id}: Allowing redirect to: #{request.url}")
-            request.continue(headers: headers)
-          end
-        else
-          # Allow all other requests, including API calls
-          request.continue(headers: headers)
-        end
-      end
-      
-      # Set up console log capture
-      search_page.on('console') do |msg|
-        $logger.info("Request #{request_id}: Browser console: #{msg.text}")
-      end
+      # Clear any existing content
+      page.goto('about:blank', wait_until: 'networkidle0')
       
       # Navigate to TCGPlayer search
       $logger.info("Request #{request_id}: Navigating to TCGPlayer search for: #{card_name}")
@@ -524,18 +444,18 @@ get '/card_info' do
       $logger.info("Request #{request_id}: Search URL: #{search_url}")
       
       begin
-        response = search_page.goto(search_url, wait_until: 'networkidle0')
+        response = page.goto(search_url, wait_until: 'networkidle0')
         $logger.info("Request #{request_id}: Search page response status: #{response.status}")
         
         # Wait for the search results to load
         begin
-          search_page.wait_for_selector('.search-result, .product-card, [class*="product"], [class*="listing"]', timeout: 10000)
+          page.wait_for_selector('.search-result, .product-card, [class*="product"], [class*="listing"]', timeout: 10000)
           $logger.info("Request #{request_id}: Search results found")
         rescue => e
           $logger.error("Request #{request_id}: Timeout waiting for search results: #{e.message}")
           # Take a screenshot for debugging
           screenshot_path = "search_error_#{Time.now.to_i}.png"
-          search_page.screenshot(path: screenshot_path)
+          page.screenshot(path: screenshot_path)
           $logger.info("Request #{request_id}: Saved error screenshot to #{screenshot_path}")
         end
         
@@ -543,12 +463,12 @@ get '/card_info' do
         sleep(2)
         
         # Log the page content for debugging
-        $logger.info("Request #{request_id}: Page title: #{search_page.title}")
-        $logger.info("Request #{request_id}: Current URL: #{search_page.url}")
+        $logger.info("Request #{request_id}: Page title: #{page.title}")
+        $logger.info("Request #{request_id}: Current URL: #{page.url}")
         
         # Find the lowest priced valid product from the search results
         card_name = card_name.strip  # Normalize the card name in Ruby first
-        lowest_priced_product = search_page.evaluate(<<~'JS', { cardName: card_name }.to_json)
+        lowest_priced_product = page.evaluate(<<~'JS', { cardName: card_name }.to_json)
           function(params) {
             const cardName = JSON.parse(params).cardName;
             console.log('Searching for card:', cardName);
@@ -816,59 +736,21 @@ get '/card_info' do
           # Stop if we've found both conditions
           break if found_conditions >= 2
           
-          # Create a new page for each condition
-          condition_page = context.new_page
-          condition_page.default_navigation_timeout = 30000  # 30 seconds
-          condition_page.default_timeout = 30000  # 30 seconds
-          
-          # Enable request interception for condition page too
-          condition_page.request_interception = true
-          condition_page.on('request') do |request|
-            # Add proper headers for TCGPlayer
-            headers = request.headers.merge({
-              'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-              'Accept-Language' => 'en-US,en;q=0.9',
-              'Accept-Encoding' => 'gzip, deflate, br',
-              'Connection' => 'keep-alive',
-              'Upgrade-Insecure-Requests' => '1',
-              'Sec-Fetch-Dest' => 'document',
-              'Sec-Fetch-Mode' => 'navigate',
-              'Sec-Fetch-Site' => 'none',
-              'Sec-Fetch-User' => '?1',
-              'Cache-Control' => 'max-age=0'
-            })
-
-            if request.navigation_request? && !request.redirect_chain.empty?
-              # Only prevent redirects to error pages
-              if request.url.include?('uhoh')
-                $logger.info("Request #{request_id}: Preventing redirect to error page: #{request.url}")
-                request.abort
-              else
-                $logger.info("Request #{request_id}: Allowing redirect to: #{request.url}")
-                request.continue(headers: headers)
-              end
-            else
-              # Allow all other requests, including API calls
-              request.continue(headers: headers)
-            end
+          # Process each condition sequentially using the same page
+          $logger.info("Request #{request_id}: Processing condition: #{condition}")
+          result = process_condition(page, lowest_priced_product['url'], condition, request_id, card_name)
+          $logger.info("Request #{request_id}: Condition result: #{result.inspect}")
+          if result
+            prices[condition] = {
+              'price' => result['price'],
+              'url' => result['url']
+            }
+            found_conditions += 1
+            found_prices = true
           end
           
-          begin
-            $logger.info("Request #{request_id}: Processing condition: #{condition}")
-            result = process_condition(condition_page, lowest_priced_product['url'], condition, request_id, card_name)
-            $logger.info("Request #{request_id}: Condition result: #{result.inspect}")
-            if result
-              prices[condition] = {
-                'price' => result['price'],
-                'url' => result['url']
-              }
-              found_conditions += 1
-              found_prices = true
-            end
-          ensure
-            condition_page.close
-          end
+          # Add a small delay between conditions
+          sleep(rand(2..4))
         end
         
         if prices.empty?
@@ -905,28 +787,12 @@ get '/card_info' do
         response
         
       ensure
-        # Clean up the context and its pages
-        if context
-          begin
-            # Close all pages in the context
-            if $browser_contexts[request_id]
-              $browser_contexts[request_id][:pages].each do |page|
-                begin
-                  page.close
-                rescue => e
-                  $logger.error("Request #{request_id}: Error closing page: #{e.message}")
-                end
-              end
-            end
-            
-            # Close the context
-            context.close
-            $logger.info("Request #{request_id}: Closed browser context and pages")
-          rescue => e
-            $logger.error("Request #{request_id}: Error closing browser context: #{e.message}")
-          ensure
-            $browser_contexts.delete(request_id)
-          end
+        # Close the page
+        begin
+          page.close
+          $logger.info("Request #{request_id}: Closed browser page")
+        rescue => e
+          $logger.error("Request #{request_id}: Error closing browser page: #{e.message}")
         end
       end
       
@@ -947,35 +813,6 @@ get '/card_info' do
       }
       
       error_response
-    ensure
-      # Clear old requests (older than 5 minutes)
-      $active_requests.delete_if do |_, request|
-        request[:timestamp] < (Time.now - 300)  # 5 minutes
-      end
-      
-      # Clean up old contexts (older than 10 minutes)
-      $browser_contexts.delete_if do |_, context_data|
-        if context_data[:created_at] < (Time.now - 600)  # 10 minutes
-          begin
-            # Close any remaining pages
-            context_data[:pages].each do |page|
-              begin
-                page.close
-              rescue => e
-                $logger.error("Error closing stale page: #{e.message}")
-              end
-            end
-            # Close the context
-            context_data[:context].close
-            true  # Return true to delete the context
-          rescue => e
-            $logger.error("Error cleaning up stale context: #{e.message}")
-            true  # Still return true to delete the context
-          end
-        else
-          false  # Keep contexts that aren't stale
-        end
-      end
     end
   end
 end
@@ -1574,6 +1411,49 @@ def safe_evaluate(page, script, request_id = nil)
     $logger.error("Request #{request_id}: Error during page evaluation: #{e.message}")
     nil
   end
+end
+
+# Add a method to handle rate limiting
+def handle_rate_limit(page, request_id)
+  begin
+    # Check if we're being rate limited using valid DOM selectors
+    rate_limit_check = page.evaluate(<<~JS)
+      function() {
+        // Get all error messages
+        const errorMessages = Array.from(document.querySelectorAll('.error-message, .rate-limit-message, [class*="error"], [class*="rate-limit"]'));
+        
+        // Check if any error message contains rate limit text
+        const hasRateLimit = errorMessages.some(element => {
+          const text = element.textContent.toLowerCase();
+          return text.includes('rate limit') || text.includes('too many requests');
+        });
+        
+        // Check for error pages
+        const hasErrorPage = document.querySelector('.error-page, .uhoh-page, [class*="error-page"]') !== null;
+        
+        return {
+          hasRateLimit,
+          hasErrorPage,
+          currentUrl: window.location.href,
+          errorMessages: errorMessages.map(el => el.textContent.trim())
+        };
+      }
+    JS
+    
+    if rate_limit_check['hasRateLimit'] || rate_limit_check['hasErrorPage']
+      $logger.warn("Request #{request_id}: Rate limit detected, waiting...")
+      $logger.info("Request #{request_id}: Error messages found: #{rate_limit_check['errorMessages'].inspect}")
+      # Take a longer break if we hit rate limiting
+      sleep(rand(10..15))
+      # Try refreshing the page
+      page.reload(wait_until: 'networkidle0')
+      return true
+    end
+  rescue => e
+    $logger.error("Request #{request_id}: Error checking rate limit: #{e.message}")
+    $logger.error("Request #{request_id}: Rate limit check error details: #{e.backtrace.join("\n")}")
+  end
+  false
 end
 
 puts "Price proxy server starting on http://localhost:4567"

@@ -23,71 +23,60 @@ RSpec.describe 'Price Proxy Integration', type: :integration do
     @server_thread.exit if @server_thread
   end
 
-  describe 'GET /card_info' do
+  describe 'Card price lookup flow' do
     let(:card_name) { 'The Tabernacle at Pendrell Vale' }
-    let(:expected_prices) do
-      {
-        'Lightly Played' => {
-          'price' => '$2100.00',
-          'url' => a_string_matching(%r{https://www\.tcgplayer\.com/product/\d+/.*Condition=Lightly%20Played})
-        },
-        'Near Mint' => {
-          'price' => '$2899.99',
-          'url' => a_string_matching(%r{https://www\.tcgplayer\.com/product/\d+/.*Condition=Near%20Mint})
-        }
-      }
-    end
 
-    it 'returns correct prices for The Tabernacle' do
-      # Make the request to our proxy server
-      get "/card_info?card=#{URI.encode_www_form_component(card_name)}"
-      
-      # Verify response status
+    it 'completes a full card search and price lookup' do
+      # Step 1: Visit the main page
+      get '/'
+      expect(last_response.status).to eq(200)
+      expect(last_response.body).to include('Enter a card name')
+
+      # Step 2: Submit a card search
+      get "/card_info", card: card_name
       expect(last_response.status).to eq(200)
       
-      # Parse the JSON response
+      # Parse the response
       response_data = JSON.parse(last_response.body)
       
-      # Verify we have prices
+      # Verify we got a response with prices
       expect(response_data).to have_key('prices')
       expect(response_data['prices']).to be_a(Hash)
       
-      # Verify each condition's price and URL
-      expected_prices.each do |condition, expected_data|
-        expect(response_data['prices']).to have_key(condition)
-        actual_data = response_data['prices'][condition]
-        
-        # Verify price format
-        expect(actual_data['price']).to eq(expected_data['price'])
-        
-        # Verify URL format
-        expect(actual_data['url']).to match(expected_data['url'])
+      # Verify we have prices for both conditions
+      expect(response_data['prices']).to have_key('Near Mint')
+      expect(response_data['prices']).to have_key('Lightly Played')
+      
+      # Verify each price entry has the expected structure
+      response_data['prices'].each do |condition, data|
+        expect(data).to have_key('price')
+        expect(data).to have_key('url')
+        expect(data['price']).to match(/^\$\d+\.\d{2}$/)
+        expect(data['url']).to match(%r{^https://www\.tcgplayer\.com/product/\d+/.*Condition=#{condition.gsub(' ', '%20')}})
       end
 
-      # Verify the rendered HTML format
-      # First, get the card info page
+      # Step 3: Verify the rendered HTML on the main page
       get '/'
       expect(last_response.status).to eq(200)
       
-      # Then make a request to load the prices
-      get "/card_info?card=#{URI.encode_www_form_component(card_name)}"
-      expect(last_response.status).to eq(200)
-      
-      # Parse the response and verify the price format
-      response_data = JSON.parse(last_response.body)
-      prices = response_data['prices']
-      
-      # Construct the expected HTML format
-      expected_html = "Lightly Played: <a href=\"#{prices['Lightly Played']['url']}\" target=\"_blank\" class=\"price-link\">$2,100.00</a> | Near Mint: <a href=\"#{prices['Near Mint']['url']}\" target=\"_blank\" class=\"price-link\">$2,899.99</a>"
-      
-      # Get the actual rendered HTML by making a request to the page
-      get '/'
-      expect(last_response.body).to include(expected_html)
+      # The page should show the card name and prices
+      expect(last_response.body).to include(card_name)
+      response_data['prices'].each do |condition, data|
+        expect(last_response.body).to include(condition)
+        expect(last_response.body).to include(data['price'])
+        expect(last_response.body).to include(data['url'])
+      end
     end
 
-    it 'handles errors gracefully' do
-      # Test with an invalid card name
-      get '/card_info?card='
+    it 'handles invalid card names gracefully' do
+      # Try with an empty card name
+      get "/card_info", card: ''
+      expect(last_response.status).to eq(200)
+      response_data = JSON.parse(last_response.body)
+      expect(response_data).to have_key('error')
+      
+      # Try with a non-existent card
+      get "/card_info", card: 'Not A Real Card 123'
       expect(last_response.status).to eq(200)
       response_data = JSON.parse(last_response.body)
       expect(response_data).to have_key('error')

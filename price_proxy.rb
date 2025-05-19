@@ -1243,6 +1243,7 @@ def process_condition(page, product_url, condition, request_id, card_name)
 
               if screenshot_count == 3  # Only log detailed info for the third screenshot
                 $logger.info("Request #{request_id}: === DETAILED LISTINGS INFO (3rd screenshot) ===")
+                require 'pry';binding.pry
                 if listings_html.is_a?(Hash) && listings_html['success']
                   $logger.info("  Found listings header: #{listings_html['headerText']}")
                   $logger.info("  === LISTINGS FOUND ===")
@@ -1278,11 +1279,13 @@ def process_condition(page, product_url, condition, request_id, card_name)
               end
 
               # If we found a valid price, return it immediately and break out of the loop
-              if listings_html.is_a?(Hash) && listings_html['success'] && listings_html['priceData'] && listings_html['priceData']['success']
-                $logger.info("Request #{request_id}: Found valid price: $#{listings_html['priceData']['price']}")
+              if listings_html.is_a?(Hash) && listings_html['success'] && listings_html['listings'][0]
+                base_price = parse_base_price(listings_html[0]['basePrice']['text'])
+                shipping_price = calculate_shipping_price(listings_html[0])
+                $logger.info("Request #{request_id}: Found valid price: $#{base_price}")
                 result = {
                   'success' => true,
-                  'price' => "$#{listings_html['priceData']['price']}",
+                  'price' => "$#{total_price_str(base_price, shipping_price)}",
                   'url' => listings_html['priceData']['url']
                 }
                 $logger.info("Request #{request_id}: Breaking out of screenshot loop with price: #{result.inspect}")
@@ -1357,6 +1360,46 @@ def safe_evaluate(page, script, request_id = nil)
     $logger.error("Request #{request_id}: Error during page evaluation: #{e.message}")
     nil
   end
+end
+
+# Helper method to parse a money-formatted string into cents
+def parse_base_price(price_text)
+  return 0 unless price_text.is_a?(String)
+  
+  # Remove any non-numeric characters except decimal point
+  numeric_str = price_text.gsub(/[^\d.]/, '')
+  return 0 if numeric_str.empty?
+  
+  # Convert to float and then to cents
+  (numeric_str.to_f * 100).round
+end
+
+# Helper method to calculate shipping price from a listing hash
+def calculate_shipping_price(listing)
+  return 0 unless listing.is_a?(Hash)
+  return 0 unless listing['shipping'].is_a?(Hash)
+  return 0 unless listing['shipping']['text'].is_a?(String)
+  
+  shipping_text = listing['shipping']['text'].strip.downcase
+  
+  # Check for free shipping indicators
+  return 0 if shipping_text.include?('free shipping') ||
+              shipping_text.include?('shipping included') ||
+              shipping_text.include?('free shipping over')
+  
+  # Look for shipping cost pattern
+  if shipping_text =~ /\+\s*\$(\d+\.?\d*)\s*shipping/i
+    # Convert to cents
+    (Regexp.last_match(1).to_f * 100).round
+  else
+    0
+  end
+end
+
+# Helper method to format total price as string
+def total_price_str(base_price_cents, shipping_price_cents)
+  total_cents = base_price_cents + shipping_price_cents
+  format('%.2f', total_cents / 100.0)
 end
 
 puts "Price proxy server starting on http://localhost:4567"

@@ -10,6 +10,7 @@ require 'fileutils'
 require 'uri'
 require 'securerandom'
 require_relative 'lib/logging'
+require_relative 'lib/screenshot_manager'
 
 set :port, 4567
 set :bind, '0.0.0.0'
@@ -436,6 +437,8 @@ end
 
 # Get both card legality and prices in a single request
 get '/card_info' do
+  # Delete all screenshots when a search is executed
+  ScreenshotManager.delete_all_screenshots
   content_type :json
   card_name = params['card']
   request_id = SecureRandom.uuid
@@ -548,14 +551,11 @@ get '/card_info' do
         # Wait for the search results to load
         begin
           search_page.wait_for_selector('.search-result, .product-card, [class*="product"], [class*="listing"]', timeout: 10000)
-          search_page.screenshot(path: './search_page.png')
           $logger.info("Request #{request_id}: Search results found")
         rescue => e
           $logger.error("Request #{request_id}: Timeout waiting for search results: #{e.message}")
           # Take a screenshot for debugging
-          screenshot_path = "search_error_#{Time.now.to_i}.png"
-          search_page.screenshot(path: screenshot_path)
-          $logger.info("Request #{request_id}: Saved error screenshot to #{screenshot_path}")
+          ScreenshotManager.take_error_screenshot(search_page, card_name, Time.now.to_i, $logger, request_id)
         end
         
         # Give extra time for dynamic content to stabilize
@@ -1086,9 +1086,7 @@ def process_condition(page, product_url, condition, request_id, card_name)
       max_screenshots = 3  # Only take 3 screenshots
 
       # Take initial screenshot immediately after page load
-      screenshot_path = "loading_sequence_#{condition}_#{screenshot_count}_#{Time.now.to_i}.png"
-      page.screenshot(path: screenshot_path, full_page: true)
-      $logger.info("Request #{request_id}: Saved initial screenshot to #{screenshot_path}")
+      ScreenshotManager.take_screenshot(page, "loading_sequence_#{condition}", screenshot_count, Time.now.to_i, $logger, request_id)
       screenshot_count += 1
       last_screenshot_time = Time.now
 

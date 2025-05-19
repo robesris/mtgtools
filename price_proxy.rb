@@ -935,7 +935,7 @@ get '/card_info' do
           # Extract just the numeric price from the price text
           price_value = data['price'].gsub(/[^\d.]/, '')
           formatted_prices[condition] = {
-            'price' => price_value,
+            'price' => "$#{price_value}",
             'url' => data['url']
           }
         end
@@ -1399,6 +1399,7 @@ end
 # Helper method to format total price as string
 def total_price_str(base_price_cents, shipping_price_cents)
   total_cents = base_price_cents + shipping_price_cents
+  # Return just the numeric value with 2 decimal places, no dollar sign
   format('%.2f', total_cents / 100.0)
 end
 

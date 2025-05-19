@@ -7,55 +7,16 @@ require 'puppeteer-ruby'
 require 'concurrent'  # For parallel processing
 require 'tmpdir'
 require 'fileutils'
-require 'logger'
 require 'uri'
 require 'securerandom'
+require_relative 'lib/logging'
 
 set :port, 4567
 set :bind, '0.0.0.0'
 set :public_folder, 'commander_cards'
 
-# Set up logging first
-LOG_FILE = 'price_proxy.log'
-File.delete(LOG_FILE) if File.exist?(LOG_FILE)  # Clear log at start
-$logger = Logger.new(LOG_FILE)
-$logger.level = Logger::INFO  # Only show INFO and above
-$logger.formatter = proc do |severity, datetime, progname, msg|
-  # Skip certain non-critical warnings
-  if severity == 'WARN' && msg.is_a?(String)
-    # List of warning messages we want to suppress
-    suppressed_warnings = [
-      'Frame not found during evaluation',
-      'Protocol error',
-      'Target closed',
-      'Target destroyed',
-      'No target with given id found',
-      'Frame was detached',
-      'Frame was removed',
-      'Frame was not found'
-    ]
-    
-    # Skip if this is a suppressed warning
-    return nil if suppressed_warnings.any? { |w| msg.include?(w) }
-  end
-  
-  # Truncate everything after the error message when it contains a Ruby object dump
-  formatted_msg = if msg.is_a?(String)
-    if msg.include?('#<')
-      # Keep everything up to and including the error message, then add truncation
-      msg.split(/#</).first.strip + " ...truncated..."
-    else
-      msg
-    end
-  else
-    msg.to_s.split(/#</).first.strip + " ...truncated..."
-  end
-  
-  # Only log if we haven't suppressed the message
-  "#{datetime.strftime('%Y-%m-%d %H:%M:%S')} [#{severity}] #{formatted_msg}\n" if formatted_msg
-end
-$logger.info("=== Starting new price proxy server session ===")
-$logger.info("Log file cleared and initialized")
+# Set up logging
+$logger = Logging.setup
 
 # Global browser instance and context tracking
 $browser = nil
@@ -139,15 +100,15 @@ def get_browser
           page = target.page
           
           # Set viewport size for each new page
-          page.client.send_message('Emulation.setDeviceMetricsOverride', {
-            width: 3000,
-            height: 2000,
-            deviceScaleFactor: 1,
-            mobile: false
-          })
+        #   page.client.send_message('Emulation.setDeviceMetricsOverride', {
+        #     width: 750,
+        #     height: 1000,
+        #     deviceScaleFactor: 1,
+        #     mobile: false
+        #   })
 
-          # Dispatch a window resize event to trigger layout reflow
-          page.evaluate('window.dispatchEvent(new Event("resize"))')
+        #   # Dispatch a window resize event to trigger layout reflow
+        #   page.evaluate('window.dispatchEvent(new Event("resize"))')
           
           # Disable frame handling for this page
           page.evaluate(<<~JS)
@@ -214,20 +175,20 @@ def get_browser
           end
           
           # Log the viewport size after setting it
-          actual_viewport = page.evaluate(<<~JS)
-            function() {
-              return {
-                windowWidth: window.innerWidth,
-                windowHeight: window.innerHeight,
-                devicePixelRatio: window.devicePixelRatio,
-                screenWidth: window.screen.width,
-                screenHeight: window.screen.height,
-                viewportWidth: document.documentElement.clientWidth,
-                viewportHeight: document.documentElement.clientHeight
-              };
-            }
-          JS
-          $logger.info("New page viewport after resize: #{actual_viewport.inspect}")
+        #   actual_viewport = page.evaluate(<<~JS)
+        #     function() {
+        #       return {
+        #         windowWidth: window.innerWidth,
+        #         windowHeight: window.innerHeight,
+        #         devicePixelRatio: window.devicePixelRatio,
+        #         screenWidth: window.screen.width,
+        #         screenHeight: window.screen.height,
+        #         viewportWidth: document.documentElement.clientWidth,
+        #         viewportHeight: document.documentElement.clientHeight
+        #       };
+        #     }
+        #   JS
+        #   $logger.info("New page viewport after resize: #{actual_viewport.inspect}")
         rescue => e
           $logger.error("Error setting up new page: #{e.message}")
         end
@@ -237,10 +198,10 @@ def get_browser
     # Create a test page to resize the browser
     test_page = $browser.new_page
     begin
-      # Use CDP to set a large viewport
+      # Use CDP to set a viewport large enough to see page contents
       test_page.client.send_message('Emulation.setDeviceMetricsOverride', {
-        width: 3000,
-        height: 2000,
+        width: 750,
+        height: 1000,
         deviceScaleFactor: 1,
         mobile: false
       })
@@ -339,8 +300,8 @@ def create_page
   
   # Set viewport for the new page
   page.viewport = Puppeteer::Viewport.new(
-    width: 1920,
-    height: 1080,
+    # width: 1920,
+    # height: 1080,
     device_scale_factor: 1,
     is_mobile: false,
     has_touch: false,
@@ -587,6 +548,7 @@ get '/card_info' do
         # Wait for the search results to load
         begin
           search_page.wait_for_selector('.search-result, .product-card, [class*="product"], [class*="listing"]', timeout: 10000)
+          search_page.screenshot(path: './search_page.png')
           $logger.info("Request #{request_id}: Search results found")
         rescue => e
           $logger.error("Request #{request_id}: Timeout waiting for search results: #{e.message}")
@@ -597,7 +559,7 @@ get '/card_info' do
         end
         
         # Give extra time for dynamic content to stabilize
-        sleep(2)
+        # sleep(2)
         
         # Log the page content for debugging
         $logger.info("Request #{request_id}: Page title: #{search_page.title}")
@@ -1096,7 +1058,7 @@ def process_condition(page, product_url, condition, request_id, card_name)
     
     begin
       # Add random delay before navigation
-      sleep(rand(2..4))
+    #   sleep(rand(2..4))
       
       # Navigate to the page with redirect prevention
       response = page.goto(filtered_url, 

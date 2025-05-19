@@ -151,8 +151,8 @@ def get_browser
           JS
           
           # Set timeouts for each new page
-          page.set_default_navigation_timeout(30000)  # 30 seconds
-          page.set_default_timeout(30000)  # 30 seconds
+          page.default_navigation_timeout = 30000  # 30 seconds
+          page.default_timeout = 30000  # 30 seconds
           
           # Add a small random delay before each navigation
           page.on('request') do |request|

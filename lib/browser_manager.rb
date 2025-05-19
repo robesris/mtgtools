@@ -117,8 +117,8 @@ class BrowserManager
       page = browser.new_page
       
       # Set up page-specific settings
-      page.set_default_navigation_timeout(30000)
-      page.set_default_timeout(30000)
+      page.default_navigation_timeout = 30000  # 30 seconds
+      page.default_timeout = 30000  # 30 seconds
       
       # Set up request interception
       page.request_interception = true

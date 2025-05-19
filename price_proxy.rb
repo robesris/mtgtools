@@ -1205,7 +1205,7 @@ def process_condition(page, product_url, condition, request_id, card_name)
                             success: true,
                             found: true,
                             price: (price + shippingPrice).toFixed(2),
-                            url: window.location.href,
+                            url: window.location.href,  // Use the current URL which is our filtered product page
                             details: {
                               basePrice: price.toFixed(2),
                               shippingPrice: shippingPrice.toFixed(2),
@@ -1279,16 +1279,15 @@ def process_condition(page, product_url, condition, request_id, card_name)
 
               # If we found a valid price, return it immediately and break out of the loop
               if listings_html.is_a?(Hash) && listings_html['success'] && listings_html['listings'][0]
-
                 base_price = parse_base_price(listings_html['listings'][0]['basePrice']['text'])
                 shipping_price = calculate_shipping_price(listings_html['listings'][0])
                 $logger.info("Request #{request_id}: Found valid price: $#{base_price}")
+                
                 result = {
                   'success' => true,
                   'price' => "$#{total_price_str(base_price, shipping_price)}",
-                  'url' => listings_html['priceData']['url']
+                  'url' => page.url  # Use the current page URL which is our filtered product page
                 }
-
                 $logger.info("Request #{request_id}: Breaking out of screenshot loop with price: #{result.inspect}")
                 return result  # This will exit both the loop and the process_condition method
               end

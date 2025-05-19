@@ -10,7 +10,14 @@ async function updateCardPrices(cardElement) {
   priceInfo.innerHTML = '<span class="loading">Loading prices</span>';
 
   try {
-    const response = await fetch(`http://localhost:4567/card_info?card=${encodeURIComponent(cardName)}`);
+    const response = await fetch('http://localhost:4567/card_info', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ card_name: cardName })
+    });
+    
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }

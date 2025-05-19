@@ -7,8 +7,42 @@ class CardSearch
   class << self
     def search_card(card_name, request_id)
       begin
+        # Clean up old search wait screenshots
+        Dir.glob("search_wait_*.png").each do |file|
+          begin
+            File.delete(file)
+            $logger.info("Request #{request_id}: Deleted old screenshot: #{file}")
+          rescue => e
+            $logger.error("Request #{request_id}: Error deleting old screenshot #{file}: #{e.message}")
+          end
+        end
+        
         # Create a new page for the search
         search_page = BrowserManager.create_page
+        
+        # Inject screenshot function
+        search_page.evaluate(<<~JS)
+          window.takeDebugScreenshot = async (prefix) => {
+            try {
+              // Take screenshot using Puppeteer's page.screenshot
+              await window.puppeteerScreenshot(prefix);
+              console.log('Took debug screenshot:', prefix);
+            } catch (e) {
+              console.error('Error taking debug screenshot:', e);
+            }
+          };
+        JS
+        
+        # Expose screenshot function to page
+        search_page.expose_function('puppeteerScreenshot', ->(prefix) {
+          begin
+            filename = "#{prefix}.png"
+            search_page.screenshot(path: filename)
+            $logger.info("Request #{request_id}: Took debug screenshot: #{filename}")
+          rescue => e
+            $logger.error("Request #{request_id}: Error taking debug screenshot: #{e.message}")
+          end
+        })
         
         # Navigate to TCGPlayer search
         $logger.info("Request #{request_id}: Navigating to TCGPlayer search for: #{card_name}")
@@ -41,8 +75,8 @@ class CardSearch
               const { cardName, cardSearchJs } = JSON.parse(params);
               console.log('Searching for card:', cardName);
               
-              // Evaluate the card search function
-              const cardSearchFn = eval(cardSearchJs);
+              // Create a function from the card search code and execute it
+              const cardSearchFn = Function('"use strict"; return (' + cardSearchJs + ')')();
               
               // Call the function with the parameters
               return cardSearchFn({ cardName });

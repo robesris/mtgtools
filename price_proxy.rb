@@ -478,6 +478,11 @@ get '/card_info' do
   content_type :json
   card_name = params['card']
   request_id = SecureRandom.uuid
+
+  Dir.glob("loading_sequence_*.png").each do |file|
+    File.delete(file) rescue nil
+  end
+
   $logger.info("Starting card info request #{request_id} for: #{card_name}")
   
   if card_name.nil? || card_name.empty?
@@ -935,7 +940,7 @@ get '/card_info' do
           # Extract just the numeric price from the price text, but preserve the $ prefix
           price_value = data['price'].gsub(/[^\d.$]/, '')  # Keep $ and decimal point
           formatted_prices[condition] = {
-            'price' => "$#{price_value}",
+            'price' => "#{price_value}",
             'url' => data['url']
           }
         end

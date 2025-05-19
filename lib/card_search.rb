@@ -36,16 +36,16 @@ class CardSearch
           
           # Find the lowest priced valid product from the search results
           card_name = card_name.strip  # Normalize the card name in Ruby first
-          lowest_priced_product = search_page.evaluate(<<~'JS', { cardName: card_name }.to_json)
+          lowest_priced_product = search_page.evaluate(<<~JS, { cardName: card_name, cardSearchJs: $card_search_js }.to_json)
             function(params) {
-              const cardName = JSON.parse(params).cardName;
+              const { cardName, cardSearchJs } = JSON.parse(params);
               console.log('Searching for card:', cardName);
               
-              // Store the cardSearch function in the global context
-              window.cardSearchFn = (#{$card_search_js})();
+              // Evaluate the card search function
+              const cardSearchFn = eval(cardSearchJs);
               
               // Call the function with the parameters
-              return window.cardSearchFn(params);
+              return cardSearchFn({ cardName });
             }
           JS
           

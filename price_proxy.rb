@@ -935,7 +935,7 @@ get '/card_info' do
           # Extract just the numeric price from the price text, but preserve the $ prefix
           price_value = data['price'].gsub(/[^\d.$]/, '')  # Keep $ and decimal point
           formatted_prices[condition] = {
-            'price' => price_value,
+            'price' => "$#{price_value}",
             'url' => data['url']
           }
         end
@@ -1154,57 +1154,88 @@ def process_condition(page, product_url, condition, request_id, card_name)
                     var listingItems = document.querySelectorAll('.listing-item');
                     var listings = [];
                     
+                    // First, collect all listings for logging
                     listingItems.forEach(function(item, index) {
                       var basePrice = item.querySelector('.listing-item__listing-data__info__price');
                       var shipping = item.querySelector('.shipping-messages__price');
+                      
+                      listings.push({
+                        index: index,
+                        containerClasses: item.className,
+                        basePrice: basePrice ? {
+                          text: basePrice.textContent.trim(),
+                          classes: basePrice.className
+                        } : null,
+                        shipping: shipping ? {
+                          text: shipping.textContent.trim(),
+                          classes: shipping.className
+                        } : null,
+                        html: item.outerHTML
+                      });
+                    });
+
+                    // Find the "listings" text (case insensitive, handles both singular and plural)
+                    var listingsHeader = null;
+                    var allElements = document.querySelectorAll("*");
+                    for (var i = 0; i < allElements.length; i++) {
+                      var el = allElements[i];
+                      if (el.textContent && /^[0-9]+\\s+[Ll]isting[s]?$/i.test(el.textContent.trim())) {
+                        listingsHeader = el;
+                        break;
+                      }
+                    }
+
+                    // Process first listing for price extraction
+                    var priceData = null;
+                    if (listingItems.length > 0) {
+                      var firstItem = listingItems[0];
+                      var basePrice = firstItem.querySelector('.listing-item__listing-data__info__price');
+                      var shipping = firstItem.querySelector('.shipping-messages__price');
                       
                       if (basePrice) {
                         var priceText = basePrice.textContent.trim();
                         var priceMatch = priceText.match(/\\$([0-9.]+)/);
                         if (priceMatch) {
                           var price = parseFloat(priceMatch[1]);
-                          listings.push({
-                            index: index,
-                            price: price,
-                            priceText: priceText,
-                            shipping: shipping ? shipping.textContent.trim() : null
-                          });
+                          var shippingText = shipping ? shipping.textContent.trim() : '';
+                          var shippingMatch = shippingText.match(/\\$([0-9.]+)/);
+                          var shippingPrice = shippingMatch ? parseFloat(shippingMatch[1]) : 0;
+                          
+                          priceData = {
+                            success: true,
+                            found: true,
+                            price: (price + shippingPrice).toFixed(2),
+                            url: window.location.href,  // Use the current URL which is our filtered product page
+                            details: {
+                              basePrice: price.toFixed(2),
+                              shippingPrice: shippingPrice.toFixed(2),
+                              shippingText: shippingText
+                            }
+                          };
                         }
                       }
-                    });
-
-                    // Sort listings by price
-                    listings.sort((a, b) => a.price - b.price);
-
-                    if (listings.length > 0) {
-                      var lowest = listings[0];
-                      return {
-                        success: true,
-                        found: true,
-                        lowestPrice: lowest.price.toFixed(2),
-                        lowestPriceUrl: window.location.href,
-                        totalListings: listings.length,
-                        listings: listings.map(l => ({
-                          price: l.price.toFixed(2),
-                          shipping: l.shipping
-                        }))
-                      };
                     }
 
+                    // Return both the listings data and price data
                     return {
-                      success: false,
-                      found: false,
-                      message: "No valid listings with prices found",
-                      listings: []
+                      success: true,
+                      found: true,
+                      headerText: listingsHeader ? listingsHeader.textContent : null,
+                      listings: listings,
+                      priceData: priceData || {
+                        success: false,
+                        found: false,
+                        message: "No valid price found in first listing"
+                      }
                     };
                   } catch (e) {
+                    console.error('Error processing listing:', e);
                     return { 
                       success: false,
                       found: false, 
                       error: e.toString(),
-                      message: "Error evaluating listings",
-                      stack: e.stack,
-                      listings: []
+                      message: "Error evaluating listing",
+                      stack: e.stack
                     };
                   }
                 }
@@ -1213,32 +1244,52 @@ def process_condition(page, product_url, condition, request_id, card_name)
               if screenshot_count == 3  # Only log detailed info for the third screenshot
                 $logger.info("Request #{request_id}: === DETAILED LISTINGS INFO (3rd screenshot) ===")
                 if listings_html.is_a?(Hash) && listings_html['success']
-                  $logger.info("  Found #{listings_html['totalListings']} valid listings")
-                  if listings_html['listings'].is_a?(Array)
-                    listings_html['listings'].each_with_index do |listing, index|
-                      $logger.info("  Listing #{index + 1}:")
-                      $logger.info("    Price: $#{listing['price']}")
-                      $logger.info("    Shipping: #{listing['shipping']}") if listing['shipping']
+                  $logger.info("  Found listings header: #{listings_html['headerText']}")
+                  $logger.info("  === LISTINGS FOUND ===")
+                  listings_html['listings'].each do |listing|
+                    $logger.info("  Listing #{listing['index'] + 1}:")
+                    $logger.info("    Container Classes: #{listing['containerClasses']}")
+                    if listing['basePrice']
+                      $logger.info("    Base Price: #{listing['basePrice']['text']}")
+                      $logger.info("    Base Price Classes: #{listing['basePrice']['classes']}")
                     end
+                    if listing['shipping']
+                      $logger.info("    Shipping: #{listing['shipping']['text']}")
+                      $logger.info("    Shipping Classes: #{listing['shipping']['classes']}")
+                    end
+                    $logger.info("    HTML: #{listing['html']}")
                   end
-                  $logger.info("  Lowest price: $#{listings_html['lowestPrice']}")
+
+                  # Log price data if found
+                  if listings_html['priceData'] && listings_html['priceData']['success']
+                    $logger.info("  === PRICE DATA ===")
+                    $logger.info("    Total Price: $#{listings_html['priceData']['price']}")
+                    $logger.info("    Base Price: $#{listings_html['priceData']['details']['basePrice']}")
+                    $logger.info("    Shipping: $#{listings_html['priceData']['details']['shippingPrice']}")
+                    $logger.info("    Shipping Text: #{listings_html['priceData']['details']['shippingText']}")
+                  end
                 elsif listings_html.is_a?(Hash) && listings_html['error']
-                  $logger.error("  Error evaluating listings: #{listings_html['error']}")
+                  $logger.error("  Error evaluating listing: #{listings_html['error']}")
                   $logger.error("  Stack trace: #{listings_html['stack']}")
                 else
-                  $logger.error("  No valid listings found")
+                  $logger.error("  No valid data found: #{listings_html['message']}")
                 end
                 $logger.info("=== END OF LISTINGS INFO ===")
               end
 
-              # If we found listings with prices, return the result
-              if listings_html.is_a?(Hash) && listings_html['success'] && listings_html['lowestPrice']
-                $logger.info("Request #{request_id}: Found valid price: $#{listings_html['lowestPrice']} from #{listings_html['totalListings']} listings")
-                return {
+              # If we found a valid price, return it immediately and break out of the loop
+              if listings_html.is_a?(Hash) && listings_html['success'] && listings_html['listings'][0]
+                base_price = parse_base_price(listings_html['listings'][0]['basePrice']['text'])
+                shipping_price = calculate_shipping_price(listings_html['listings'][0])
+                $logger.info("Request #{request_id}: Found valid price: $#{base_price}")
+                
+                result = {
                   'success' => true,
-                  'price' => "$#{listings_html['lowestPrice']}",
-                  'url' => listings_html['lowestPriceUrl']
+                  'price' => "$#{total_price_str(base_price, shipping_price)}",
+                  'url' => page.url  # Use the current page URL which is our filtered product page
                 }
+                $logger.info("Request #{request_id}: Breaking out of screenshot loop with price: #{result.inspect}")
+                return result  # This will exit both the loop and the process_condition method
               end
             rescue => e
               $logger.error("Request #{request_id}: Error evaluating listings HTML: #{e.message}")
@@ -1256,27 +1307,7 @@ def process_condition(page, product_url, condition, request_id, card_name)
         sleep(0.1)
       end
 
-      # After all screenshots are taken, log the page info (without HTML)
-      begin
-        page_info = page.evaluate(<<~'JS')
-          function() {
-            return {
-              url: window.location.href,
-              title: document.title
-            };
-          }
-        JS
-
-        $logger.info("Request #{request_id}: === PAGE INFO ===")
-        $logger.info("  URL: #{page_info['url']}")
-        $logger.info("  Title: #{page_info['title']}")
-        $logger.info("=== END OF PAGE INFO ===")
-      rescue => e
-        $logger.error("Request #{request_id}: Error capturing page info: #{e.message}")
-        $logger.error(e.backtrace.join("\n"))
-      end
-
-      # If we haven't found any listings with prices, return failure
+      # If we get here, we didn't find a valid price in any screenshot
       $logger.error("Request #{request_id}: No valid listings found after all screenshots")
       return {
         'success' => false,
@@ -1329,6 +1360,47 @@ def safe_evaluate(page, script, request_id = nil)
     $logger.error("Request #{request_id}: Error during page evaluation: #{e.message}")
     nil
   end
+end
+
+# Helper method to parse a money-formatted string into cents
+def parse_base_price(price_text)
+  return 0 unless price_text.is_a?(String)
+  
+  # Remove any non-numeric characters except decimal point
+  numeric_str = price_text.gsub(/[^\d.]/, '')
+  return 0 if numeric_str.empty?
+  
+  # Convert to float and then to cents
+  (numeric_str.to_f * 100).round
+end
+
+# Helper method to calculate shipping price from a listing hash
+def calculate_shipping_price(listing)
+  return 0 unless listing.is_a?(Hash)
+  return 0 unless listing['shipping'].is_a?(Hash)
+  return 0 unless listing['shipping']['text'].is_a?(String)
+  
+  shipping_text = listing['shipping']['text'].strip.downcase
+  
+  # Check for free shipping indicators
+  return 0 if shipping_text.include?('free shipping') ||
+              shipping_text.include?('shipping included') ||
+              shipping_text.include?('free shipping over')
+  
+  # Look for shipping cost pattern
+  if shipping_text =~ /\+\s*\$(\d+\.?\d*)\s*shipping/i
+    # Convert to cents
+    (Regexp.last_match(1).to_f * 100).round
+  else
+    0
+  end
+end
+
+# Helper method to format total price as string
+def total_price_str(base_price_cents, shipping_price_cents)
+  total_cents = base_price_cents + shipping_price_cents
+  # Return just the numeric value with 2 decimal places, no dollar sign
+  format('%.2f', total_cents / 100.0)
 end
 
 puts "Price proxy server starting on http://localhost:4567"

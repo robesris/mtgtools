@@ -1243,7 +1243,6 @@ def process_condition(page, product_url, condition, request_id, card_name)
 
               if screenshot_count == 3  # Only log detailed info for the third screenshot
                 $logger.info("Request #{request_id}: === DETAILED LISTINGS INFO (3rd screenshot) ===")
-                require 'pry';binding.pry
                 if listings_html.is_a?(Hash) && listings_html['success']
                   $logger.info("  Found listings header: #{listings_html['headerText']}")
                   $logger.info("  === LISTINGS FOUND ===")
@@ -1280,14 +1279,16 @@ def process_condition(page, product_url, condition, request_id, card_name)
 
               # If we found a valid price, return it immediately and break out of the loop
               if listings_html.is_a?(Hash) && listings_html['success'] && listings_html['listings'][0]
-                base_price = parse_base_price(listings_html[0]['basePrice']['text'])
-                shipping_price = calculate_shipping_price(listings_html[0])
+
+                base_price = parse_base_price(listings_html['listings'][0]['basePrice']['text'])
+                shipping_price = calculate_shipping_price(listings_html['listings'][0])
                 $logger.info("Request #{request_id}: Found valid price: $#{base_price}")
                 result = {
                   'success' => true,
                   'price' => "$#{total_price_str(base_price, shipping_price)}",
                   'url' => listings_html['priceData']['url']
                 }
+
                 $logger.info("Request #{request_id}: Breaking out of screenshot loop with price: #{result.inspect}")
                 return result  # This will exit both the loop and the process_condition method
               end

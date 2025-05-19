@@ -15,3 +15,4 @@ gem "rackup", "~> 2.2"
 gem 'puppeteer-ruby'  # For browser automation in price scraping
 gem 'concurrent-ruby', '~> 1.2'  # For parallel processing
 gem 'json'
+gem 'pry'

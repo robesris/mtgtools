@@ -445,17 +445,46 @@ before do
 end
 
 # Load the card search JavaScript
-$card_search_js = File.read('lib/js/card_search.js')
+$card_search_js = File.read('lib/js/card_search.js').strip
 
 # Initialize browser on startup
 begin
   $logger.info("Initializing browser on startup...")
   $browser = BrowserManager.get_browser
+  
+  # Expose the card search function to all pages (with error logging)
+  $browser.on('targetcreated') do |target|
+    if target.type == 'page'
+      target.page.then do |page|
+        begin
+          page.evaluate(<<~JS)
+            (function() {
+              try {
+                 // Define the card search function in the global scope
+                 window.cardSearch = #{File.read('lib/js/card_search.js')};
+                 console.log("Card search function injected (global)");
+              } catch (e) {
+                 console.error("Error injecting card search (global):", e);
+                 # Re-throw so that the server does not start with a broken browser
+                 raise e
+              }
+            })();
+          JS
+        rescue => e
+          $logger.error("(Ruby) Error injecting card search (global) (page #{page.url}): #{e.message} (stack: #{e.backtrace.join("\n")})");
+          # Re-throw so that the server does not start with a broken browser
+          raise e
+        end
+      end
+    end
+  end
+  
   $logger.info("Browser initialized successfully")
 rescue => e
   $logger.error("Failed to initialize browser: #{e.message}")
   $logger.error(e.backtrace.join("\n"))
-  raise e  # Re-raise to prevent server from starting with a broken browser
+  # Re-throw so that the server does not start with a broken browser
+  raise e
 end
 
 # Clean up browser on shutdown

@@ -20,6 +20,59 @@ class CardSearch
         # Create a new page for the search
         search_page = BrowserManager.create_page
         
+        # Inject the card search function first
+        js_code = File.read('lib/js/card_search.js')
+        begin
+          $logger.info("Request #{request_id}: Injecting card search function")
+          
+          # Wrap the code in a function that will be immediately executed
+          wrapped_js = <<~JS
+            (function() {
+              #{js_code}
+              return typeof window.cardSearch === 'function';
+            })();
+          JS
+          
+          # Evaluate the wrapped code
+          initialization_result = search_page.evaluate(wrapped_js)
+          unless initialization_result
+            raise "Failed to initialize card search function - initialization returned false"
+          end
+          
+          # Verify the function exists and is callable
+          function_exists = search_page.evaluate(<<~JS)
+            (function() {
+              try {
+                if (typeof window.cardSearch !== 'function') {
+                  console.error('cardSearch is not a function');
+                  return false;
+                }
+                // Try a test call to ensure it's properly defined
+                const testResult = window.cardSearch({ cardName: 'test' });
+                if (!(testResult instanceof Promise)) {
+                  console.error('cardSearch did not return a Promise');
+                  return false;
+                }
+                console.log('Successfully verified cardSearch function');
+                return true;
+              } catch (error) {
+                console.error('Error verifying cardSearch function:', error);
+                return false;
+              }
+            })()
+          JS
+          
+          unless function_exists
+            raise "Failed to verify card search function - check browser console for details"
+          end
+          
+          $logger.info("Request #{request_id}: Successfully injected and verified card search function")
+        rescue => e
+          $logger.error("Request #{request_id}: Error injecting card search function: #{e.message}")
+          $logger.error(e.backtrace.join("\n"))
+          raise
+        end
+        
         # Inject screenshot function
         search_page.evaluate(<<~JS)
           window.takeDebugScreenshot = async (prefix) => {
@@ -70,16 +123,17 @@ class CardSearch
           
           # Find the lowest priced valid product from the search results
           card_name = card_name.strip  # Normalize the card name in Ruby first
-          lowest_priced_product = search_page.evaluate(<<~JS, { cardName: card_name, cardSearchJs: $card_search_js }.to_json)
+          lowest_priced_product = search_page.evaluate(<<~JS, { cardName: card_name }.to_json)
             function(params) {
-              const { cardName, cardSearchJs } = JSON.parse(params);
+              const { cardName } = JSON.parse(params);
               console.log('Searching for card:', cardName);
               
-              // Create a function from the card search code and execute it
-              const cardSearchFn = Function('"use strict"; return (' + cardSearchJs + ')')();
+              // Use the globally exposed cardSearch function
+              if (typeof window.cardSearch !== 'function') {
+                throw new Error('Card search function not found in global scope');
+              }
               
-              // Call the function with the parameters
-              return cardSearchFn({ cardName });
+              return window.cardSearch({ cardName });
             }
           JS
           

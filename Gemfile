@@ -16,3 +16,10 @@ gem 'puppeteer-ruby'  # For browser automation in price scraping
 gem 'concurrent-ruby', '~> 1.2'  # For parallel processing
 gem 'json'
 gem 'pry'
+
+group :test do
+  gem 'rspec', '~> 3.12'
+  gem 'rack-test', '~> 2.1'
+  gem 'capybara', '~> 3.39'
+  gem 'selenium-webdriver', '~> 4.10'
+end

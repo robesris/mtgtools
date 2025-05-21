@@ -3,11 +3,8 @@ require 'logger'
 module Logging
   LOG_FILE = 'price_proxy.log'
 
-  def self.setup_logger
-    File.delete(LOG_FILE) if File.exist?(LOG_FILE)  # Clear log at start
-    logger = Logger.new(LOG_FILE)
-    logger.level = Logger::INFO  # Only show INFO and above
-    logger.formatter = proc do |severity, datetime, progname, msg|
+  def self.create_formatter
+    proc do |severity, datetime, progname, msg|
       # Skip certain non-critical warnings
       if severity == 'WARN' && msg.is_a?(String)
         # List of warning messages we want to suppress
@@ -24,6 +21,10 @@ module Logging
         
         # Skip if this is a suppressed warning
         return nil if suppressed_warnings.any? { |w| msg.include?(w) }
+
+        # For WARN level, only show the first line of the message
+        # This removes any backtrace or additional context
+        msg = msg.split("\n").first if msg.include?("\n")
       end
       
       # Truncate everything after the error message when it contains a Ruby object dump
@@ -41,10 +42,47 @@ module Logging
       # Only log if we haven't suppressed the message
       "#{datetime.strftime('%Y-%m-%d %H:%M:%S')} [#{severity}] #{formatted_msg}\n" if formatted_msg
     end
-    logger
+  end
+
+  def self.setup_logger
+    # Clear log file at start
+    File.delete(LOG_FILE) if File.exist?(LOG_FILE)
+
+    # Create formatter
+    formatter = create_formatter
+
+    # Set up file logger
+    file_logger = Logger.new(LOG_FILE)
+    file_logger.level = Logger::INFO
+    file_logger.formatter = formatter
+
+    # Set up console logger
+    console_logger = Logger.new(STDOUT)
+    console_logger.level = Logger::INFO
+    console_logger.formatter = formatter
+
+    # Create a multi-logger that writes to both
+    MultiLogger.new(file_logger, console_logger)
   end
 
   def self.logger
     @logger ||= setup_logger
+  end
+
+  # A simple logger that writes to multiple loggers
+  class MultiLogger
+    def initialize(*loggers)
+      @loggers = loggers
+    end
+
+    def method_missing(method_name, *args, &block)
+      @loggers.each do |logger|
+        logger.send(method_name, *args, &block) if logger.respond_to?(method_name)
+      end
+    end
+
+    def respond_to_missing?(method_name, include_private = false)
+      @loggers.any? { |logger| logger.respond_to?(method_name, include_private) }
+    end
   end
 end 

@@ -10,52 +10,37 @@ require 'fileutils'
 require 'logger'
 require 'uri'
 require 'securerandom'
+require_relative 'lib/logging'
+require_relative 'lib/price_processor'
 
-set :port, 4567
+# Override Puppeteer's internal logging
+module Puppeteer
+  class Logger
+    def warn(message)
+      # Only show the first line of WARN messages
+      message = message.split("\n").first if message.is_a?(String)
+      super(message)
+    end
+  end
+end
+
+set :port, 4568
 set :bind, '0.0.0.0'
 set :public_folder, 'commander_cards'
 
-# Set up logging first
-LOG_FILE = 'price_proxy.log'
-File.delete(LOG_FILE) if File.exist?(LOG_FILE)  # Clear log at start
-$logger = Logger.new(LOG_FILE)
-$logger.level = Logger::INFO  # Only show INFO and above
-$logger.formatter = proc do |severity, datetime, progname, msg|
-  # Skip certain non-critical warnings
-  if severity == 'WARN' && msg.is_a?(String)
-    # List of warning messages we want to suppress
-    suppressed_warnings = [
-      'Frame not found during evaluation',
-      'Protocol error',
-      'Target closed',
-      'Target destroyed',
-      'No target with given id found',
-      'Frame was detached',
-      'Frame was removed',
-      'Frame was not found'
-    ]
-    
-    # Skip if this is a suppressed warning
-    return nil if suppressed_warnings.any? { |w| msg.include?(w) }
+# Set up file logging only
+$file_logger = Logging.logger
+$file_logger.info("=== Starting new price proxy server session ===")
+$file_logger.info("Log file cleared and initialized")
+
+# Override Sinatra's default logger to handle WARN messages without backtraces
+class Sinatra::Logger
+  def warn(message)
+    # Only show the first line of WARN messages
+    message = message.split("\n").first if message.is_a?(String)
+    super(message)
   end
-  
-  # Truncate everything after the error message when it contains a Ruby object dump
-  formatted_msg = if msg.is_a?(String)
-    if msg.include?('#<')
-      # Keep everything up to and including the error message, then add truncation
-      msg.split(/#</).first.strip + " ...truncated..."
-    else
-      msg
-    end
-  else
-    msg.to_s.split(/#</).first.strip + " ...truncated..."
-  end
-  
-  # Only log if we haven't suppressed the message
-  "#{datetime.strftime('%Y-%m-%d %H:%M:%S')} [#{severity}] #{formatted_msg}\n" if formatted_msg
 end
-$logger.info("=== Starting new price proxy server session ===")
-$logger.info("Log file cleared and initialized")
 
 # Global browser instance and context tracking
 $browser = nil
@@ -74,10 +59,10 @@ def cleanup_browser_internal
   # Clean up all active contexts
   $browser_contexts.each do |request_id, context_data|
     begin
-      $logger.info("Cleaning up browser context for request #{request_id}")
+      $file_logger.info("Cleaning up browser context for request #{request_id}")
       context_data[:context].close if context_data[:context]
     rescue => e
-      $logger.error("Error closing browser context for request #{request_id}: #{e.message}")
+      handle_puppeteer_error(e, request_id, "Context cleanup")
     ensure
       $browser_contexts.delete(request_id)
     end
@@ -85,10 +70,10 @@ def cleanup_browser_internal
   
   if $browser
     begin
-      $logger.info("Cleaning up browser...")
+      $file_logger.info("Cleaning up browser...")
       $browser.close
     rescue => e
-      $logger.error("Error closing browser: #{e.message}")
+      handle_puppeteer_error(e, nil, "Browser cleanup")
     ensure
       $browser = nil
       # Force garbage collection
@@ -107,7 +92,7 @@ end
 # Get or initialize browser
 def get_browser
   if $browser.nil? || !$browser.connected?
-    $logger.info("Initializing new browser instance")
+    $file_logger.info("Initializing new browser instance")
     $browser = Puppeteer.launch(
       headless: true,
       args: [
@@ -195,7 +180,7 @@ def get_browser
             if request.navigation_request?
               # Block iframe requests
               if request.frame && request.frame.parent_frame
-                $logger.info("Blocking iframe request: #{request.url}")
+                $file_logger.info("Blocking iframe request: #{request.url}")
                 request.abort
                 next
               end
@@ -205,12 +190,12 @@ def get_browser
 
           # Add error handling for page crashes
           page.on('error') do |err|
-            $logger.error("Page error: #{err.message}")
+            $file_logger.error("Page error: #{err.message}")
           end
 
           # Add console logging
           page.on('console') do |msg|
-            $logger.debug("Browser console: #{msg.text}")
+            $file_logger.debug("Browser console: #{msg.text}")
           end
           
           # Log the viewport size after setting it
@@ -227,9 +212,9 @@ def get_browser
               };
             }
           JS
-          $logger.info("New page viewport after resize: #{actual_viewport.inspect}")
+          $file_logger.info("New page viewport after resize: #{actual_viewport.inspect}")
         rescue => e
-          $logger.error("Error setting up new page: #{e.message}")
+          $file_logger.error("Error setting up new page: #{e.message}")
         end
       end
     end
@@ -259,7 +244,7 @@ def get_browser
           };
         }
       JS
-      $logger.info("Browser viewport after resize: #{actual_viewport.inspect}")
+      $file_logger.info("Browser viewport after resize: #{actual_viewport.inspect}")
     ensure
       test_page.close
     end
@@ -282,7 +267,7 @@ def create_browser_context(request_id)
   # Listen for target destruction to track when pages are closed
   context.on('targetdestroyed') do |target|
     if target.type == 'page'
-      $logger.info("Request #{request_id}: Page destroyed in context")
+      $file_logger.info("Request #{request_id}: Page destroyed in context")
       # Remove the page from our tracking if it exists
       if $browser_contexts[request_id]
         $browser_contexts[request_id][:pages].delete_if { |page| page.target == target }
@@ -297,10 +282,11 @@ def create_browser_context(request_id)
         page = target.page
         if $browser_contexts[request_id]
           $browser_contexts[request_id][:pages] << page
-          $logger.info("Request #{request_id}: New page created in context")
+          $file_logger.info("Request #{request_id}: New page created in context")
+          setup_page_error_handling(page, request_id)
         end
       rescue => e
-        $logger.error("Request #{request_id}: Error handling new page: #{e.message}")
+        handle_puppeteer_error(e, request_id, "Page creation")
       end
     end
   end
@@ -358,7 +344,7 @@ def create_page
   page.on('request') do |request|
     # Block iframe requests
     if request.frame && request.frame.parent_frame
-      $logger.info("Blocking iframe request: #{request.url}")
+      $file_logger.info("Blocking iframe request: #{request.url}")
       request.abort
       next
     end
@@ -380,10 +366,10 @@ def create_page
     if request.navigation_request? && !request.redirect_chain.empty?
       # Only prevent redirects to error pages
       if request.url.include?('uhoh')
-        $logger.info("Request #{request_id}: Preventing redirect to error page: #{request.url}")
+        $file_logger.info("Request #{request_id}: Preventing redirect to error page: #{request.url}")
         request.abort
       else
-        $logger.info("Request #{request_id}: Allowing redirect to: #{request.url}")
+        $file_logger.info("Request #{request_id}: Allowing redirect to: #{request.url}")
         request.continue(headers: headers)
       end
     else
@@ -392,15 +378,8 @@ def create_page
     end
   end
 
-  # Add error handling
-  page.on('error') do |err|
-    $logger.error("Page error: #{err.message}")
-  end
-
-  # Add console logging
-  page.on('console') do |msg|
-    $logger.debug("Browser console: #{msg.text}")
-  end
+  # Add error handling using the new method
+  setup_page_error_handling(page, nil)
 
   page
 end
@@ -433,8 +412,8 @@ def handle_rate_limit(page, request_id)
     JS
     
     if rate_limit_check['hasRateLimit'] || rate_limit_check['hasErrorPage']
-      $logger.warn("Request #{request_id}: Rate limit detected, waiting...")
-      $logger.info("Request #{request_id}: Error messages found: #{rate_limit_check['errorMessages'].inspect}")
+      $file_logger.warn("Request #{request_id}: Rate limit detected, waiting...")
+      $file_logger.info("Request #{request_id}: Error messages found: #{rate_limit_check['errorMessages'].inspect}")
       # Take a longer break if we hit rate limiting
       sleep(rand(10..15))
       # Try refreshing the page
@@ -442,8 +421,8 @@ def handle_rate_limit(page, request_id)
       return true
     end
   rescue => e
-    $logger.error("Request #{request_id}: Error checking rate limit: #{e.message}")
-    $logger.error("Request #{request_id}: Rate limit check error details: #{e.backtrace.join("\n")}")
+    $file_logger.error("Request #{request_id}: Error checking rate limit: #{e.message}")
+    $file_logger.error("Request #{request_id}: Rate limit check error details: #{e.backtrace.join("\n")}")
   end
   false
 end
@@ -451,7 +430,7 @@ end
 # Handle shutdown signals
 ['INT', 'TERM'].each do |signal|
   Signal.trap(signal) do
-    $logger.info("\nShutting down gracefully...")
+    $file_logger.info("\nShutting down gracefully...")
     cleanup_browser  # This is fine as it's not called from within a mutex lock
     exit
   end
@@ -478,10 +457,10 @@ get '/card_info' do
   content_type :json
   card_name = params['card']
   request_id = SecureRandom.uuid
-  $logger.info("Starting card info request #{request_id} for: #{card_name}")
+  $file_logger.info("Starting card info request #{request_id} for: #{card_name}")
   
   if card_name.nil? || card_name.empty?
-    $logger.error("No card name provided")
+    handle_puppeteer_error(ArgumentError.new("No card name provided"), request_id, "Validation")
     return { error: 'No card name provided' }.to_json
   end
 
@@ -489,10 +468,10 @@ get '/card_info' do
   cached_request = $active_requests[card_name]
   if cached_request
     if cached_request[:status] == 'complete'
-      $logger.info("Returning cached response for #{card_name}")
+      $file_logger.info("Returning cached response for #{card_name}")
       return cached_request[:data]
     elsif cached_request[:status] == 'error'
-      $logger.info("Returning cached error for #{card_name}")
+      $file_logger.info("Returning cached error for #{card_name}")
       return cached_request[:data]
     end
   end
@@ -508,18 +487,18 @@ get '/card_info' do
   begin
     # Get legality from Scryfall first
     begin
-      $logger.info("Request #{request_id}: Checking legality with Scryfall")
+      $file_logger.info("Request #{request_id}: Checking legality with Scryfall")
       legality_response = HTTParty.get("https://api.scryfall.com/cards/named?exact=#{CGI.escape(card_name)}")
       if legality_response.success?
         legality_data = JSON.parse(legality_response.body)
         legality = legality_data['legalities']&.fetch('commander', 'unknown')
-        $logger.info("Request #{request_id}: Legality for #{card_name}: #{legality}")
+        $file_logger.info("Request #{request_id}: Legality for #{card_name}: #{legality}")
       else
-        $logger.error("Request #{request_id}: Scryfall API error: #{legality_response.code} - #{legality_response.body}")
+        $file_logger.error("Request #{request_id}: Scryfall API error: #{legality_response.code} - #{legality_response.body}")
         legality = 'unknown'
       end
     rescue => e
-      $logger.error("Request #{request_id}: Error checking legality: #{e.message}")
+      $file_logger.error("Request #{request_id}: Error checking legality: #{e.message}")
       legality = 'unknown'
     end
 
@@ -553,10 +532,10 @@ get '/card_info' do
         if request.navigation_request? && !request.redirect_chain.empty?
           # Only prevent redirects to error pages
           if request.url.include?('uhoh')
-            $logger.info("Request #{request_id}: Preventing redirect to error page: #{request.url}")
+            $file_logger.info("Request #{request_id}: Preventing redirect to error page: #{request.url}")
             request.abort
           else
-            $logger.info("Request #{request_id}: Allowing redirect to: #{request.url}")
+            $file_logger.info("Request #{request_id}: Allowing redirect to: #{request.url}")
             request.continue(headers: headers)
           end
         else
@@ -567,36 +546,36 @@ get '/card_info' do
       
       # Set up console log capture
       search_page.on('console') do |msg|
-        $logger.info("Request #{request_id}: Browser console: #{msg.text}")
+        $file_logger.info("Request #{request_id}: Browser console: #{msg.text}")
       end
       
       # Navigate to TCGPlayer search
-      $logger.info("Request #{request_id}: Navigating to TCGPlayer search for: #{card_name}")
+      $file_logger.info("Request #{request_id}: Navigating to TCGPlayer search for: #{card_name}")
       search_url = "https://www.tcgplayer.com/search/magic/product?q=#{CGI.escape(card_name)}&view=grid"
-      $logger.info("Request #{request_id}: Search URL: #{search_url}")
+      $file_logger.info("Request #{request_id}: Search URL: #{search_url}")
       
       begin
         response = search_page.goto(search_url, wait_until: 'networkidle0')
-        $logger.info("Request #{request_id}: Search page response status: #{response.status}")
+        $file_logger.info("Request #{request_id}: Search page response status: #{response.status}")
         
         # Wait for the search results to load
         begin
           search_page.wait_for_selector('.search-result, .product-card, [class*="product"], [class*="listing"]', timeout: 10000)
-          $logger.info("Request #{request_id}: Search results found")
+          $file_logger.info("Request #{request_id}: Search results found")
         rescue => e
-          $logger.error("Request #{request_id}: Timeout waiting for search results: #{e.message}")
+          $file_logger.error("Request #{request_id}: Timeout waiting for search results: #{e.message}")
           # Take a screenshot for debugging
           screenshot_path = "search_error_#{Time.now.to_i}.png"
           search_page.screenshot(path: screenshot_path)
-          $logger.info("Request #{request_id}: Saved error screenshot to #{screenshot_path}")
+          $file_logger.info("Request #{request_id}: Saved error screenshot to #{screenshot_path}")
         end
         
         # Give extra time for dynamic content to stabilize
         sleep(2)
         
         # Log the page content for debugging
-        $logger.info("Request #{request_id}: Page title: #{search_page.title}")
-        $logger.info("Request #{request_id}: Current URL: #{search_page.url}")
+        $file_logger.info("Request #{request_id}: Page title: #{search_page.title}")
+        $file_logger.info("Request #{request_id}: Current URL: #{search_page.url}")
         
         # Find the lowest priced valid product from the search results
         card_name = card_name.strip  # Normalize the card name in Ruby first
@@ -852,11 +831,11 @@ get '/card_info' do
         JS
         
         if !lowest_priced_product
-          $logger.error("Request #{request_id}: No valid products found for: #{card_name}")
+          $file_logger.error("Request #{request_id}: No valid products found for: #{card_name}")
           return { error: 'No valid product found', legality: legality }.to_json
         end
         
-        $logger.info("Request #{request_id}: Found lowest priced product: #{lowest_priced_product['title']} at $#{lowest_priced_product['price']}")
+        $file_logger.info("Request #{request_id}: Found lowest priced product: #{lowest_priced_product['title']} at $#{lowest_priced_product['price']}")
         
         # Now we only need to process the single lowest-priced product
         found_prices = false
@@ -894,10 +873,10 @@ get '/card_info' do
             if request.navigation_request? && !request.redirect_chain.empty?
               # Only prevent redirects to error pages
               if request.url.include?('uhoh')
-                $logger.info("Request #{request_id}: Preventing redirect to error page: #{request.url}")
+                $file_logger.info("Request #{request_id}: Preventing redirect to error page: #{request.url}")
                 request.abort
               else
-                $logger.info("Request #{request_id}: Allowing redirect to: #{request.url}")
+                $file_logger.info("Request #{request_id}: Allowing redirect to: #{request.url}")
                 request.continue(headers: headers)
               end
             else
@@ -907,12 +886,12 @@ get '/card_info' do
           end
           
           begin
-            $logger.info("Request #{request_id}: Processing condition: #{condition}")
+            $file_logger.info("Request #{request_id}: Processing condition: #{condition}")
             result = process_condition(condition_page, lowest_priced_product['url'], condition, request_id, card_name)
-            $logger.info("Request #{request_id}: Condition result: #{result.inspect}")
+            $file_logger.info("Request #{request_id}: Condition result: #{result.inspect}")
             if result && result.is_a?(Hash) && result['success']
               prices[condition] = {
-                'price' => result['price'],
+                'price' => result['price'].to_s.gsub(/\$/,''),
                 'url' => result['url']
               }
               found_conditions += 1
@@ -924,21 +903,13 @@ get '/card_info' do
         end
         
         if prices.empty?
-          $logger.error("Request #{request_id}: No valid prices found for any condition")
+          $file_logger.error("Request #{request_id}: No valid prices found for any condition")
           return { error: 'No valid prices found', legality: legality }.to_json
         end
         
-        $logger.info("Request #{request_id}: Final prices: #{prices.inspect}")
+        $file_logger.info("Request #{request_id}: Final prices: #{prices.inspect}")
         # Format the response to match the original style
-        formatted_prices = {}
-        prices.each do |condition, data|
-          # Extract just the numeric price from the price text, but preserve the $ prefix
-          price_value = data['price'].gsub(/[^\d.$]/, '')  # Keep $ and decimal point
-          formatted_prices[condition] = {
-            'price' => "$#{price_value}",
-            'url' => data['url']
-          }
-        end
+        formatted_prices = PriceProcessor.format_prices(prices)
         
         # Combine prices and legality into a single response
         response = { 
@@ -966,16 +937,16 @@ get '/card_info' do
                 begin
                   page.close
                 rescue => e
-                  $logger.error("Request #{request_id}: Error closing page: #{e.message}")
+                  $file_logger.error("Request #{request_id}: Error closing page: #{e.message}")
                 end
               end
             end
             
             # Close the context
             context.close
-            $logger.info("Request #{request_id}: Closed browser context and pages")
+            $file_logger.info("Request #{request_id}: Closed browser context and pages")
           rescue => e
-            $logger.error("Request #{request_id}: Error closing browser context: #{e.message}")
+            $file_logger.error("Request #{request_id}: Error closing browser context: #{e.message}")
           ensure
             $browser_contexts.delete(request_id)
           end
@@ -983,8 +954,7 @@ get '/card_info' do
       end
       
     rescue => e
-      $logger.error("Request #{request_id}: Error processing request: #{e.message}")
-      $logger.error(e.backtrace.join("\n"))
+      handle_puppeteer_error(e, request_id, "Request processing")
       error_response = { 
         error: e.message,
         legality: legality  # Include legality even if price check failed
@@ -1014,14 +984,14 @@ get '/card_info' do
               begin
                 page.close
               rescue => e
-                $logger.error("Error closing stale page: #{e.message}")
+                $file_logger.error("Error closing stale page: #{e.message}")
               end
             end
             # Close the context
             context_data[:context].close
             true  # Return true to delete the context
           rescue => e
-            $logger.error("Error cleaning up stale context: #{e.message}")
+            $file_logger.error("Error cleaning up stale context: #{e.message}")
             true  # Still return true to delete the context
           end
         else
@@ -1087,7 +1057,7 @@ def process_condition(page, product_url, condition, request_id, card_name)
     # Navigate to the product page with condition filter
     condition_param = URI.encode_www_form_component(condition)
     filtered_url = "#{product_url}#{product_url.include?('?') ? '&' : '?'}Condition=#{condition_param}&Language=English"
-    $logger.info("Request #{request_id}: Navigating to filtered URL: #{filtered_url}")
+    $file_logger.info("Request #{request_id}: Navigating to filtered URL: #{filtered_url}")
     
     begin
       # Add random delay before navigation
@@ -1121,15 +1091,15 @@ def process_condition(page, product_url, condition, request_id, card_name)
       # Take initial screenshot immediately after page load
       screenshot_path = "loading_sequence_#{condition}_#{screenshot_count}_#{Time.now.to_i}.png"
       page.screenshot(path: screenshot_path, full_page: true)
-      $logger.info("Request #{request_id}: Saved initial screenshot to #{screenshot_path}")
+      $file_logger.info("Request #{request_id}: Saved initial screenshot to #{screenshot_path}")
       screenshot_count += 1
       last_screenshot_time = Time.now
 
       # Log our current selectors for the product page
-      $logger.info("Request #{request_id}: Current product page selectors:")
-      $logger.info("  Container: .listing-item")
-      $logger.info("  Base Price: .listing-item__listing-data__info__price")
-      $logger.info("  Shipping: .shipping-messages__price")
+      $file_logger.info("Request #{request_id}: Current product page selectors:")
+      $file_logger.info("  Container: .listing-item")
+      $file_logger.info("  Base Price: .listing-item__listing-data__info__price")
+      $file_logger.info("  Shipping: .shipping-messages__price")
 
       # Main loop - continue until we hit max screenshots
       while screenshot_count < max_screenshots
@@ -1141,7 +1111,7 @@ def process_condition(page, product_url, condition, request_id, card_name)
           begin
             screenshot_path = "loading_sequence_#{condition}_#{screenshot_count}_#{Time.now.to_i}.png"
             page.screenshot(path: screenshot_path, full_page: true)
-            $logger.info("Request #{request_id}: Saved screenshot #{screenshot_count} at #{elapsed.round(1)}s")
+            $file_logger.info("Request #{request_id}: Saved screenshot #{screenshot_count} at #{elapsed.round(1)}s")
             screenshot_count += 1
             last_screenshot_time = current_time
 
@@ -1242,61 +1212,61 @@ def process_condition(page, product_url, condition, request_id, card_name)
               JS
 
               if screenshot_count == 3  # Only log detailed info for the third screenshot
-                $logger.info("Request #{request_id}: === DETAILED LISTINGS INFO (3rd screenshot) ===")
+                $file_logger.info("Request #{request_id}: === DETAILED LISTINGS INFO (3rd screenshot) ===")
                 if listings_html.is_a?(Hash) && listings_html['success']
-                  $logger.info("  Found listings header: #{listings_html['headerText']}")
-                  $logger.info("  === LISTINGS FOUND ===")
+                  $file_logger.info("  Found listings header: #{listings_html['headerText']}")
+                  $file_logger.info("  === LISTINGS FOUND ===")
                   listings_html['listings'].each do |listing|
-                    $logger.info("  Listing #{listing['index'] + 1}:")
-                    $logger.info("    Container Classes: #{listing['containerClasses']}")
+                    $file_logger.info("  Listing #{listing['index'] + 1}:")
+                    $file_logger.info("    Container Classes: #{listing['containerClasses']}")
                     if listing['basePrice']
-                      $logger.info("    Base Price: #{listing['basePrice']['text']}")
-                      $logger.info("    Base Price Classes: #{listing['basePrice']['classes']}")
+                      $file_logger.info("    Base Price: #{listing['basePrice']['text']}")
+                      $file_logger.info("    Base Price Classes: #{listing['basePrice']['classes']}")
                     end
                     if listing['shipping']
-                      $logger.info("    Shipping: #{listing['shipping']['text']}")
-                      $logger.info("    Shipping Classes: #{listing['shipping']['classes']}")
+                      $file_logger.info("    Shipping: #{listing['shipping']['text']}")
+                      $file_logger.info("    Shipping Classes: #{listing['shipping']['classes']}")
                     end
-                    $logger.info("    HTML: #{listing['html']}")
+                    $file_logger.info("    HTML: #{listing['html']}")
                   end
 
                   # Log price data if found
                   if listings_html['priceData'] && listings_html['priceData']['success']
-                    $logger.info("  === PRICE DATA ===")
-                    $logger.info("    Total Price: $#{listings_html['priceData']['price']}")
-                    $logger.info("    Base Price: $#{listings_html['priceData']['details']['basePrice']}")
-                    $logger.info("    Shipping: $#{listings_html['priceData']['details']['shippingPrice']}")
-                    $logger.info("    Shipping Text: #{listings_html['priceData']['details']['shippingText']}")
+                    $file_logger.info("  === PRICE DATA ===")
+                    $file_logger.info("    Total Price: $#{listings_html['priceData']['price']}")
+                    $file_logger.info("    Base Price: $#{listings_html['priceData']['details']['basePrice']}")
+                    $file_logger.info("    Shipping: $#{listings_html['priceData']['details']['shippingPrice']}")
+                    $file_logger.info("    Shipping Text: #{listings_html['priceData']['details']['shippingText']}")
                   end
                 elsif listings_html.is_a?(Hash) && listings_html['error']
-                  $logger.error("  Error evaluating listing: #{listings_html['error']}")
-                  $logger.error("  Stack trace: #{listings_html['stack']}")
+                  $file_logger.error("  Error evaluating listing: #{listings_html['error']}")
+                  $file_logger.error("  Stack trace: #{listings_html['stack']}")
                 else
-                  $logger.error("  No valid data found: #{listings_html['message']}")
+                  $file_logger.error("  No valid data found: #{listings_html['message']}")
                 end
-                $logger.info("=== END OF LISTINGS INFO ===")
+                $file_logger.info("=== END OF LISTINGS INFO ===")
               end
 
               # If we found a valid price, return it immediately and break out of the loop
               if listings_html.is_a?(Hash) && listings_html['success'] && listings_html['listings'][0]
-                base_price = parse_base_price(listings_html['listings'][0]['basePrice']['text'])
-                shipping_price = calculate_shipping_price(listings_html['listings'][0])
-                $logger.info("Request #{request_id}: Found valid price: $#{base_price}")
+                base_price = PriceProcessor.parse_base_price(listings_html['listings'][0]['basePrice']['text'])
+                shipping_price = PriceProcessor.calculate_shipping_price(listings_html['listings'][0])
+                $file_logger.info("Request #{request_id}: Found valid price: $#{base_price}")
                 
                 result = {
                   'success' => true,
-                  'price' => "$#{total_price_str(base_price, shipping_price)}",
+                  'price' => PriceProcessor.total_price_str(base_price, shipping_price).gsub(/[^\d.]/, ''), # Ensure only numeric string
                   'url' => page.url  # Use the current page URL which is our filtered product page
                 }
-                $logger.info("Request #{request_id}: Breaking out of screenshot loop with price: #{result.inspect}")
+                $file_logger.info("Request #{request_id}: Breaking out of screenshot loop with price: #{result.inspect}")
                 return result  # This will exit both the loop and the process_condition method
               end
             rescue => e
-              $logger.error("Request #{request_id}: Error evaluating listings HTML: #{e.message}")
-              $logger.error(e.backtrace.join("\n"))
+              $file_logger.error("Request #{request_id}: Error evaluating listings HTML: #{e.message}")
+              $file_logger.error(e.backtrace.join("\n"))
             end
           rescue => e
-            $logger.error("Request #{request_id}: Error taking screenshot: #{e.message}")
+            $file_logger.error("Request #{request_id}: Error taking screenshot: #{e.message}")
             # Still increment the counter to ensure we don't get stuck
             screenshot_count += 1
             last_screenshot_time = current_time
@@ -1308,15 +1278,14 @@ def process_condition(page, product_url, condition, request_id, card_name)
       end
 
       # If we get here, we didn't find a valid price in any screenshot
-      $logger.error("Request #{request_id}: No valid listings found after all screenshots")
+      $file_logger.error("Request #{request_id}: No valid listings found after all screenshots")
       return {
         'success' => false,
         'message' => 'No valid listings found after all screenshots'
       }
 
     rescue => e
-      $logger.error("Request #{request_id}: Error processing condition: #{e.message}")
-      $logger.error(e.backtrace.join("\n"))
+      handle_puppeteer_error(e, request_id, "Condition processing")
       return {
         'success' => false,
         'message' => e.message
@@ -1354,54 +1323,911 @@ def safe_evaluate(page, script, request_id = nil)
     # Evaluate the script
     page.evaluate(script)
   rescue Puppeteer::FrameManager::FrameNotFoundError => e
-    $logger.warn("Request #{request_id}: Frame not found during evaluation: #{e.message}")
+    # Log to file with full details
+    $file_logger.warn("Request #{request_id}: Frame not found during evaluation: #{e.message}")
+    $file_logger.debug("Request #{request_id}: Frame error details: #{e.backtrace.join("\n")}")
+    # Log to console without backtrace
+    warn("Request #{request_id}: Frame not found during evaluation: #{e.message}")
     nil
   rescue => e
-    $logger.error("Request #{request_id}: Error during page evaluation: #{e.message}")
+    # Log to file with full details
+    $file_logger.error("Request #{request_id}: Error during page evaluation: #{e.message}")
+    $file_logger.debug("Request #{request_id}: Evaluation error details: #{e.backtrace.join("\n")}")
+    # Log to console without backtrace
+    warn("Request #{request_id}: Error during page evaluation: #{e.message}")
     nil
   end
 end
 
-# Helper method to parse a money-formatted string into cents
-def parse_base_price(price_text)
-  return 0 unless price_text.is_a?(String)
-  
-  # Remove any non-numeric characters except decimal point
-  numeric_str = price_text.gsub(/[^\d.]/, '')
-  return 0 if numeric_str.empty?
-  
-  # Convert to float and then to cents
-  (numeric_str.to_f * 100).round
+# Add a method to handle Puppeteer errors consistently
+def handle_puppeteer_error(e, request_id = nil, context = nil)
+  # Log to file with full details
+  $file_logger.error("Request #{request_id}: #{context} error: #{e.message}")
+  $file_logger.debug("Request #{request_id}: #{context} error details: #{e.backtrace.join("\n")}")
+  # Log to console without backtrace
+  warn("Request #{request_id}: #{context} error: #{e.message}")
 end
 
-# Helper method to calculate shipping price from a listing hash
-def calculate_shipping_price(listing)
-  return 0 unless listing.is_a?(Hash)
-  return 0 unless listing['shipping'].is_a?(Hash)
-  return 0 unless listing['shipping']['text'].is_a?(String)
+# Update error handling in the main request handler
+get '/card_info' do
+  content_type :json
+  card_name = params['card']
+  request_id = SecureRandom.uuid
+  $file_logger.info("Starting card info request #{request_id} for: #{card_name}")
   
-  shipping_text = listing['shipping']['text'].strip.downcase
-  
-  # Check for free shipping indicators
-  return 0 if shipping_text.include?('free shipping') ||
-              shipping_text.include?('shipping included') ||
-              shipping_text.include?('free shipping over')
-  
-  # Look for shipping cost pattern
-  if shipping_text =~ /\+\s*\$(\d+\.?\d*)\s*shipping/i
-    # Convert to cents
-    (Regexp.last_match(1).to_f * 100).round
-  else
-    0
+  if card_name.nil? || card_name.empty?
+    handle_puppeteer_error(ArgumentError.new("No card name provided"), request_id, "Validation")
+    return { error: 'No card name provided' }.to_json
+  end
+
+  # Check if this card is already being processed
+  cached_request = $active_requests[card_name]
+  if cached_request
+    if cached_request[:status] == 'complete'
+      $file_logger.info("Returning cached response for #{card_name}")
+      return cached_request[:data]
+    elsif cached_request[:status] == 'error'
+      $file_logger.info("Returning cached error for #{card_name}")
+      return cached_request[:data]
+    end
+  end
+
+  # Mark as in progress
+  $active_requests[card_name] = { 
+    status: 'in_progress', 
+    timestamp: Time.now,
+    data: nil,
+    request_id: request_id
+  }
+
+  begin
+    # Get legality from Scryfall first
+    begin
+      $file_logger.info("Request #{request_id}: Checking legality with Scryfall")
+      legality_response = HTTParty.get("https://api.scryfall.com/cards/named?exact=#{CGI.escape(card_name)}")
+      if legality_response.success?
+        legality_data = JSON.parse(legality_response.body)
+        legality = legality_data['legalities']&.fetch('commander', 'unknown')
+        $file_logger.info("Request #{request_id}: Legality for #{card_name}: #{legality}")
+      else
+        $file_logger.error("Request #{request_id}: Scryfall API error: #{legality_response.code} - #{legality_response.body}")
+        legality = 'unknown'
+      end
+    rescue => e
+      $file_logger.error("Request #{request_id}: Error checking legality: #{e.message}")
+      legality = 'unknown'
+    end
+
+    # Get or initialize browser and create context
+    browser = get_browser
+    context = create_browser_context(request_id)
+    
+    begin
+      # Create a new page for the search
+      search_page = context.new_page
+      $browser_contexts[request_id][:pages] << search_page
+      
+      # Enable request interception to prevent redirects
+      search_page.request_interception = true
+      search_page.on('request') do |request|
+        # Add proper headers for TCGPlayer
+        headers = request.headers.merge({
+          'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+          'Accept-Language' => 'en-US,en;q=0.9',
+          'Accept-Encoding' => 'gzip, deflate, br',
+          'Connection' => 'keep-alive',
+          'Upgrade-Insecure-Requests' => '1',
+          'Sec-Fetch-Dest' => 'document',
+          'Sec-Fetch-Mode' => 'navigate',
+          'Sec-Fetch-Site' => 'none',
+          'Sec-Fetch-User' => '?1',
+          'Cache-Control' => 'max-age=0'
+        })
+
+        if request.navigation_request? && !request.redirect_chain.empty?
+          # Only prevent redirects to error pages
+          if request.url.include?('uhoh')
+            $file_logger.info("Request #{request_id}: Preventing redirect to error page: #{request.url}")
+            request.abort
+          else
+            $file_logger.info("Request #{request_id}: Allowing redirect to: #{request.url}")
+            request.continue(headers: headers)
+          end
+        else
+          # Allow all other requests, including API calls
+          request.continue(headers: headers)
+        end
+      end
+      
+      # Set up console log capture
+      search_page.on('console') do |msg|
+        $file_logger.info("Request #{request_id}: Browser console: #{msg.text}")
+      end
+      
+      # Navigate to TCGPlayer search
+      $file_logger.info("Request #{request_id}: Navigating to TCGPlayer search for: #{card_name}")
+      search_url = "https://www.tcgplayer.com/search/magic/product?q=#{CGI.escape(card_name)}&view=grid"
+      $file_logger.info("Request #{request_id}: Search URL: #{search_url}")
+      
+      begin
+        response = search_page.goto(search_url, wait_until: 'networkidle0')
+        $file_logger.info("Request #{request_id}: Search page response status: #{response.status}")
+        
+        # Wait for the search results to load
+        begin
+          search_page.wait_for_selector('.search-result, .product-card, [class*="product"], [class*="listing"]', timeout: 10000)
+          $file_logger.info("Request #{request_id}: Search results found")
+        rescue => e
+          $file_logger.error("Request #{request_id}: Timeout waiting for search results: #{e.message}")
+          # Take a screenshot for debugging
+          screenshot_path = "search_error_#{Time.now.to_i}.png"
+          search_page.screenshot(path: screenshot_path)
+          $file_logger.info("Request #{request_id}: Saved error screenshot to #{screenshot_path}")
+        end
+        
+        # Give extra time for dynamic content to stabilize
+        sleep(2)
+        
+        # Log the page content for debugging
+        $file_logger.info("Request #{request_id}: Page title: #{search_page.title}")
+        $file_logger.info("Request #{request_id}: Current URL: #{search_page.url}")
+        
+        # Find the lowest priced valid product from the search results
+        card_name = card_name.strip  # Normalize the card name in Ruby first
+        lowest_priced_product = search_page.evaluate(<<~'JS', { cardName: card_name }.to_json)
+          function(params) {
+            const cardName = JSON.parse(params).cardName;
+            console.log('Searching for card:', cardName);
+            
+            function extractNumericPrice(priceText) {
+              if (!priceText) {
+                console.log('No price text provided');
+                return null;
+              }
+              
+              // Create and inspect the regex object
+              const priceRegex = /\$\d+\.\d{2}/;  // Simple match for $XX.XX
+              
+              // Test if the price matches the pattern
+              if (!priceRegex.test(priceText)) {
+                console.log('No price pattern found in:', priceText);
+                return null;
+              }
+              
+              // Extract just the numeric part (remove the $ sign)
+              const numericStr = priceText.slice(1);
+              const result = parseFloat(numericStr);
+              console.log('Extracted numeric price:', result, 'from:', numericStr);
+              return isNaN(result) ? null : result;
+            }
+
+            function isExactCardMatch(title, cardName) {
+              if (!title || !cardName) {
+                console.log('Missing title or cardName:', { title, cardName });
+                return false;
+              }
+              
+              // Normalize both strings
+              const normalizedTitle = title.toLowerCase().trim().replace(/\s+/g, ' ');
+              const normalizedCardName = String(cardName).toLowerCase().trim().replace(/\s+/g, ' ');
+              
+              console.log('Comparing card names:', {
+                normalizedTitle,
+                normalizedCardName,
+                titleLength: normalizedTitle.length,
+                cardNameLength: normalizedCardName.length
+              });
+              
+              // First try exact match
+              if (normalizedTitle === normalizedCardName) {
+                console.log('Found exact match');
+                return true;
+              }
+              
+              // Then try match with punctuation delimiters
+              const regex = new RegExp(
+                `(^|\\s|[^a-zA-Z0-9])${normalizedCardName}(\\s|[^a-zA-Z0-9]|$)`,
+                'i'
+              );
+              
+              const isMatch = regex.test(normalizedTitle);
+              console.log('Regex match result:', { 
+                isMatch,
+                matchIndex: normalizedTitle.search(regex),
+                title: normalizedTitle
+              });
+              
+              return isMatch;
+            }
+
+            // Wait for elements to be fully loaded
+            function waitForElements() {
+              return new Promise((resolve) => {
+                let attempts = 0;
+                const maxAttempts = 50; // 5 seconds total
+                
+                const checkElements = () => {
+                  attempts++;
+                  const cards = document.querySelectorAll('.product-card__product');
+                  console.log(`Attempt ${attempts}: Found ${cards.length} cards`);
+                  
+                  if (cards.length > 0) {
+                    // Check if any card has content
+                    const hasContent = Array.from(cards).some(card => {
+                      const title = card.querySelector('.product-card__title');
+                      const hasTitle = title && title.textContent.trim().length > 0;
+                      if (hasTitle) {
+                        console.log('Found card with title:', title.textContent.trim());
+                      }
+                      return hasTitle;
+                    });
+                    
+                    if (hasContent) {
+                      console.log('Found cards with content, waiting for stability...');
+                      // Give extra time for dynamic content to stabilize
+                      setTimeout(() => {
+                        console.log('Content should be stable now');
+                        resolve(true);
+                      }, 1000);
+                      return;
+                    }
+                  }
+                  
+                  if (attempts >= maxAttempts) {
+                    console.log('Max attempts reached, proceeding anyway');
+                    resolve(false);
+                    return;
+                  }
+                  
+                  console.log('Waiting for cards with content...');
+                  setTimeout(checkElements, 100);
+                };
+                
+                checkElements();
+              });
+            }
+
+            async function processCards() {
+              // Wait for elements to be loaded
+              const elementsLoaded = await waitForElements();
+              if (!elementsLoaded) {
+                console.log('Warning: Elements may not be fully loaded');
+              }
+              
+              // Get all product cards
+              const productCards = Array.from(document.querySelectorAll('.product-card__product'));
+              console.log(`Found ${productCards.length} product cards`);
+
+              // Process each product card
+              const validProducts = productCards.map((card, index) => {
+                console.log(`\nProcessing card ${index + 1}:`);
+                
+                // Get elements using multiple possible selectors
+                const titleElement = card.querySelector('.product-card__title') || 
+                                   card.querySelector('[class*="title"]') ||
+                                   card.querySelector('[class*="name"]');
+                const priceElement = card.querySelector('.inventory__price-with-shipping') || 
+                                   card.querySelector('[class*="price"]');
+                const linkElement = card.querySelector('a[href*="/product/"]') || 
+                                  card.closest('a[href*="/product/"]');
+
+                // Log detailed element info
+                console.log('Element details:', {
+                  title: titleElement ? {
+                    exists: true,
+                    className: titleElement.className,
+                    textContent: titleElement.textContent,
+                    innerText: titleElement.innerText,
+                    innerHTML: titleElement.innerHTML,
+                    textLength: titleElement.textContent.length
+                  } : 'Not found',
+                  price: priceElement ? {
+                    exists: true,
+                    className: priceElement.className,
+                    textContent: priceElement.textContent,
+                    innerText: priceElement.innerText,
+                    innerHTML: priceElement.innerHTML,
+                    textLength: priceElement.textContent.length
+                  } : 'Not found',
+                  link: linkElement ? {
+                    exists: true,
+                    href: linkElement.href
+                  } : 'Not found'
+                });
+
+                if (!titleElement || !priceElement) {
+                  console.log('Missing required elements:', {
+                    hasTitle: !!titleElement,
+                    hasPrice: !!priceElement,
+                    hasLink: !!linkElement
+                  });
+                  return null;
+                }
+
+                // Get the text content with fallbacks
+                const title = titleElement.textContent.trim() || 
+                            titleElement.innerText.trim() || 
+                            titleElement.innerHTML.trim();
+                const priceText = priceElement.textContent.trim() || 
+                                priceElement.innerText.trim() || 
+                                priceElement.innerHTML.trim();
+                
+                console.log('Extracted text content:', {
+                  title,
+                  priceText,
+                  titleLength: title.length,
+                  priceTextLength: priceText.length,
+                  titleElementType: titleElement.tagName,
+                  priceElementType: priceElement.tagName
+                });
+
+                if (!title || !priceText) {
+                  console.log('Empty text content:', {
+                    titleEmpty: !title,
+                    priceTextEmpty: !priceText,
+                    titleElementHTML: titleElement.outerHTML,
+                    priceElementHTML: priceElement.outerHTML
+                  });
+                  return null;
+                }
+
+                const price = extractNumericPrice(priceText);
+                const url = linkElement ? linkElement.href : null;
+
+                // Skip art cards and proxies
+                if (title.toLowerCase().includes('art card') || 
+                    title.toLowerCase().includes('proxy') ||
+                    title.toLowerCase().includes('playtest')) {
+                  console.log('Skipping non-playable card:', title);
+                  return null;
+                }
+
+                const isMatch = isExactCardMatch(title, cardName);
+                const hasValidPrice = !isNaN(price) && price > 0;
+                
+                if (isMatch && hasValidPrice) {
+                  console.log('Found valid product:', { 
+                    title, 
+                    price, 
+                    url,
+                    isMatch,
+                    hasValidPrice
+                  });
+                  return { title, price, url };
+                } else {
+                  console.log('Invalid product:', { 
+                    title, 
+                    price, 
+                    isMatch,
+                    hasValidPrice,
+                    reason: !isMatch ? 'title does not match' : 'invalid price'
+                  });
+                  return null;
+                }
+              }).filter(Boolean);
+
+              console.log(`Found ${validProducts.length} valid products`);
+
+              if (validProducts.length === 0) {
+                console.log('No valid products found');
+                return null;
+              }
+
+              // Sort by price and return the lowest priced product
+              validProducts.sort((a, b) => a.price - b.price);
+              const lowest = validProducts[0];
+              console.log('Selected lowest priced product:', lowest);
+              return lowest;
+            }
+
+            // Execute the async function
+            return processCards();
+          }
+        JS
+        
+        if !lowest_priced_product
+          $file_logger.error("Request #{request_id}: No valid products found for: #{card_name}")
+          return { error: 'No valid product found', legality: legality }.to_json
+        end
+        
+        $file_logger.info("Request #{request_id}: Found lowest priced product: #{lowest_priced_product['title']} at $#{lowest_priced_product['price']}")
+        
+        # Now we only need to process the single lowest-priced product
+        found_prices = false
+        prices = {}
+        found_conditions = 0
+        conditions = ['Near Mint', 'Lightly Played']
+        
+        conditions.each do |condition|
+          # Stop if we've found both conditions
+          break if found_conditions >= 2
+          
+          # Create a new page for each condition
+          condition_page = context.new_page
+          condition_page.default_navigation_timeout = 30000  # 30 seconds
+          condition_page.default_timeout = 30000  # 30 seconds
+          
+          # Enable request interception for condition page too
+          condition_page.request_interception = true
+          condition_page.on('request') do |request|
+            # Add proper headers for TCGPlayer
+            headers = request.headers.merge({
+              'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+              'Accept-Language' => 'en-US,en;q=0.9',
+              'Accept-Encoding' => 'gzip, deflate, br',
+              'Connection' => 'keep-alive',
+              'Upgrade-Insecure-Requests' => '1',
+              'Sec-Fetch-Dest' => 'document',
+              'Sec-Fetch-Mode' => 'navigate',
+              'Sec-Fetch-Site' => 'none',
+              'Sec-Fetch-User' => '?1',
+              'Cache-Control' => 'max-age=0'
+            })
+
+            if request.navigation_request? && !request.redirect_chain.empty?
+              # Only prevent redirects to error pages
+              if request.url.include?('uhoh')
+                $file_logger.info("Request #{request_id}: Preventing redirect to error page: #{request.url}")
+                request.abort
+              else
+                $file_logger.info("Request #{request_id}: Allowing redirect to: #{request.url}")
+                request.continue(headers: headers)
+              end
+            else
+              # Allow all other requests, including API calls
+              request.continue(headers: headers)
+            end
+          end
+          
+          begin
+            $file_logger.info("Request #{request_id}: Processing condition: #{condition}")
+            result = process_condition(condition_page, lowest_priced_product['url'], condition, request_id, card_name)
+            $file_logger.info("Request #{request_id}: Condition result: #{result.inspect}")
+            if result && result.is_a?(Hash) && result['success']
+              prices[condition] = {
+                'price' => result['price'].to_s.gsub(/\$/,''),
+                'url' => result['url']
+              }
+              found_conditions += 1
+              found_prices = true
+            end
+          ensure
+            condition_page.close
+          end
+        end
+        
+        if prices.empty?
+          $file_logger.error("Request #{request_id}: No valid prices found for any condition")
+          return { error: 'No valid prices found', legality: legality }.to_json
+        end
+        
+        $file_logger.info("Request #{request_id}: Final prices: #{prices.inspect}")
+        # Format the response to match the original style
+        formatted_prices = PriceProcessor.format_prices(prices)
+        
+        # Combine prices and legality into a single response
+        response = { 
+          prices: formatted_prices,
+          legality: legality
+        }.to_json
+        
+        # Cache the response with timestamp
+        $active_requests[card_name] = { 
+          status: 'complete',
+          data: response,
+          timestamp: Time.now,
+          request_id: request_id
+        }
+        
+        response
+        
+      ensure
+        # Clean up the context and its pages
+        if context
+          begin
+            # Close all pages in the context
+            if $browser_contexts[request_id]
+              $browser_contexts[request_id][:pages].each do |page|
+                begin
+                  page.close
+                rescue => e
+                  $file_logger.error("Request #{request_id}: Error closing page: #{e.message}")
+                end
+              end
+            end
+            
+            # Close the context
+            context.close
+            $file_logger.info("Request #{request_id}: Closed browser context and pages")
+          rescue => e
+            $file_logger.error("Request #{request_id}: Error closing browser context: #{e.message}")
+          ensure
+            $browser_contexts.delete(request_id)
+          end
+        end
+      end
+      
+    rescue => e
+      handle_puppeteer_error(e, request_id, "Request processing")
+      error_response = { 
+        error: e.message,
+        legality: legality  # Include legality even if price check failed
+      }.to_json
+      
+      # Cache the error response
+      $active_requests[card_name] = {
+        status: 'error',
+        data: error_response,
+        timestamp: Time.now,
+        request_id: request_id
+      }
+      
+      error_response
+    ensure
+      # Clear old requests (older than 5 minutes)
+      $active_requests.delete_if do |_, request|
+        request[:timestamp] < (Time.now - 300)  # 5 minutes
+      end
+      
+      # Clean up old contexts (older than 10 minutes)
+      $browser_contexts.delete_if do |_, context_data|
+        if context_data[:created_at] < (Time.now - 600)  # 10 minutes
+          begin
+            # Close any remaining pages
+            context_data[:pages].each do |page|
+              begin
+                page.close
+              rescue => e
+                $file_logger.error("Error closing stale page: #{e.message}")
+              end
+            end
+            # Close the context
+            context_data[:context].close
+            true  # Return true to delete the context
+          rescue => e
+            $file_logger.error("Error cleaning up stale context: #{e.message}")
+            true  # Still return true to delete the context
+          end
+        else
+          false  # Keep contexts that aren't stale
+        end
+      end
+    end
   end
 end
 
-# Helper method to format total price as string
-def total_price_str(base_price_cents, shipping_price_cents)
-  total_cents = base_price_cents + shipping_price_cents
-  # Return just the numeric value with 2 decimal places, no dollar sign
-  format('%.2f', total_cents / 100.0)
+# Update error handling in process_condition
+def process_condition(page, product_url, condition, request_id, card_name)
+  begin
+    # Add redirect prevention script using safe_evaluate
+    safe_evaluate(page, <<~JS, request_id)
+      function() {
+        // Store original navigation methods
+        const originalPushState = history.pushState;
+        const originalReplaceState = history.replaceState;
+        
+        // Override history methods to prevent redirects to error page
+        history.pushState = function(state, title, url) {
+          if (typeof url === 'string' && url.includes('uhoh')) {
+            console.log('Prevented history push to error page');
+            return;
+          }
+          return originalPushState.apply(this, arguments);
+        };
+
+        history.replaceState = function(state, title, url) {
+          if (typeof url === 'string' && url.includes('uhoh')) {
+            console.log('Prevented history replace to error page');
+            return;
+          }
+          return originalReplaceState.apply(this, arguments);
+        };
+
+        // Add navigation listener
+        window.addEventListener('beforeunload', (event) => {
+          if (window.location.href.includes('uhoh')) {
+            console.log('Prevented navigation to error page');
+            event.preventDefault();
+            event.stopPropagation();
+            return false;
+          }
+        });
+
+        // Add click interceptor for links that might redirect
+        document.addEventListener('click', (event) => {
+          const link = event.target.closest('a');
+          if (link && link.href && link.href.includes('uhoh')) {
+            console.log('Prevented click navigation to error page');
+            event.preventDefault();
+            event.stopPropagation();
+            return false;
+          }
+        }, true);
+
+        console.log('Redirect prevention initialized');
+      }
+    JS
+
+    # Navigate to the product page with condition filter
+    condition_param = URI.encode_www_form_component(condition)
+    filtered_url = "#{product_url}#{product_url.include?('?') ? '&' : '?'}Condition=#{condition_param}&Language=English"
+    $file_logger.info("Request #{request_id}: Navigating to filtered URL: #{filtered_url}")
+    
+    begin
+      # Add random delay before navigation
+      sleep(rand(2..4))
+      
+      # Navigate to the page with redirect prevention
+      response = page.goto(filtered_url, 
+        wait_until: 'domcontentloaded',
+        timeout: 30000
+      )
+      
+      # Check for rate limiting after navigation
+      if handle_rate_limit(page, request_id)
+        # If we hit rate limiting, try one more time
+        sleep(rand(5..10))
+        response = page.goto(filtered_url, 
+          wait_until: 'domcontentloaded',
+          timeout: 30000
+        )
+      end
+
+      # Start screenshot loop and price pattern search
+      max_wait_time = 30  # Maximum wait time in seconds
+      start_time = Time.now
+      screenshot_count = 0
+      found_listings = false
+      screenshot_interval = 2  # Take a screenshot every 2 seconds
+      last_screenshot_time = start_time
+      max_screenshots = 3  # Only take 3 screenshots
+
+      # Take initial screenshot immediately after page load
+      screenshot_path = "loading_sequence_#{condition}_#{screenshot_count}_#{Time.now.to_i}.png"
+      page.screenshot(path: screenshot_path, full_page: true)
+      $file_logger.info("Request #{request_id}: Saved initial screenshot to #{screenshot_path}")
+      screenshot_count += 1
+      last_screenshot_time = Time.now
+
+      # Log our current selectors for the product page
+      $file_logger.info("Request #{request_id}: Current product page selectors:")
+      $file_logger.info("  Container: .listing-item")
+      $file_logger.info("  Base Price: .listing-item__listing-data__info__price")
+      $file_logger.info("  Shipping: .shipping-messages__price")
+
+      # Main loop - continue until we hit max screenshots
+      while screenshot_count < max_screenshots
+        current_time = Time.now
+        elapsed = current_time - start_time
+
+        # Take screenshot every 2 seconds
+        if (current_time - last_screenshot_time) >= screenshot_interval
+          begin
+            screenshot_path = "loading_sequence_#{condition}_#{screenshot_count}_#{Time.now.to_i}.png"
+            page.screenshot(path: screenshot_path, full_page: true)
+            $file_logger.info("Request #{request_id}: Saved screenshot #{screenshot_count} at #{elapsed.round(1)}s")
+            screenshot_count += 1
+            last_screenshot_time = current_time
+
+            # After taking screenshot, try to log the listings HTML
+            begin
+              listings_html = page.evaluate(<<~'JS')
+                function() {
+                  try {
+                    // Find all listing items
+                    var listingItems = document.querySelectorAll('.listing-item');
+                    var listings = [];
+                    
+                    // First, collect all listings for logging
+                    listingItems.forEach(function(item, index) {
+                      var basePrice = item.querySelector('.listing-item__listing-data__info__price');
+                      var shipping = item.querySelector('.shipping-messages__price');
+                      
+                      listings.push({
+                        index: index,
+                        containerClasses: item.className,
+                        basePrice: basePrice ? {
+                          text: basePrice.textContent.trim(),
+                          classes: basePrice.className
+                        } : null,
+                        shipping: shipping ? {
+                          text: shipping.textContent.trim(),
+                          classes: shipping.className
+                        } : null,
+                        html: item.outerHTML
+                      });
+                    });
+
+                    // Find the "listings" text (case insensitive, handles both singular and plural)
+                    var listingsHeader = null;
+                    var allElements = document.querySelectorAll("*");
+                    for (var i = 0; i < allElements.length; i++) {
+                      var el = allElements[i];
+                      if (el.textContent && /^[0-9]+\\s+[Ll]isting[s]?$/i.test(el.textContent.trim())) {
+                        listingsHeader = el;
+                        break;
+                      }
+                    }
+
+                    // Process first listing for price extraction
+                    var priceData = null;
+                    if (listingItems.length > 0) {
+                      var firstItem = listingItems[0];
+                      var basePrice = firstItem.querySelector('.listing-item__listing-data__info__price');
+                      var shipping = firstItem.querySelector('.shipping-messages__price');
+                      
+                      if (basePrice) {
+                        var priceText = basePrice.textContent.trim();
+                        var priceMatch = priceText.match(/\\$([0-9.]+)/);
+                        if (priceMatch) {
+                          var price = parseFloat(priceMatch[1]);
+                          var shippingText = shipping ? shipping.textContent.trim() : '';
+                          var shippingMatch = shippingText.match(/\\$([0-9.]+)/);
+                          var shippingPrice = shippingMatch ? parseFloat(shippingMatch[1]) : 0;
+                          
+                          priceData = {
+                            success: true,
+                            found: true,
+                            price: (price + shippingPrice).toFixed(2),
+                            url: window.location.href,  // Use the current URL which is our filtered product page
+                            details: {
+                              basePrice: price.toFixed(2),
+                              shippingPrice: shippingPrice.toFixed(2),
+                              shippingText: shippingText
+                            }
+                          };
+                        }
+                      }
+                    }
+
+                    // Return both the listings data and price data
+                    return {
+                      success: true,
+                      found: true,
+                      headerText: listingsHeader ? listingsHeader.textContent : null,
+                      listings: listings,
+                      priceData: priceData || {
+                        success: false,
+                        found: false,
+                        message: "No valid price found in first listing"
+                      }
+                    };
+                  } catch (e) {
+                    console.error('Error processing listing:', e);
+                    return { 
+                      success: false,
+                      found: false, 
+                      error: e.toString(),
+                      message: "Error evaluating listing",
+                      stack: e.stack
+                    };
+                  }
+                }
+              JS
+
+              if screenshot_count == 3  # Only log detailed info for the third screenshot
+                $file_logger.info("Request #{request_id}: === DETAILED LISTINGS INFO (3rd screenshot) ===")
+                if listings_html.is_a?(Hash) && listings_html['success']
+                  $file_logger.info("  Found listings header: #{listings_html['headerText']}")
+                  $file_logger.info("  === LISTINGS FOUND ===")
+                  listings_html['listings'].each do |listing|
+                    $file_logger.info("  Listing #{listing['index'] + 1}:")
+                    $file_logger.info("    Container Classes: #{listing['containerClasses']}")
+                    if listing['basePrice']
+                      $file_logger.info("    Base Price: #{listing['basePrice']['text']}")
+                      $file_logger.info("    Base Price Classes: #{listing['basePrice']['classes']}")
+                    end
+                    if listing['shipping']
+                      $file_logger.info("    Shipping: #{listing['shipping']['text']}")
+                      $file_logger.info("    Shipping Classes: #{listing['shipping']['classes']}")
+                    end
+                    $file_logger.info("    HTML: #{listing['html']}")
+                  end
+
+                  # Log price data if found
+                  if listings_html['priceData'] && listings_html['priceData']['success']
+                    $file_logger.info("  === PRICE DATA ===")
+                    $file_logger.info("    Total Price: $#{listings_html['priceData']['price']}")
+                    $file_logger.info("    Base Price: $#{listings_html['priceData']['details']['basePrice']}")
+                    $file_logger.info("    Shipping: $#{listings_html['priceData']['details']['shippingPrice']}")
+                    $file_logger.info("    Shipping Text: #{listings_html['priceData']['details']['shippingText']}")
+                  end
+                elsif listings_html.is_a?(Hash) && listings_html['error']
+                  $file_logger.error("  Error evaluating listing: #{listings_html['error']}")
+                  $file_logger.error("  Stack trace: #{listings_html['stack']}")
+                else
+                  $file_logger.error("  No valid data found: #{listings_html['message']}")
+                end
+                $file_logger.info("=== END OF LISTINGS INFO ===")
+              end
+
+              # If we found a valid price, return it immediately and break out of the loop
+              if listings_html.is_a?(Hash) && listings_html['success'] && listings_html['listings'][0]
+                base_price = PriceProcessor.parse_base_price(listings_html['listings'][0]['basePrice']['text'])
+                shipping_price = PriceProcessor.calculate_shipping_price(listings_html['listings'][0])
+                $file_logger.info("Request #{request_id}: Found valid price: $#{base_price}")
+                
+                result = {
+                  'success' => true,
+                  'price' => PriceProcessor.total_price_str(base_price, shipping_price).gsub(/[^\d.]/, ''), # Ensure only numeric string
+                  'url' => page.url  # Use the current page URL which is our filtered product page
+                }
+                $file_logger.info("Request #{request_id}: Breaking out of screenshot loop with price: #{result.inspect}")
+                return result  # This will exit both the loop and the process_condition method
+              end
+            rescue => e
+              $file_logger.error("Request #{request_id}: Error evaluating listings HTML: #{e.message}")
+              $file_logger.error(e.backtrace.join("\n"))
+            end
+          rescue => e
+            $file_logger.error("Request #{request_id}: Error taking screenshot: #{e.message}")
+            # Still increment the counter to ensure we don't get stuck
+            screenshot_count += 1
+            last_screenshot_time = current_time
+          end
+        end
+
+        # Small sleep to prevent tight loop
+        sleep(0.1)
+      end
+
+      # If we get here, we didn't find a valid price in any screenshot
+      $file_logger.error("Request #{request_id}: No valid listings found after all screenshots")
+      return {
+        'success' => false,
+        'message' => 'No valid listings found after all screenshots'
+      }
+
+    rescue => e
+      handle_puppeteer_error(e, request_id, "Condition processing")
+      return {
+        'success' => false,
+        'message' => e.message
+      }
+    end
+  end
 end
 
-puts "Price proxy server starting on http://localhost:4567"
+# Update error handling in cleanup methods
+def cleanup_browser_internal
+  # Clean up all active contexts
+  $browser_contexts.each do |request_id, context_data|
+    begin
+      $file_logger.info("Cleaning up browser context for request #{request_id}")
+      context_data[:context].close if context_data[:context]
+    rescue => e
+      handle_puppeteer_error(e, request_id, "Context cleanup")
+    ensure
+      $browser_contexts.delete(request_id)
+    end
+  end
+  
+  if $browser
+    begin
+      $file_logger.info("Cleaning up browser...")
+      $browser.close
+    rescue => e
+      handle_puppeteer_error(e, nil, "Browser cleanup")
+    ensure
+      $browser = nil
+      # Force garbage collection
+      GC.start
+    end
+  end
+end
+
+# Update page error handling
+def setup_page_error_handling(page, request_id)
+  page.on('error') do |err|
+    handle_puppeteer_error(err, request_id, "Page")
+  end
+
+  page.on('console') do |msg|
+    $file_logger.debug("Browser console: #{msg.text}")
+  end
+end
+
+puts "Price proxy server starting on http://localhost:4568"
 puts "Note: You need to install Chrome/Chromium for Puppeteer to work" 

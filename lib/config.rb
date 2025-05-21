@@ -30,16 +30,16 @@ module Config
 
     def setup_debug_mode
       @debug_mode = ENV['DEBUG_MODE'] == 'true'
-      $logger.info("Debug mode environment variable: #{ENV['DEBUG_MODE'].inspect}")
-      $logger.info("Debug mode enabled: #{@debug_mode}")
+      $file_logger.info("Debug mode environment variable: #{ENV['DEBUG_MODE'].inspect}")
+      $file_logger.info("Debug mode enabled: #{@debug_mode}")
 
       if @debug_mode
-        $logger.info("Debug mode enabled - screenshots will be saved to debug_screenshots/")
+        $file_logger.info("Debug mode enabled - screenshots will be saved to debug_screenshots/")
         FileUtils.mkdir_p('debug_screenshots')
         if File.directory?('debug_screenshots') && File.writable?('debug_screenshots')
-          $logger.info("Debug screenshots directory is ready")
+          $file_logger.info("Debug screenshots directory is ready")
         else
-          $logger.error("Debug screenshots directory is not writable!")
+          $file_logger.error("Debug screenshots directory is not writable!")
         end
       end
     end

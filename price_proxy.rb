@@ -9,6 +9,15 @@ require_relative 'lib/browser_manager'
 require_relative 'lib/price_processor'
 require_relative 'lib/price_extractor'
 require_relative 'lib/request_tracker'
+require_relative 'lib/config'
+
+# Set up file logging first
+$file_logger = Logging.logger
+$file_logger.info("=== Starting new price proxy server session ===")
+$file_logger.info("Log file cleared and initialized")
+
+# Now initialize configuration
+Config.setup
 
 # Override Puppeteer's internal logging
 module Puppeteer
@@ -21,14 +30,10 @@ module Puppeteer
   end
 end
 
-set :port, 4568
-set :bind, '0.0.0.0'
-set :public_folder, 'commander_cards'
-
-# Set up file logging only
-$file_logger = Logging.logger
-$file_logger.info("=== Starting new price proxy server session ===")
-$file_logger.info("Log file cleared and initialized")
+# Use configured port from Config.settings
+set :port, Config.settings[:port]
+set :bind, Config.settings[:bind]
+set :public_folder, Config.settings[:public_folder]
 
 # Override Sinatra's default logger to handle WARN messages without backtraces
 class Sinatra::Logger

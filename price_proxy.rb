@@ -12,6 +12,7 @@ require 'uri'
 require 'securerandom'
 require_relative 'lib/logging'
 require_relative 'lib/price_processor'
+require_relative 'lib/request_tracker'
 
 # Override Puppeteer's internal logging
 module Puppeteer
@@ -51,8 +52,8 @@ MAX_RETRIES = 3
 SESSION_TIMEOUT = 1800  # 30 minutes
 
 # Add request tracking with concurrent handling
-$active_requests = Concurrent::Hash.new
-$request_mutex = Mutex.new
+# $active_requests = Concurrent::Hash.new
+# $request_mutex = Mutex.new
 
 # Cleanup browser without mutex lock
 def cleanup_browser_internal
@@ -464,25 +465,11 @@ get '/card_info' do
     return { error: 'No card name provided' }.to_json
   end
 
-  # Check if this card is already being processed
-  cached_request = $active_requests[card_name]
-  if cached_request
-    if cached_request[:status] == 'complete'
-      $file_logger.info("Returning cached response for #{card_name}")
-      return cached_request[:data]
-    elsif cached_request[:status] == 'error'
-      $file_logger.info("Returning cached error for #{card_name}")
-      return cached_request[:data]
-    end
+  # Use RequestTracker to handle request tracking
+  tracking_result = RequestTracker.track_request(card_name, request_id)
+  if tracking_result[:cached]
+    return tracking_result[:data]
   end
-
-  # Mark as in progress
-  $active_requests[card_name] = { 
-    status: 'in_progress', 
-    timestamp: Time.now,
-    data: nil,
-    request_id: request_id
-  }
 
   begin
     # Get legality from Scryfall first
@@ -491,7 +478,7 @@ get '/card_info' do
       legality_response = HTTParty.get("https://api.scryfall.com/cards/named?exact=#{CGI.escape(card_name)}")
       if legality_response.success?
         legality_data = JSON.parse(legality_response.body)
-        legality = legality_data['legalities']&.fetch('commander', 'unknown')
+        legality = legality_data['legalities']['commander'] || 'unknown'
         $file_logger.info("Request #{request_id}: Legality for #{card_name}: #{legality}")
       else
         $file_logger.error("Request #{request_id}: Scryfall API error: #{legality_response.code} - #{legality_response.body}")
@@ -917,14 +904,7 @@ get '/card_info' do
           legality: legality
         }.to_json
         
-        # Cache the response with timestamp
-        $active_requests[card_name] = { 
-          status: 'complete',
-          data: response,
-          timestamp: Time.now,
-          request_id: request_id
-        }
-        
+        RequestTracker.cache_response(card_name, 'complete', response, request_id)
         response
         
       ensure
@@ -960,20 +940,11 @@ get '/card_info' do
         legality: legality  # Include legality even if price check failed
       }.to_json
       
-      # Cache the error response
-      $active_requests[card_name] = {
-        status: 'error',
-        data: error_response,
-        timestamp: Time.now,
-        request_id: request_id
-      }
-      
+      RequestTracker.cache_response(card_name, 'error', error_response, request_id)
       error_response
     ensure
-      # Clear old requests (older than 5 minutes)
-      $active_requests.delete_if do |_, request|
-        request[:timestamp] < (Time.now - 300)  # 5 minutes
-      end
+      # Clean up old requests
+      RequestTracker.cleanup_old_requests
       
       # Clean up old contexts (older than 10 minutes)
       $browser_contexts.delete_if do |_, context_data|
@@ -989,13 +960,12 @@ get '/card_info' do
             end
             # Close the context
             context_data[:context].close
-            true  # Return true to delete the context
           rescue => e
             $file_logger.error("Error cleaning up stale context: #{e.message}")
-            true  # Still return true to delete the context
           end
+          true
         else
-          false  # Keep contexts that aren't stale
+          false
         end
       end
     end
@@ -1360,25 +1330,11 @@ get '/card_info' do
     return { error: 'No card name provided' }.to_json
   end
 
-  # Check if this card is already being processed
-  cached_request = $active_requests[card_name]
-  if cached_request
-    if cached_request[:status] == 'complete'
-      $file_logger.info("Returning cached response for #{card_name}")
-      return cached_request[:data]
-    elsif cached_request[:status] == 'error'
-      $file_logger.info("Returning cached error for #{card_name}")
-      return cached_request[:data]
-    end
+  # Use RequestTracker to handle request tracking
+  tracking_result = RequestTracker.track_request(card_name, request_id)
+  if tracking_result[:cached]
+    return tracking_result[:data]
   end
-
-  # Mark as in progress
-  $active_requests[card_name] = { 
-    status: 'in_progress', 
-    timestamp: Time.now,
-    data: nil,
-    request_id: request_id
-  }
 
   begin
     # Get legality from Scryfall first
@@ -1387,7 +1343,7 @@ get '/card_info' do
       legality_response = HTTParty.get("https://api.scryfall.com/cards/named?exact=#{CGI.escape(card_name)}")
       if legality_response.success?
         legality_data = JSON.parse(legality_response.body)
-        legality = legality_data['legalities']&.fetch('commander', 'unknown')
+        legality = legality_data['legalities']['commander'] || 'unknown'
         $file_logger.info("Request #{request_id}: Legality for #{card_name}: #{legality}")
       else
         $file_logger.error("Request #{request_id}: Scryfall API error: #{legality_response.code} - #{legality_response.body}")
@@ -1813,14 +1769,7 @@ get '/card_info' do
           legality: legality
         }.to_json
         
-        # Cache the response with timestamp
-        $active_requests[card_name] = { 
-          status: 'complete',
-          data: response,
-          timestamp: Time.now,
-          request_id: request_id
-        }
-        
+        RequestTracker.cache_response(card_name, 'complete', response, request_id)
         response
         
       ensure
@@ -1856,20 +1805,11 @@ get '/card_info' do
         legality: legality  # Include legality even if price check failed
       }.to_json
       
-      # Cache the error response
-      $active_requests[card_name] = {
-        status: 'error',
-        data: error_response,
-        timestamp: Time.now,
-        request_id: request_id
-      }
-      
+      RequestTracker.cache_response(card_name, 'error', error_response, request_id)
       error_response
     ensure
-      # Clear old requests (older than 5 minutes)
-      $active_requests.delete_if do |_, request|
-        request[:timestamp] < (Time.now - 300)  # 5 minutes
-      end
+      # Clean up old requests
+      RequestTracker.cleanup_old_requests
       
       # Clean up old contexts (older than 10 minutes)
       $browser_contexts.delete_if do |_, context_data|
@@ -1885,13 +1825,12 @@ get '/card_info' do
             end
             # Close the context
             context_data[:context].close
-            true  # Return true to delete the context
           rescue => e
             $file_logger.error("Error cleaning up stale context: #{e.message}")
-            true  # Still return true to delete the context
           end
+          true
         else
-          false  # Keep contexts that aren't stale
+          false
         end
       end
     end

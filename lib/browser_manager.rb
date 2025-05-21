@@ -254,6 +254,79 @@ module BrowserManager
       end
     end
 
+    # Track a new context
+    def track_context(request_id, context)
+      @browser_contexts[request_id] = {
+        context: context,
+        created_at: Time.now,
+        pages: []
+      }
+    end
+
+    # Add a page to a context's tracking
+    def add_page(request_id, page)
+      if @browser_contexts[request_id]
+        @browser_contexts[request_id][:pages] << page
+      end
+    end
+
+    # Remove a page from a context's tracking
+    def remove_page(request_id, target)
+      if @browser_contexts[request_id]
+        @browser_contexts[request_id][:pages].delete_if { |page| page.target == target }
+      end
+    end
+
+    # Clean up a specific context and its pages
+    def cleanup_context(request_id)
+      if @browser_contexts[request_id]
+        begin
+          # Close all pages in the context
+          @browser_contexts[request_id][:pages].each do |page|
+            begin
+              page.close
+            rescue => e
+              handle_puppeteer_error(e, request_id, "Page cleanup")
+            end
+          end
+          
+          # Close the context
+          @browser_contexts[request_id][:context].close
+          $file_logger.info("Request #{request_id}: Closed browser context and pages")
+        rescue => e
+          handle_puppeteer_error(e, request_id, "Context cleanup")
+        ensure
+          @browser_contexts.delete(request_id)
+        end
+      end
+    end
+
+    # Clean up old contexts (older than 10 minutes)
+    def cleanup_old_contexts
+      @browser_contexts.delete_if do |request_id, context_data|
+        if context_data[:created_at] < (Time.now - 600)  # 10 minutes
+          begin
+            # Close any remaining pages
+            context_data[:pages].each do |page|
+              begin
+                page.close
+              rescue => e
+                handle_puppeteer_error(e, request_id, "Stale page cleanup")
+              end
+            end
+            # Close the context
+            context_data[:context].close
+            $file_logger.info("Cleaned up stale context for request #{request_id}")
+          rescue => e
+            handle_puppeteer_error(e, request_id, "Stale context cleanup")
+          end
+          true
+        else
+          false
+        end
+      end
+    end
+
     private
 
     def setup_page_error_handling(page, request_id)

@@ -13,6 +13,7 @@ require 'securerandom'
 require_relative 'lib/logging'
 require_relative 'lib/price_processor'
 require_relative 'lib/request_tracker'
+require_relative 'lib/browser_manager'
 
 # Override Puppeteer's internal logging
 module Puppeteer
@@ -44,51 +45,16 @@ class Sinatra::Logger
 end
 
 # Global browser instance and context tracking
-$browser = nil
-$browser_contexts = Concurrent::Hash.new  # Track active contexts
-$browser_mutex = Mutex.new
-$browser_retry_count = 0
-MAX_RETRIES = 3
-SESSION_TIMEOUT = 1800  # 30 minutes
+# $browser = nil
+# $browser_contexts = Concurrent::Hash.new  # Track active contexts
+# $browser_mutex = Mutex.new
+# $browser_retry_count = 0
+# MAX_RETRIES = 3
+# SESSION_TIMEOUT = 1800  # 30 minutes
 
 # Add request tracking with concurrent handling
 # $active_requests = Concurrent::Hash.new
 # $request_mutex = Mutex.new
-
-# Cleanup browser without mutex lock
-def cleanup_browser_internal
-  # Clean up all active contexts
-  $browser_contexts.each do |request_id, context_data|
-    begin
-      $file_logger.info("Cleaning up browser context for request #{request_id}")
-      context_data[:context].close if context_data[:context]
-    rescue => e
-      handle_puppeteer_error(e, request_id, "Context cleanup")
-    ensure
-      $browser_contexts.delete(request_id)
-    end
-  end
-  
-  if $browser
-    begin
-      $file_logger.info("Cleaning up browser...")
-      $browser.close
-    rescue => e
-      handle_puppeteer_error(e, nil, "Browser cleanup")
-    ensure
-      $browser = nil
-      # Force garbage collection
-      GC.start
-    end
-  end
-end
-
-# Cleanup browser with mutex lock
-def cleanup_browser
-  $browser_mutex.synchronize do
-    cleanup_browser_internal
-  end
-end
 
 # Get or initialize browser
 def get_browser
@@ -258,21 +224,15 @@ def create_browser_context(request_id)
   browser = get_browser
   context = browser.create_incognito_browser_context
   
-  # Track the context
-  $browser_contexts[request_id] = {
-    context: context,
-    created_at: Time.now,
-    pages: []
-  }
+  # Track the context using BrowserManager
+  BrowserManager.track_context(request_id, context)
   
   # Listen for target destruction to track when pages are closed
   context.on('targetdestroyed') do |target|
     if target.type == 'page'
       $file_logger.info("Request #{request_id}: Page destroyed in context")
       # Remove the page from our tracking if it exists
-      if $browser_contexts[request_id]
-        $browser_contexts[request_id][:pages].delete_if { |page| page.target == target }
-      end
+      BrowserManager.remove_page(request_id, target)
     end
   end
   
@@ -281,11 +241,8 @@ def create_browser_context(request_id)
     if target.type == 'page'
       begin
         page = target.page
-        if $browser_contexts[request_id]
-          $browser_contexts[request_id][:pages] << page
-          $file_logger.info("Request #{request_id}: New page created in context")
-          setup_page_error_handling(page, request_id)
-        end
+        BrowserManager.add_page(request_id, page)
+        $file_logger.info("Request #{request_id}: New page created in context")
       rescue => e
         handle_puppeteer_error(e, request_id, "Page creation")
       end
@@ -432,7 +389,6 @@ end
 ['INT', 'TERM'].each do |signal|
   Signal.trap(signal) do
     $file_logger.info("\nShutting down gracefully...")
-    cleanup_browser  # This is fine as it's not called from within a mutex lock
     exit
   end
 end
@@ -489,14 +445,15 @@ get '/card_info' do
       legality = 'unknown'
     end
 
-    # Get or initialize browser and create context
-    browser = get_browser
-    context = create_browser_context(request_id)
-    
+    # Use BrowserManager to get browser and context
+    browser = BrowserManager.get_browser
+    context = BrowserManager.create_browser_context(request_id)
+    page = context.new_page
+
     begin
       # Create a new page for the search
       search_page = context.new_page
-      $browser_contexts[request_id][:pages] << search_page
+      BrowserManager.add_page(request_id, search_page)
       
       # Enable request interception to prevent redirects
       search_page.request_interception = true
@@ -908,29 +865,8 @@ get '/card_info' do
         response
         
       ensure
-        # Clean up the context and its pages
-        if context
-          begin
-            # Close all pages in the context
-            if $browser_contexts[request_id]
-              $browser_contexts[request_id][:pages].each do |page|
-                begin
-                  page.close
-                rescue => e
-                  $file_logger.error("Request #{request_id}: Error closing page: #{e.message}")
-                end
-              end
-            end
-            
-            # Close the context
-            context.close
-            $file_logger.info("Request #{request_id}: Closed browser context and pages")
-          rescue => e
-            $file_logger.error("Request #{request_id}: Error closing browser context: #{e.message}")
-          ensure
-            $browser_contexts.delete(request_id)
-          end
-        end
+        # Clean up the context and its pages using BrowserManager
+        BrowserManager.cleanup_context(request_id)
       end
       
     rescue => e
@@ -946,28 +882,8 @@ get '/card_info' do
       # Clean up old requests
       RequestTracker.cleanup_old_requests
       
-      # Clean up old contexts (older than 10 minutes)
-      $browser_contexts.delete_if do |_, context_data|
-        if context_data[:created_at] < (Time.now - 600)  # 10 minutes
-          begin
-            # Close any remaining pages
-            context_data[:pages].each do |page|
-              begin
-                page.close
-              rescue => e
-                $file_logger.error("Error closing stale page: #{e.message}")
-              end
-            end
-            # Close the context
-            context_data[:context].close
-          rescue => e
-            $file_logger.error("Error cleaning up stale context: #{e.message}")
-          end
-          true
-        else
-          false
-        end
-      end
+      # Clean up old contexts using BrowserManager
+      BrowserManager.cleanup_old_contexts
     end
   end
 end
@@ -1265,9 +1181,9 @@ def process_condition(page, product_url, condition, request_id, card_name)
 end
 
 # Clean up browser on server shutdown
-at_exit do
-  cleanup_browser
-end
+# at_exit do
+#   cleanup_browser
+# end
 
 get '/' do
   send_file File.join(settings.public_folder, 'commander_cards.html')
@@ -1354,14 +1270,15 @@ get '/card_info' do
       legality = 'unknown'
     end
 
-    # Get or initialize browser and create context
-    browser = get_browser
-    context = create_browser_context(request_id)
-    
+    # Use BrowserManager to get browser and context
+    browser = BrowserManager.get_browser
+    context = BrowserManager.create_browser_context(request_id)
+    page = context.new_page
+
     begin
       # Create a new page for the search
       search_page = context.new_page
-      $browser_contexts[request_id][:pages] << search_page
+      BrowserManager.add_page(request_id, search_page)
       
       # Enable request interception to prevent redirects
       search_page.request_interception = true
@@ -1393,9 +1310,9 @@ get '/card_info' do
         else
           # Allow all other requests, including API calls
           request.continue(headers: headers)
-  end
-end
-
+        end
+      end
+      
       # Set up console log capture
       search_page.on('console') do |msg|
         $file_logger.info("Request #{request_id}: Browser console: #{msg.text}")
@@ -1773,29 +1690,8 @@ end
         response
         
       ensure
-        # Clean up the context and its pages
-        if context
-          begin
-            # Close all pages in the context
-            if $browser_contexts[request_id]
-              $browser_contexts[request_id][:pages].each do |page|
-                begin
-                  page.close
-                rescue => e
-                  $file_logger.error("Request #{request_id}: Error closing page: #{e.message}")
-                end
-              end
-            end
-            
-            # Close the context
-            context.close
-            $file_logger.info("Request #{request_id}: Closed browser context and pages")
-          rescue => e
-            $file_logger.error("Request #{request_id}: Error closing browser context: #{e.message}")
-          ensure
-            $browser_contexts.delete(request_id)
-          end
-        end
+        # Clean up the context and its pages using BrowserManager
+        BrowserManager.cleanup_context(request_id)
       end
       
     rescue => e
@@ -1811,28 +1707,8 @@ end
       # Clean up old requests
       RequestTracker.cleanup_old_requests
       
-      # Clean up old contexts (older than 10 minutes)
-      $browser_contexts.delete_if do |_, context_data|
-        if context_data[:created_at] < (Time.now - 600)  # 10 minutes
-          begin
-            # Close any remaining pages
-            context_data[:pages].each do |page|
-              begin
-                page.close
-              rescue => e
-                $file_logger.error("Error closing stale page: #{e.message}")
-              end
-            end
-            # Close the context
-            context_data[:context].close
-          rescue => e
-            $file_logger.error("Error cleaning up stale context: #{e.message}")
-          end
-          true
-        else
-          false
-        end
-      end
+      # Clean up old contexts using BrowserManager
+      BrowserManager.cleanup_old_contexts
     end
   end
 end

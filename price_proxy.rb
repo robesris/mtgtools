@@ -1023,7 +1023,7 @@ def process_condition(page, product_url, condition, request_id, card_name)
         console.log('Redirect prevention initialized');
       }
     JS
-
+    
     # Navigate to the product page with condition filter
     condition_param = URI.encode_www_form_component(condition)
     filtered_url = "#{product_url}#{product_url.include?('?') ? '&' : '?'}Condition=#{condition_param}&Language=English"
@@ -1048,7 +1048,7 @@ def process_condition(page, product_url, condition, request_id, card_name)
           timeout: 30000
         )
       end
-
+      
       # Start screenshot loop and price pattern search
       max_wait_time = 30  # Maximum wait time in seconds
       start_time = Time.now
@@ -1393,9 +1393,9 @@ get '/card_info' do
         else
           # Allow all other requests, including API calls
           request.continue(headers: headers)
-        end
-      end
-      
+  end
+end
+
       # Set up console log capture
       search_page.on('console') do |msg|
         $file_logger.info("Request #{request_id}: Browser console: #{msg.text}")

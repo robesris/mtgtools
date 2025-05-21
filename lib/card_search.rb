@@ -20,6 +20,10 @@ class CardSearch
         # Create a new page for the search
         search_page = BrowserManager.create_page
         
+        # Forward browser console logs (and errors) to the Ruby logger
+        search_page.on("console", ->(msg) { $logger.info("Request #{ request_id }: (Browser Console) #{ msg.text }") })
+        search_page.on("pageerror", ->(err) { $logger.error("Request #{ request_id }: (Browser Error) #{ err }") })
+        
         # Inject the card search function first
         js_code = File.read('lib/js/card_search.js')
         begin
@@ -73,25 +77,13 @@ class CardSearch
           raise
         end
         
-        # Inject screenshot function
-        search_page.evaluate(<<~JS)
-          window.takeDebugScreenshot = async (prefix) => {
-            try {
-              // Take screenshot using Puppeteer's page.screenshot
-              await window.puppeteerScreenshot(prefix);
-              console.log('Took debug screenshot:', prefix);
-            } catch (e) {
-              console.error('Error taking debug screenshot:', e);
-            }
-          };
-        JS
-        
         # Expose screenshot function to page
         search_page.expose_function('puppeteerScreenshot', ->(prefix) {
           begin
             filename = "#{prefix}.png"
             search_page.screenshot(path: filename)
             $logger.info("Request #{request_id}: Took debug screenshot: #{filename}")
+            $logger.info("Request #{ request_id }: (Debug) Screenshot function exposed (puppeteerScreenshot)")
           rescue => e
             $logger.error("Request #{request_id}: Error taking debug screenshot: #{e.message}")
           end
@@ -106,44 +98,85 @@ class CardSearch
           response = search_page.goto(search_url, wait_until: 'networkidle0')
           $logger.info("Request #{request_id}: Search page response status: #{response.status}")
           
+          # (Optional) log the page's HTML (for debugging) and take a debug screenshot
+          search_page.wait_for_selector('.search-result, .product-card, [class*="product"], [class*="listing"]', timeout: 20000)
+          sleep(2) # extra delay to let the page settle after selector appears
+          html = search_page.content
+          $logger.info("Request #{request_id}: (Debug) Page HTML (truncated): #{html[0..500]}…")
+          filename = "search_page_loaded.png"
+          search_page.screenshot(path: filename)
+          $logger.info("Request #{ request_id }: Took debug screenshot: #{filename}")
+          
           # Wait for the search results to load
           begin
             search_page.wait_for_selector('.search-result, .product-card, [class*="product"], [class*="listing"]', timeout: 10000)
             $logger.info("Request #{request_id}: Search results found")
+            
+            # (Optional) log the page's HTML (for debugging) and take a debug screenshot (after waiting for results)
+            html = search_page.content
+            $logger.info("Request #{request_id}: (Debug) Page HTML (truncated) after waiting for results: #{html[0..500]}…")
+            filename = "search_results_loaded.png"
+            search_page.screenshot(path: filename)
+            $logger.info("Request #{ request_id }: Took debug screenshot: #{filename}")
+            
+            # Find the lowest priced valid product from the search results
+            card_name = card_name.strip  # Normalize the card name in Ruby first
+            lowest_priced_product = search_page.evaluate(<<~JS, { cardName: card_name }.to_json)
+              function(params) {
+                const { cardName } = JSON.parse(params);
+                console.log('Searching for card:', cardName);
+                // (Optional) log the page's HTML (for debugging)
+                html = document.documentElement.outerHTML;
+                 $logger.info("Request #{request_id}: (Debug) Page HTML (truncated) (after cardSearch): #{html[0..500]}…")
+                // Extract raw product data (title, price, url) from the page (using a simple loop over "document.querySelectorAll('.search-result, .product-card, [class*="product"], [class*="listing"]')") and return an array of hashes (each with "title", "price", and "url").
+                var products = [];
+                var els = document.querySelectorAll('.search-result, .product-card, [class*="product"], [class*="listing"]');
+                for (var i = 0; i < els.length; i++) {
+                  var el = els[i];
+                  var titleEl = el.querySelector('.product__name, .product__title, [class*="product-name"], [class*="product-title"]');
+                  var priceEl = el.querySelector('.product__price, .product__price-value, [class*="price"]');
+                  var urlEl = el.querySelector('a[href*="/product"]');
+                  if (titleEl && priceEl) {
+                    products.push({ title: titleEl.textContent.trim(), price: priceEl.textContent.trim(), url: (urlEl ? urlEl.href : '') });
+                  }
+                }
+                return products;
+              }
+            JS
+            
+            # Ruby-side filtering and price selection
+            products = lowest_priced_product
+            matches = products.select { |p| is_exact_card_match(card_name, p['title']) }
+            matches = matches.map do |p|
+              price = p['price'].gsub(/[^0-9.]/, '').to_f
+              p.merge('numeric_price' => price)
+            end.select { |p| p['numeric_price'] > 0 }
+            lowest = matches.min_by { |p| p['numeric_price'] }
+
+            if !lowest
+              $logger.error("Request #{request_id}: No valid products found for: #{card_name}")
+              return nil
+            end
+
+            $logger.info("Request #{request_id}: Found lowest priced product: #{lowest['title']} at $#{lowest['numeric_price']}")
+            filename = "after_card_search.png"
+            search_page.screenshot(path: filename)
+            $logger.info("Request #{ request_id }: Took debug screenshot: #{filename}")
+            lowest
+            
           rescue => e
             $logger.error("Request #{request_id}: Timeout waiting for search results: #{e.message}")
+            # (Optional) log the page's HTML (for debugging) and take a debug screenshot (if wait_for_selector times out)
+            html = search_page.content
+            $logger.info("Request #{request_id}: (Debug) Page HTML (truncated) (timeout): #{html[0..500]}…")
+            filename = "search_results_timeout.png"
+            search_page.screenshot(path: filename)
+            $logger.info("Request #{ request_id }: Took debug screenshot: #{filename}")
+            
             # Take a screenshot for debugging
             ScreenshotManager.take_error_screenshot(search_page, card_name, Time.now.to_i, $logger, request_id)
             return nil
           end
-          
-          # Log the page content for debugging
-          $logger.info("Request #{request_id}: Page title: #{search_page.title}")
-          $logger.info("Request #{request_id}: Current URL: #{search_page.url}")
-          
-          # Find the lowest priced valid product from the search results
-          card_name = card_name.strip  # Normalize the card name in Ruby first
-          lowest_priced_product = search_page.evaluate(<<~JS, { cardName: card_name }.to_json)
-            function(params) {
-              const { cardName } = JSON.parse(params);
-              console.log('Searching for card:', cardName);
-              
-              // Use the globally exposed cardSearch function
-              if (typeof window.cardSearch !== 'function') {
-                throw new Error('Card search function not found in global scope');
-              }
-              
-              return window.cardSearch({ cardName });
-            }
-          JS
-          
-          if !lowest_priced_product
-            $logger.error("Request #{request_id}: No valid products found for: #{card_name}")
-            return nil
-          end
-          
-          $logger.info("Request #{request_id}: Found lowest priced product: #{lowest_priced_product['title']} at $#{lowest_priced_product['price']}")
-          lowest_priced_product
           
         ensure
           search_page.close
@@ -151,6 +184,12 @@ class CardSearch
       rescue => e
         $logger.error("Request #{request_id}: Error searching card: #{e.message}")
         $logger.error(e.backtrace.join("\n"))
+        # (Optional) log the page's HTML (for debugging) and take a debug screenshot (if an error occurs in cardSearch)
+        html = search_page.content
+        $logger.info("Request #{request_id}: (Debug) Page HTML (truncated) (error in cardSearch): #{html[0..500]}…")
+        filename = "card_search_error.png"
+        search_page.screenshot(path: filename)
+        $logger.info("Request #{ request_id }: Took debug screenshot: #{filename}")
         nil
       end
     end
@@ -368,6 +407,11 @@ class CardSearch
         $logger.error(e.backtrace.join("\n"))
         nil
       end
+    end
+
+    # Helper for exact card name match
+    def is_exact_card_match(card_name, product_name)
+      card_name.to_s.strip.downcase == product_name.to_s.strip.downcase
     end
   end
 end 

@@ -11,6 +11,26 @@ require_relative 'lib/price_extractor'
 require_relative 'lib/request_tracker'
 require_relative 'lib/config'
 require_relative 'lib/page_manager'
+require_relative 'lib/server_config'
+require_relative 'lib/error_handler'
+
+# Initialize server configuration and config before Sinatra settings
+ServerConfig.setup
+
+# Configure Sinatra settings
+set :port, Config.settings[:port]
+set :bind, Config.settings[:bind]
+set :public_folder, Config.settings[:public_folder]
+
+# Configure CORS
+configure do
+  enable :cross_origin
+  set :allow_origin, "*"
+  set :allow_methods, [:get, :post, :options]
+  set :allow_credentials, true
+  set :max_age, "1728000"
+  set :expose_headers, ['Content-Type']
+end
 
 # Set up file logging first
 $file_logger = Logging.logger
@@ -30,11 +50,6 @@ module Puppeteer
     end
   end
 end
-
-# Use configured port from Config.settings
-set :port, Config.settings[:port]
-set :bind, Config.settings[:bind]
-set :public_folder, Config.settings[:public_folder]
 
 # Override Sinatra's default logger to handle WARN messages without backtraces
 class Sinatra::Logger
@@ -165,7 +180,7 @@ def create_browser_context(request_id)
         BrowserManager.add_page(request_id, page)
         $file_logger.info("Request #{request_id}: New page created in context")
       rescue => e
-        handle_puppeteer_error(e, request_id, "Page creation")
+        ErrorHandler.handle_puppeteer_error(e, request_id, "Page creation")
       end
     end
   end
@@ -186,7 +201,7 @@ def handle_rate_limit(page, request_id)
   begin
     # Check if we're being rate limited using valid DOM selectors
     rate_limit_check = page.evaluate(<<~JS)
-      function() {
+    function() {
         // Get all error messages
         const errorMessages = Array.from(document.querySelectorAll('.error-message, .rate-limit-message, [class*="error"], [class*="rate-limit"]'));
         
@@ -232,15 +247,6 @@ end
   end
 end
 
-configure do
-  enable :cross_origin
-  set :allow_origin, "*"
-  set :allow_methods, [:get, :post, :options]
-  set :allow_credentials, true
-  set :max_age, "1728000"
-  set :expose_headers, ['Content-Type']
-end
-
 # Enable CORS
 before do
   response.headers["Access-Control-Allow-Origin"] = "*"
@@ -256,7 +262,7 @@ get '/card_info' do
   $file_logger.info("Starting card info request #{request_id} for: #{card_name}")
   
   if card_name.nil? || card_name.empty?
-    handle_puppeteer_error(ArgumentError.new("No card name provided"), request_id, "Validation")
+    ErrorHandler.handle_puppeteer_error(ArgumentError.new("No card name provided"), request_id, "Validation")
     return { error: 'No card name provided' }.to_json
   end
 
@@ -377,7 +383,7 @@ get '/card_info' do
     end
     
   rescue => e
-    handle_puppeteer_error(e, request_id, "Request processing")
+    ErrorHandler.handle_puppeteer_error(e, request_id, "Request processing")
     error_response = { 
       error: e.message,
       legality: legality
@@ -432,8 +438,8 @@ def process_condition(page, product_url, condition, request_id, card_name)
             console.log('Prevented click navigation to error page');
             event.preventDefault();
             event.stopPropagation();
-            return false;
-          }
+                return false;
+              }
         }, true);
 
         console.log('Redirect prevention initialized');
@@ -671,7 +677,7 @@ def process_condition(page, product_url, condition, request_id, card_name)
       }
 
     rescue => e
-      handle_puppeteer_error(e, request_id, "Condition processing")
+      ErrorHandler.handle_puppeteer_error(e, request_id, "Condition processing")
       return {
         'success' => false,
         'message' => e.message
@@ -742,7 +748,7 @@ get '/card_info' do
   $file_logger.info("Starting card info request #{request_id} for: #{card_name}")
   
   if card_name.nil? || card_name.empty?
-    handle_puppeteer_error(ArgumentError.new("No card name provided"), request_id, "Validation")
+    ErrorHandler.handle_puppeteer_error(ArgumentError.new("No card name provided"), request_id, "Validation")
     return { error: 'No card name provided' }.to_json
   end
 
@@ -790,26 +796,26 @@ get '/card_info' do
       
       # Extract the lowest priced product
       lowest_priced_product = PriceExtractor.extract_lowest_priced_product(search_page, card_name, request_id)
-      
-      if !lowest_priced_product
-        $file_logger.error("Request #{request_id}: No valid products found for: #{card_name}")
-        return { error: 'No valid product found', legality: legality }.to_json
-      end
-      
-      $file_logger.info("Request #{request_id}: Found lowest priced product: #{lowest_priced_product['title']} at $#{lowest_priced_product['price']}")
-      
-      # Now we only need to process the single lowest-priced product
-      found_prices = false
-      prices = {}
-      found_conditions = 0
-      conditions = ['Near Mint', 'Lightly Played']
-      
-      conditions.each do |condition|
-        # Stop if we've found both conditions
-        break if found_conditions >= 2
         
-        # Create a new page for each condition
-        condition_page = context.new_page
+        if !lowest_priced_product
+        $file_logger.error("Request #{request_id}: No valid products found for: #{card_name}")
+          return { error: 'No valid product found', legality: legality }.to_json
+        end
+        
+      $file_logger.info("Request #{request_id}: Found lowest priced product: #{lowest_priced_product['title']} at $#{lowest_priced_product['price']}")
+        
+        # Now we only need to process the single lowest-priced product
+        found_prices = false
+        prices = {}
+        found_conditions = 0
+        conditions = ['Near Mint', 'Lightly Played']
+        
+        conditions.each do |condition|
+          # Stop if we've found both conditions
+          break if found_conditions >= 2
+          
+          # Create a new page for each condition
+          condition_page = context.new_page
         PageManager.configure_page(condition_page, request_id)
         
         begin
@@ -826,51 +832,51 @@ get '/card_info' do
           result = PriceExtractor.extract_listing_prices(condition_page, request_id)
           $file_logger.info("Request #{request_id}: Condition result: #{result.inspect}")
           
-          if result && result.is_a?(Hash) && result['success']
-            prices[condition] = {
+            if result && result.is_a?(Hash) && result['success']
+              prices[condition] = {
               'price' => result['price'].to_s.gsub(/\$/,''),
-              'url' => result['url']
-            }
-            found_conditions += 1
-            found_prices = true
+                'url' => result['url']
+              }
+              found_conditions += 1
+              found_prices = true
+            end
+          ensure
+            condition_page.close
           end
-        ensure
-          condition_page.close
         end
-      end
-      
-      if prices.empty?
+        
+        if prices.empty?
         $file_logger.error("Request #{request_id}: No valid prices found for any condition")
-        return { error: 'No valid prices found', legality: legality }.to_json
-      end
-      
+          return { error: 'No valid prices found', legality: legality }.to_json
+        end
+        
       $file_logger.info("Request #{request_id}: Final prices: #{prices.inspect}")
-      # Format the response to match the original style
+        # Format the response to match the original style
       formatted_prices = PriceProcessor.format_prices(prices)
-      
-      # Combine prices and legality into a single response
-      response = { 
-        prices: formatted_prices,
-        legality: legality
-      }.to_json
-      
+        
+        # Combine prices and legality into a single response
+        response = { 
+          prices: formatted_prices,
+          legality: legality
+        }.to_json
+        
       RequestTracker.cache_response(card_name, 'complete', response, request_id)
-      response
-      
-    ensure
+        response
+        
+      ensure
       # Clean up the context and its pages using BrowserManager
       BrowserManager.cleanup_context(request_id)
     end
     
-  rescue => e
-    handle_puppeteer_error(e, request_id, "Request processing")
-    error_response = { 
-      error: e.message,
+          rescue => e
+    ErrorHandler.handle_puppeteer_error(e, request_id, "Request processing")
+      error_response = { 
+        error: e.message,
       legality: legality
-    }.to_json
-    
+      }.to_json
+      
     RequestTracker.cache_response(card_name, 'error', error_response, request_id)
-    error_response
+      error_response
   end
 end
 
@@ -1157,7 +1163,7 @@ def process_condition(page, product_url, condition, request_id, card_name)
       }
 
     rescue => e
-      handle_puppeteer_error(e, request_id, "Condition processing")
+      ErrorHandler.handle_puppeteer_error(e, request_id, "Condition processing")
       return {
         'success' => false,
         'message' => e.message
@@ -1174,18 +1180,18 @@ def cleanup_browser_internal
       $file_logger.info("Cleaning up browser context for request #{request_id}")
       context_data[:context].close if context_data[:context]
     rescue => e
-      handle_puppeteer_error(e, request_id, "Context cleanup")
+      ErrorHandler.handle_puppeteer_error(e, request_id, "Context cleanup")
     ensure
       $browser_contexts.delete(request_id)
     end
   end
   
   if $browser
-    begin
+  begin
       $file_logger.info("Cleaning up browser...")
       $browser.close
-    rescue => e
-      handle_puppeteer_error(e, nil, "Browser cleanup")
+  rescue => e
+      ErrorHandler.handle_puppeteer_error(e, nil, "Browser cleanup")
     ensure
       $browser = nil
       # Force garbage collection
@@ -1197,7 +1203,7 @@ end
 # Update page error handling
 def setup_page_error_handling(page, request_id)
   page.on('error') do |err|
-    handle_puppeteer_error(err, request_id, "Page")
+    ErrorHandler.handle_puppeteer_error(err, request_id, "Page")
   end
 
   page.on('console') do |msg|

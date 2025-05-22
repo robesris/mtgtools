@@ -1,4 +1,4 @@
 example_id                                  | status  | run_time        |
 ------------------------------------------- | ------- | --------------- |
-./spec/integration/price_proxy_spec.rb[1:1] | passed  | 18.4 seconds    |
+./spec/integration/price_proxy_spec.rb[1:1] | passed  | 17.93 seconds   |
 ./spec/integration/price_proxy_spec.rb[1:2] | pending | 0.00001 seconds |

@@ -13,6 +13,9 @@ require_relative 'lib/config'
 require_relative 'lib/page_manager'
 require_relative 'lib/server_config'
 require_relative 'lib/error_handler'
+require_relative 'lib/rate_limit_handler'
+require_relative 'lib/screenshot_manager'
+require_relative 'lib/redirect_prevention'
 
 # Initialize server configuration and config before Sinatra settings
 ServerConfig.setup
@@ -196,49 +199,6 @@ def create_page
   page
 end
 
-# Add a method to handle rate limiting
-def handle_rate_limit(page, request_id)
-  begin
-    # Check if we're being rate limited using valid DOM selectors
-    rate_limit_check = page.evaluate(<<~JS)
-    function() {
-        // Get all error messages
-        const errorMessages = Array.from(document.querySelectorAll('.error-message, .rate-limit-message, [class*="error"], [class*="rate-limit"]'));
-        
-        // Check if any error message contains rate limit text
-        const hasRateLimit = errorMessages.some(element => {
-          const text = element.textContent.toLowerCase();
-          return text.includes('rate limit') || text.includes('too many requests');
-        });
-        
-        // Check for error pages
-        const hasErrorPage = document.querySelector('.error-page, .uhoh-page, [class*="error-page"]') !== null;
-        
-        return {
-          hasRateLimit,
-          hasErrorPage,
-          currentUrl: window.location.href,
-          errorMessages: errorMessages.map(el => el.textContent.trim())
-        };
-      }
-    JS
-    
-    if rate_limit_check['hasRateLimit'] || rate_limit_check['hasErrorPage']
-      $file_logger.warn("Request #{request_id}: Rate limit detected, waiting...")
-      $file_logger.info("Request #{request_id}: Error messages found: #{rate_limit_check['errorMessages'].inspect}")
-      # Take a longer break if we hit rate limiting
-      sleep(rand(10..15))
-      # Try refreshing the page
-      page.reload(wait_until: 'networkidle0')
-      return true
-    end
-  rescue => e
-    $file_logger.error("Request #{request_id}: Error checking rate limit: #{e.message}")
-    $file_logger.error("Request #{request_id}: Rate limit check error details: #{e.backtrace.join("\n")}")
-  end
-  false
-end
-
 # Handle shutdown signals
 ['INT', 'TERM'].each do |signal|
   Signal.trap(signal) do
@@ -397,54 +357,8 @@ end
 # Process a single condition
 def process_condition(page, product_url, condition, request_id, card_name)
   begin
-    # Add redirect prevention script using safe_evaluate
-    safe_evaluate(page, <<~JS, request_id)
-      function() {
-        // Store original navigation methods
-        const originalPushState = history.pushState;
-        const originalReplaceState = history.replaceState;
-        
-        // Override history methods to prevent redirects to error page
-        history.pushState = function(state, title, url) {
-          if (typeof url === 'string' && url.includes('uhoh')) {
-            console.log('Prevented history push to error page');
-            return;
-          }
-          return originalPushState.apply(this, arguments);
-        };
-
-        history.replaceState = function(state, title, url) {
-          if (typeof url === 'string' && url.includes('uhoh')) {
-            console.log('Prevented history replace to error page');
-            return;
-          }
-          return originalReplaceState.apply(this, arguments);
-        };
-
-        // Add navigation listener
-        window.addEventListener('beforeunload', (event) => {
-          if (window.location.href.includes('uhoh')) {
-            console.log('Prevented navigation to error page');
-            event.preventDefault();
-            event.stopPropagation();
-            return false;
-          }
-        });
-
-        // Add click interceptor for links that might redirect
-        document.addEventListener('click', (event) => {
-          const link = event.target.closest('a');
-          if (link && link.href && link.href.includes('uhoh')) {
-            console.log('Prevented click navigation to error page');
-            event.preventDefault();
-            event.stopPropagation();
-                return false;
-              }
-        }, true);
-
-        console.log('Redirect prevention initialized');
-      }
-    JS
+    # Add redirect prevention
+    RedirectPrevention.add_prevention(page, request_id)
     
     # Navigate to the product page with condition filter
     condition_param = URI.encode_www_form_component(condition)
@@ -462,7 +376,7 @@ def process_condition(page, product_url, condition, request_id, card_name)
       )
       
       # Check for rate limiting after navigation
-      if handle_rate_limit(page, request_id)
+      if RateLimitHandler.handle_rate_limit(page, request_id)
         # If we hit rate limiting, try one more time
         sleep(rand(5..10))
         response = page.goto(filtered_url, 
@@ -472,38 +386,27 @@ def process_condition(page, product_url, condition, request_id, card_name)
       end
       
       # Start screenshot loop and price pattern search
-      max_wait_time = 30  # Maximum wait time in seconds
       start_time = Time.now
       screenshot_count = 0
-      found_listings = false
-      screenshot_interval = 2  # Take a screenshot every 2 seconds
       last_screenshot_time = start_time
-      max_screenshots = 3  # Only take 3 screenshots
 
       # Take initial screenshot immediately after page load
-      screenshot_path = "loading_sequence_#{condition}_#{screenshot_count}_#{Time.now.to_i}.png"
-      page.screenshot(path: screenshot_path, full_page: true)
-      $file_logger.info("Request #{request_id}: Saved initial screenshot to #{screenshot_path}")
+      ScreenshotManager.take_screenshot(page, condition, screenshot_count, request_id)
       screenshot_count += 1
       last_screenshot_time = Time.now
 
       # Log our current selectors for the product page
-      $file_logger.info("Request #{request_id}: Current product page selectors:")
-      $file_logger.info("  Container: .listing-item")
-      $file_logger.info("  Base Price: .listing-item__listing-data__info__price")
-      $file_logger.info("  Shipping: .shipping-messages__price")
+      ScreenshotManager.log_product_page_selectors(request_id)
 
       # Main loop - continue until we hit max screenshots
-      while screenshot_count < max_screenshots
+      while screenshot_count < ScreenshotManager::MAX_SCREENSHOTS
         current_time = Time.now
         elapsed = current_time - start_time
 
-        # Take screenshot every 2 seconds
-        if (current_time - last_screenshot_time) >= screenshot_interval
+        # Take screenshot every SCREENSHOT_INTERVAL seconds
+        if (current_time - last_screenshot_time) >= ScreenshotManager::SCREENSHOT_INTERVAL
           begin
-            screenshot_path = "loading_sequence_#{condition}_#{screenshot_count}_#{Time.now.to_i}.png"
-            page.screenshot(path: screenshot_path, full_page: true)
-            $file_logger.info("Request #{request_id}: Saved screenshot #{screenshot_count} at #{elapsed.round(1)}s")
+            ScreenshotManager.take_screenshot(page, condition, screenshot_count, request_id)
             screenshot_count += 1
             last_screenshot_time = current_time
 
@@ -603,40 +506,9 @@ def process_condition(page, product_url, condition, request_id, card_name)
                 }
               JS
 
-              if screenshot_count == 3  # Only log detailed info for the third screenshot
-                $file_logger.info("Request #{request_id}: === DETAILED LISTINGS INFO (3rd screenshot) ===")
-                if listings_html.is_a?(Hash) && listings_html['success']
-                  $file_logger.info("  Found listings header: #{listings_html['headerText']}")
-                  $file_logger.info("  === LISTINGS FOUND ===")
-                  listings_html['listings'].each do |listing|
-                    $file_logger.info("  Listing #{listing['index'] + 1}:")
-                    $file_logger.info("    Container Classes: #{listing['containerClasses']}")
-                    if listing['basePrice']
-                      $file_logger.info("    Base Price: #{listing['basePrice']['text']}")
-                      $file_logger.info("    Base Price Classes: #{listing['basePrice']['classes']}")
-                    end
-                    if listing['shipping']
-                      $file_logger.info("    Shipping: #{listing['shipping']['text']}")
-                      $file_logger.info("    Shipping Classes: #{listing['shipping']['classes']}")
-                    end
-                    $file_logger.info("    HTML: #{listing['html']}")
-                  end
-
-                  # Log price data if found
-                  if listings_html['priceData'] && listings_html['priceData']['success']
-                    $file_logger.info("  === PRICE DATA ===")
-                    $file_logger.info("    Total Price: $#{listings_html['priceData']['price']}")
-                    $file_logger.info("    Base Price: $#{listings_html['priceData']['details']['basePrice']}")
-                    $file_logger.info("    Shipping: $#{listings_html['priceData']['details']['shippingPrice']}")
-                    $file_logger.info("    Shipping Text: #{listings_html['priceData']['details']['shippingText']}")
-                  end
-                elsif listings_html.is_a?(Hash) && listings_html['error']
-                  $file_logger.error("  Error evaluating listing: #{listings_html['error']}")
-                  $file_logger.error("  Stack trace: #{listings_html['stack']}")
-                else
-                  $file_logger.error("  No valid data found: #{listings_html['message']}")
-                end
-                $file_logger.info("=== END OF LISTINGS INFO ===")
+              # Log detailed info for the last screenshot
+              if screenshot_count == ScreenshotManager::MAX_SCREENSHOTS
+                ScreenshotManager.log_listings_info(listings_html, request_id)
               end
 
               # If we found a valid price, return it immediately and break out of the loop
@@ -883,54 +755,8 @@ end
 # Update error handling in process_condition
 def process_condition(page, product_url, condition, request_id, card_name)
   begin
-    # Add redirect prevention script using safe_evaluate
-    safe_evaluate(page, <<~JS, request_id)
-      function() {
-        // Store original navigation methods
-        const originalPushState = history.pushState;
-        const originalReplaceState = history.replaceState;
-        
-        // Override history methods to prevent redirects to error page
-        history.pushState = function(state, title, url) {
-          if (typeof url === 'string' && url.includes('uhoh')) {
-            console.log('Prevented history push to error page');
-            return;
-          }
-          return originalPushState.apply(this, arguments);
-        };
-
-        history.replaceState = function(state, title, url) {
-          if (typeof url === 'string' && url.includes('uhoh')) {
-            console.log('Prevented history replace to error page');
-            return;
-          }
-          return originalReplaceState.apply(this, arguments);
-        };
-
-        // Add navigation listener
-        window.addEventListener('beforeunload', (event) => {
-          if (window.location.href.includes('uhoh')) {
-            console.log('Prevented navigation to error page');
-            event.preventDefault();
-            event.stopPropagation();
-            return false;
-          }
-        });
-
-        // Add click interceptor for links that might redirect
-        document.addEventListener('click', (event) => {
-          const link = event.target.closest('a');
-          if (link && link.href && link.href.includes('uhoh')) {
-            console.log('Prevented click navigation to error page');
-            event.preventDefault();
-            event.stopPropagation();
-            return false;
-          }
-        }, true);
-
-        console.log('Redirect prevention initialized');
-      }
-    JS
+    # Add redirect prevention
+    RedirectPrevention.add_prevention(page, request_id)
     
     # Navigate to the product page with condition filter
     condition_param = URI.encode_www_form_component(condition)
@@ -948,7 +774,7 @@ def process_condition(page, product_url, condition, request_id, card_name)
       )
       
       # Check for rate limiting after navigation
-      if handle_rate_limit(page, request_id)
+      if RateLimitHandler.handle_rate_limit(page, request_id)
         # If we hit rate limiting, try one more time
         sleep(rand(5..10))
         response = page.goto(filtered_url, 
@@ -958,38 +784,27 @@ def process_condition(page, product_url, condition, request_id, card_name)
       end
       
       # Start screenshot loop and price pattern search
-      max_wait_time = 30  # Maximum wait time in seconds
       start_time = Time.now
       screenshot_count = 0
-      found_listings = false
-      screenshot_interval = 2  # Take a screenshot every 2 seconds
       last_screenshot_time = start_time
-      max_screenshots = 3  # Only take 3 screenshots
 
       # Take initial screenshot immediately after page load
-      screenshot_path = "loading_sequence_#{condition}_#{screenshot_count}_#{Time.now.to_i}.png"
-      page.screenshot(path: screenshot_path, full_page: true)
-      $file_logger.info("Request #{request_id}: Saved initial screenshot to #{screenshot_path}")
+      ScreenshotManager.take_screenshot(page, condition, screenshot_count, request_id)
       screenshot_count += 1
       last_screenshot_time = Time.now
 
       # Log our current selectors for the product page
-      $file_logger.info("Request #{request_id}: Current product page selectors:")
-      $file_logger.info("  Container: .listing-item")
-      $file_logger.info("  Base Price: .listing-item__listing-data__info__price")
-      $file_logger.info("  Shipping: .shipping-messages__price")
+      ScreenshotManager.log_product_page_selectors(request_id)
 
       # Main loop - continue until we hit max screenshots
-      while screenshot_count < max_screenshots
+      while screenshot_count < ScreenshotManager::MAX_SCREENSHOTS
         current_time = Time.now
         elapsed = current_time - start_time
 
-        # Take screenshot every 2 seconds
-        if (current_time - last_screenshot_time) >= screenshot_interval
+        # Take screenshot every SCREENSHOT_INTERVAL seconds
+        if (current_time - last_screenshot_time) >= ScreenshotManager::SCREENSHOT_INTERVAL
           begin
-            screenshot_path = "loading_sequence_#{condition}_#{screenshot_count}_#{Time.now.to_i}.png"
-            page.screenshot(path: screenshot_path, full_page: true)
-            $file_logger.info("Request #{request_id}: Saved screenshot #{screenshot_count} at #{elapsed.round(1)}s")
+            ScreenshotManager.take_screenshot(page, condition, screenshot_count, request_id)
             screenshot_count += 1
             last_screenshot_time = current_time
 
@@ -1089,40 +904,9 @@ def process_condition(page, product_url, condition, request_id, card_name)
                 }
               JS
 
-              if screenshot_count == 3  # Only log detailed info for the third screenshot
-                $file_logger.info("Request #{request_id}: === DETAILED LISTINGS INFO (3rd screenshot) ===")
-                if listings_html.is_a?(Hash) && listings_html['success']
-                  $file_logger.info("  Found listings header: #{listings_html['headerText']}")
-                  $file_logger.info("  === LISTINGS FOUND ===")
-                  listings_html['listings'].each do |listing|
-                    $file_logger.info("  Listing #{listing['index'] + 1}:")
-                    $file_logger.info("    Container Classes: #{listing['containerClasses']}")
-                    if listing['basePrice']
-                      $file_logger.info("    Base Price: #{listing['basePrice']['text']}")
-                      $file_logger.info("    Base Price Classes: #{listing['basePrice']['classes']}")
-                    end
-                    if listing['shipping']
-                      $file_logger.info("    Shipping: #{listing['shipping']['text']}")
-                      $file_logger.info("    Shipping Classes: #{listing['shipping']['classes']}")
-                    end
-                    $file_logger.info("    HTML: #{listing['html']}")
-                  end
-
-                  # Log price data if found
-                  if listings_html['priceData'] && listings_html['priceData']['success']
-                    $file_logger.info("  === PRICE DATA ===")
-                    $file_logger.info("    Total Price: $#{listings_html['priceData']['price']}")
-                    $file_logger.info("    Base Price: $#{listings_html['priceData']['details']['basePrice']}")
-                    $file_logger.info("    Shipping: $#{listings_html['priceData']['details']['shippingPrice']}")
-                    $file_logger.info("    Shipping Text: #{listings_html['priceData']['details']['shippingText']}")
-                  end
-                elsif listings_html.is_a?(Hash) && listings_html['error']
-                  $file_logger.error("  Error evaluating listing: #{listings_html['error']}")
-                  $file_logger.error("  Stack trace: #{listings_html['stack']}")
-                else
-                  $file_logger.error("  No valid data found: #{listings_html['message']}")
-                end
-                $file_logger.info("=== END OF LISTINGS INFO ===")
+              # Log detailed info for the last screenshot
+              if screenshot_count == ScreenshotManager::MAX_SCREENSHOTS
+                ScreenshotManager.log_listings_info(listings_html, request_id)
               end
 
               # If we found a valid price, return it immediately and break out of the loop

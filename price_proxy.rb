@@ -18,6 +18,7 @@ require_relative 'lib/screenshot_manager'
 require_relative 'lib/redirect_prevention'
 require_relative 'lib/listing_evaluator'
 require_relative 'lib/page_evaluator'
+require_relative 'lib/legality_checker'
 
 # Initialize server configuration and config before Sinatra settings
 ServerConfig.setup
@@ -99,22 +100,8 @@ get '/card_info' do
   end
 
   begin
-    # Get legality from Scryfall first
-    begin
-      $file_logger.info("Request #{request_id}: Checking legality with Scryfall")
-      legality_response = HTTParty.get("https://api.scryfall.com/cards/named?exact=#{CGI.escape(card_name)}")
-      if legality_response.success?
-        legality_data = JSON.parse(legality_response.body)
-        legality = legality_data['legalities']['commander'] || 'unknown'
-        $file_logger.info("Request #{request_id}: Legality for #{card_name}: #{legality}")
-      else
-        $file_logger.error("Request #{request_id}: Scryfall API error: #{legality_response.code} - #{legality_response.body}")
-        legality = 'unknown'
-      end
-    rescue => e
-      $file_logger.error("Request #{request_id}: Error checking legality: #{e.message}")
-      legality = 'unknown'
-    end
+    # Get legality using the new LegalityChecker module
+    legality = LegalityChecker.check_legality(card_name, request_id)
 
     # Use BrowserManager to get browser and context
     browser = BrowserManager.get_browser
@@ -366,22 +353,8 @@ get '/card_info' do
   end
 
   begin
-    # Get legality from Scryfall first
-    begin
-      $file_logger.info("Request #{request_id}: Checking legality with Scryfall")
-      legality_response = HTTParty.get("https://api.scryfall.com/cards/named?exact=#{CGI.escape(card_name)}")
-      if legality_response.success?
-        legality_data = JSON.parse(legality_response.body)
-        legality = legality_data['legalities']['commander'] || 'unknown'
-        $file_logger.info("Request #{request_id}: Legality for #{card_name}: #{legality}")
-      else
-        $file_logger.error("Request #{request_id}: Scryfall API error: #{legality_response.code} - #{legality_response.body}")
-        legality = 'unknown'
-      end
-    rescue => e
-      $file_logger.error("Request #{request_id}: Error checking legality: #{e.message}")
-      legality = 'unknown'
-    end
+    # Get legality using the new LegalityChecker module
+    legality = LegalityChecker.check_legality(card_name, request_id)
 
     # Use BrowserManager to get browser and context
     browser = BrowserManager.get_browser

@@ -22,102 +22,89 @@ module RequestHandler
     private
 
     def validate_request(card_name, request_id)
-      if card_name.nil? || card_name.empty?
-        ErrorHandler.handle_puppeteer_error(ArgumentError.new("No card name provided"), request_id, "Validation")
-        raise ArgumentError, "No card name provided"
-      end
+      return unless card_name.nil? || card_name.empty?
+      
+      ErrorHandler.handle_puppeteer_error(ArgumentError.new("No card name provided"), request_id, "Validation")
+      raise ArgumentError, "No card name provided"
     end
 
     def process_card_request(card_name, request_id)
-      begin
-        # Get legality using LegalityChecker module
-        legality = LegalityChecker.check_legality(card_name, request_id)
-
-        # Use BrowserManager to get browser and context
-        browser = BrowserManager.get_browser
-        context = BrowserManager.create_browser_context(request_id)
-        
-        begin
-          process_with_browser(card_name, request_id, context, legality)
-        ensure
-          # Clean up the context and its pages using BrowserManager
-          BrowserManager.cleanup_context(request_id)
-        end
-        
-      rescue => e
-        handle_request_error(e, request_id, legality)
-      end
+      legality = LegalityChecker.check_legality(card_name, request_id)
+      browser = BrowserManager.get_browser
+      context = BrowserManager.create_browser_context(request_id)
+      
+      process_with_browser(card_name, request_id, context, legality)
+    rescue => e
+      handle_request_error(e, request_id, legality)
+    ensure
+      BrowserManager.cleanup_context(request_id)
     end
 
     def process_with_browser(card_name, request_id, context, legality)
-      # Create a new page for the search
-      search_page = context.new_page
-      PageManager.configure_page(search_page, request_id)
-      BrowserManager.add_page(request_id, search_page)
-      
-      # Navigate to TCGPlayer search
-      $file_logger.info("Request #{request_id}: Navigating to TCGPlayer search for: #{card_name}")
+      search_page = setup_search_page(context, request_id)
       search_url = "https://www.tcgplayer.com/search/magic/product?q=#{CGI.escape(card_name)}&view=grid"
+      
+      $file_logger.info("Request #{request_id}: Navigating to TCGPlayer search for: #{card_name}")
       search_page.goto(search_url, wait_until: 'networkidle0')
       
-      # Add redirect prevention
       PriceExtractor.add_redirect_prevention(search_page, request_id)
       
-      # Extract the lowest priced product
       lowest_priced_product = PriceExtractor.extract_lowest_priced_product(search_page, card_name, request_id)
-      
-      if !lowest_priced_product
-        $file_logger.error("Request #{request_id}: No valid products found for: #{card_name}")
-        return format_error_response('No valid product found', legality)
-      end
+      return format_error_response('No valid product found', legality) unless lowest_priced_product
       
       $file_logger.info("Request #{request_id}: Found lowest priced product: #{lowest_priced_product['title']} at $#{lowest_priced_product['price']}")
       
       prices = process_conditions(lowest_priced_product, context, request_id)
-      
-      if prices.empty?
-        $file_logger.error("Request #{request_id}: No valid prices found for any condition")
-        return format_error_response('No valid prices found', legality)
-      end
+      return format_error_response('No valid prices found', legality) if prices.empty?
       
       format_success_response(prices, legality, card_name, request_id)
     end
 
+    def setup_search_page(context, request_id)
+      search_page = context.new_page
+      PageManager.configure_page(search_page, request_id)
+      BrowserManager.add_page(request_id, search_page)
+      search_page
+    end
+
     def process_conditions(lowest_priced_product, context, request_id)
       prices = {}
-      found_conditions = 0
       conditions = ['Near Mint', 'Lightly Played']
       
       conditions.each do |condition|
-        break if found_conditions >= 2
+        break if prices.size >= 2
         
-        condition_page = context.new_page
-        PageManager.configure_page(condition_page, request_id)
-        
-        begin
-          $file_logger.info("Request #{request_id}: Processing condition: #{condition}")
-          
-          condition_url = "#{lowest_priced_product['url']}?condition=#{CGI.escape(condition)}"
-          condition_page.goto(condition_url, wait_until: 'networkidle0')
-          
-          PriceExtractor.add_redirect_prevention(condition_page, request_id)
-          
-          result = PriceExtractor.extract_listing_prices(condition_page, request_id)
-          $file_logger.info("Request #{request_id}: Condition result: #{result.inspect}")
-          
-          if result && result.is_a?(Hash) && result['success']
-            prices[condition] = {
-              'price' => result['price'].to_s.gsub(/\$/,''),
-              'url' => result['url']
-            }
-            found_conditions += 1
-          end
-        ensure
-          condition_page.close
-        end
+        price = process_single_condition(condition, lowest_priced_product, context, request_id)
+        prices[condition] = price if price
       end
       
       prices
+    end
+
+    def process_single_condition(condition, lowest_priced_product, context, request_id)
+      condition_page = context.new_page
+      PageManager.configure_page(condition_page, request_id)
+      
+      begin
+        $file_logger.info("Request #{request_id}: Processing condition: #{condition}")
+        
+        condition_url = "#{lowest_priced_product['url']}?condition=#{CGI.escape(condition)}"
+        condition_page.goto(condition_url, wait_until: 'networkidle0')
+        
+        PriceExtractor.add_redirect_prevention(condition_page, request_id)
+        
+        result = PriceExtractor.extract_listing_prices(condition_page, request_id)
+        $file_logger.info("Request #{request_id}: Condition result: #{result.inspect}")
+        
+        return nil unless result && result.is_a?(Hash) && result['success']
+        
+        {
+          'price' => result['price'].to_s.gsub(/\$/,''),
+          'url' => result['url']
+        }
+      ensure
+        condition_page.close
+      end
     end
 
     def format_success_response(prices, legality, card_name, request_id)

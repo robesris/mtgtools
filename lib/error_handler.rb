@@ -1,4 +1,5 @@
 require_relative 'logging'
+require_relative 'page_evaluator'
 
 module ErrorHandler
   class << self
@@ -11,29 +12,9 @@ module ErrorHandler
       warn("Request #{request_id}: #{context} error: #{e.message}")
     end
 
-    # Safely evaluate JavaScript on a page
+    # Safely evaluate JavaScript on a page using PageEvaluator
     def safe_evaluate(page, script, request_id = nil)
-      begin
-        # Wait for the page to be ready using available methods
-        page.wait_for_selector('body', timeout: 5000)
-        
-        # Evaluate the script
-        page.evaluate(script)
-      rescue Puppeteer::FrameManager::FrameNotFoundError => e
-        # Log to file with full details
-        $file_logger.warn("Request #{request_id}: Frame not found during evaluation: #{e.message}")
-        $file_logger.debug("Request #{request_id}: Frame error details: #{e.backtrace.join("\n")}")
-        # Log to console without backtrace
-        warn("Request #{request_id}: Frame not found during evaluation: #{e.message}")
-        nil
-      rescue => e
-        # Log to file with full details
-        $file_logger.error("Request #{request_id}: Error during page evaluation: #{e.message}")
-        $file_logger.debug("Request #{request_id}: Evaluation error details: #{e.backtrace.join("\n")}")
-        # Log to console without backtrace
-        warn("Request #{request_id}: Error during page evaluation: #{e.message}")
-        nil
-      end
+      PageEvaluator.safe_evaluate(page, script, request_id)
     end
 
     # Handle rate limiting

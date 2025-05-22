@@ -17,6 +17,7 @@ require_relative 'lib/rate_limit_handler'
 require_relative 'lib/screenshot_manager'
 require_relative 'lib/redirect_prevention'
 require_relative 'lib/listing_evaluator'
+require_relative 'lib/page_evaluator'
 
 # Initialize server configuration and config before Sinatra settings
 ServerConfig.setup
@@ -335,31 +336,6 @@ end
 get '/card_prices.js' do
   content_type 'application/javascript'
   send_file File.join(settings.public_folder, 'card_prices.js')
-end
-
-# Add a method to safely evaluate JavaScript on a page
-def safe_evaluate(page, script, request_id = nil)
-  begin
-    # Wait for the page to be ready using available methods
-    page.wait_for_selector('body', timeout: 5000)
-    
-    # Evaluate the script
-    page.evaluate(script)
-  rescue Puppeteer::FrameManager::FrameNotFoundError => e
-    # Log to file with full details
-    $file_logger.warn("Request #{request_id}: Frame not found during evaluation: #{e.message}")
-    $file_logger.debug("Request #{request_id}: Frame error details: #{e.backtrace.join("\n")}")
-    # Log to console without backtrace
-    warn("Request #{request_id}: Frame not found during evaluation: #{e.message}")
-    nil
-  rescue => e
-    # Log to file with full details
-    $file_logger.error("Request #{request_id}: Error during page evaluation: #{e.message}")
-    $file_logger.debug("Request #{request_id}: Evaluation error details: #{e.backtrace.join("\n")}")
-    # Log to console without backtrace
-    warn("Request #{request_id}: Error during page evaluation: #{e.message}")
-    nil
-  end
 end
 
 # Add a method to handle Puppeteer errors consistently

@@ -10,6 +10,7 @@ require_relative 'lib/price_processor'
 require_relative 'lib/price_extractor'
 require_relative 'lib/request_tracker'
 require_relative 'lib/config'
+require_relative 'lib/page_manager'
 
 # Set up file logging first
 $file_logger = Logging.logger
@@ -89,81 +90,7 @@ def get_browser
       if target.type == 'page'
         begin
           page = target.page
-          
-          # Set viewport size for each new page
-          page.client.send_message('Emulation.setDeviceMetricsOverride', {
-            width: 3000,
-            height: 2000,
-            deviceScaleFactor: 1,
-            mobile: false
-          })
-
-          # Dispatch a window resize event to trigger layout reflow
-          page.evaluate('window.dispatchEvent(new Event("resize"))')
-          
-          # Disable frame handling for this page
-          page.evaluate(<<~JS)
-            function() {
-              // Disable iframe creation
-              const originalCreateElement = document.createElement;
-              document.createElement = function(tagName) {
-                if (tagName.toLowerCase() === 'iframe') {
-                  console.log('Prevented iframe creation');
-                  return null;
-                }
-                return originalCreateElement.apply(this, arguments);
-              };
-              
-              // Block frame navigation
-              window.addEventListener('beforeunload', (event) => {
-                if (window !== window.top) {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  return false;
-                }
-              }, true);
-              
-              // Block frame creation via innerHTML
-              const originalInnerHTML = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
-              Object.defineProperty(Element.prototype, 'innerHTML', {
-                set: function(value) {
-                  if (typeof value === 'string' && value.includes('<iframe')) {
-                    console.log('Prevented iframe creation via innerHTML');
-                    return;
-                  }
-                  originalInnerHTML.set.call(this, value);
-                },
-                get: originalInnerHTML.get
-              });
-            }
-          JS
-          
-          # Set timeouts for each new page
-          page.set_default_navigation_timeout(30000)  # 30 seconds
-          page.set_default_timeout(30000)  # 30 seconds
-          
-          # Add a small random delay before each navigation
-          page.on('request') do |request|
-            if request.navigation_request?
-              # Block iframe requests
-              if request.frame && request.frame.parent_frame
-                $file_logger.info("Blocking iframe request: #{request.url}")
-                request.abort
-                next
-              end
-              sleep(rand(1..3))
-            end
-          end
-
-          # Add error handling for page crashes
-          page.on('error') do |err|
-            $file_logger.error("Page error: #{err.message}")
-          end
-
-          # Add console logging
-          page.on('console') do |msg|
-            $file_logger.debug("Browser console: #{msg.text}")
-          end
+          PageManager.configure_page(page)
           
           # Log the viewport size after setting it
           actual_viewport = page.evaluate(<<~JS)
@@ -189,13 +116,7 @@ def get_browser
     # Create a test page to resize the browser
     test_page = $browser.new_page
     begin
-      # Use CDP to set a large viewport
-      test_page.client.send_message('Emulation.setDeviceMetricsOverride', {
-        width: 3000,
-        height: 2000,
-        deviceScaleFactor: 1,
-        mobile: false
-      })
+      PageManager.configure_page(test_page)
       
       # Verify the viewport size
       actual_viewport = test_page.evaluate(<<~JS)
@@ -256,89 +177,7 @@ end
 def create_page
   browser = get_browser
   page = browser.new_page
-  
-  # Disable frame handling for this page
-  page.evaluate(<<~JS)
-    function() {
-      // Disable iframe creation
-      const originalCreateElement = document.createElement;
-      document.createElement = function(tagName) {
-        if (tagName.toLowerCase() === 'iframe') {
-          console.log('Prevented iframe creation');
-          return null;
-        }
-        return originalCreateElement.apply(this, arguments);
-      };
-      
-      // Block frame navigation
-      window.addEventListener('beforeunload', (event) => {
-        if (window !== window.top) {
-          event.preventDefault();
-          event.stopPropagation();
-          return false;
-        }
-      }, true);
-    }
-  JS
-  
-  # Set viewport for the new page
-  page.viewport = Puppeteer::Viewport.new(
-    width: 1920,
-    height: 1080,
-    device_scale_factor: 1,
-    is_mobile: false,
-    has_touch: false,
-    is_landscape: true
-  )
-  
-  # Set up page-specific settings
-  page.set_default_navigation_timeout(30000)
-  page.set_default_timeout(30000)
-  
-  # Set up request interception
-  page.request_interception = true
-  
-  # Add proper headers for TCGPlayer
-  page.on('request') do |request|
-    # Block iframe requests
-    if request.frame && request.frame.parent_frame
-      $file_logger.info("Blocking iframe request: #{request.url}")
-      request.abort
-      next
-    end
-    
-    headers = request.headers.merge({
-      'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-      'Accept-Language' => 'en-US,en;q=0.9',
-      'Accept-Encoding' => 'gzip, deflate, br',
-      'Connection' => 'keep-alive',
-      'Upgrade-Insecure-Requests' => '1',
-      'Sec-Fetch-Dest' => 'document',
-      'Sec-Fetch-Mode' => 'navigate',
-      'Sec-Fetch-Site' => 'none',
-      'Sec-Fetch-User' => '?1',
-      'Cache-Control' => 'max-age=0'
-    })
-
-    if request.navigation_request? && !request.redirect_chain.empty?
-      # Only prevent redirects to error pages
-      if request.url.include?('uhoh')
-        $file_logger.info("Request #{request_id}: Preventing redirect to error page: #{request.url}")
-        request.abort
-      else
-        $file_logger.info("Request #{request_id}: Allowing redirect to: #{request.url}")
-        request.continue(headers: headers)
-      end
-    else
-      # Allow all other requests, including API calls
-      request.continue(headers: headers)
-    end
-  end
-
-  # Add error handling using the new method
-  setup_page_error_handling(page, nil)
-
+  PageManager.configure_page(page)
   page
 end
 
@@ -448,50 +287,12 @@ get '/card_info' do
     # Use BrowserManager to get browser and context
     browser = BrowserManager.get_browser
     context = BrowserManager.create_browser_context(request_id)
-    page = context.new_page
-
+    
     begin
       # Create a new page for the search
       search_page = context.new_page
+      PageManager.configure_page(search_page, request_id)
       BrowserManager.add_page(request_id, search_page)
-      
-      # Enable request interception to prevent redirects
-      search_page.request_interception = true
-      search_page.on('request') do |request|
-        # Add proper headers for TCGPlayer
-        headers = request.headers.merge({
-          'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-          'Accept-Language' => 'en-US,en;q=0.9',
-          'Accept-Encoding' => 'gzip, deflate, br',
-          'Connection' => 'keep-alive',
-          'Upgrade-Insecure-Requests' => '1',
-          'Sec-Fetch-Dest' => 'document',
-          'Sec-Fetch-Mode' => 'navigate',
-          'Sec-Fetch-Site' => 'none',
-          'Sec-Fetch-User' => '?1',
-          'Cache-Control' => 'max-age=0'
-        })
-
-        if request.navigation_request? && !request.redirect_chain.empty?
-          # Only prevent redirects to error pages
-          if request.url.include?('uhoh')
-            $file_logger.info("Request #{request_id}: Preventing redirect to error page: #{request.url}")
-            request.abort
-          else
-            $file_logger.info("Request #{request_id}: Allowing redirect to: #{request.url}")
-            request.continue(headers: headers)
-          end
-        else
-          # Allow all other requests, including API calls
-          request.continue(headers: headers)
-        end
-      end
-      
-      # Set up console log capture
-      search_page.on('console') do |msg|
-        $file_logger.info("Request #{request_id}: Browser console: #{msg.text}")
-      end
       
       # Navigate to TCGPlayer search
       $file_logger.info("Request #{request_id}: Navigating to TCGPlayer search for: #{card_name}")
@@ -523,41 +324,7 @@ get '/card_info' do
         
         # Create a new page for each condition
         condition_page = context.new_page
-        condition_page.default_navigation_timeout = 30000  # 30 seconds
-        condition_page.default_timeout = 30000  # 30 seconds
-        
-        # Enable request interception for condition page too
-        condition_page.request_interception = true
-        condition_page.on('request') do |request|
-          # Add proper headers for TCGPlayer
-          headers = request.headers.merge({
-            'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Language' => 'en-US,en;q=0.9',
-            'Accept-Encoding' => 'gzip, deflate, br',
-            'Connection' => 'keep-alive',
-            'Upgrade-Insecure-Requests' => '1',
-            'Sec-Fetch-Dest' => 'document',
-            'Sec-Fetch-Mode' => 'navigate',
-            'Sec-Fetch-Site' => 'none',
-            'Sec-Fetch-User' => '?1',
-            'Cache-Control' => 'max-age=0'
-          })
-
-          if request.navigation_request? && !request.redirect_chain.empty?
-            # Only prevent redirects to error pages
-            if request.url.include?('uhoh')
-              $file_logger.info("Request #{request_id}: Preventing redirect to error page: #{request.url}")
-              request.abort
-            else
-              $file_logger.info("Request #{request_id}: Allowing redirect to: #{request.url}")
-              request.continue(headers: headers)
-            end
-          else
-            # Allow all other requests, including API calls
-            request.continue(headers: headers)
-          end
-        end
+        PageManager.configure_page(condition_page, request_id)
         
         begin
           $file_logger.info("Request #{request_id}: Processing condition: #{condition}")
@@ -1006,50 +773,12 @@ get '/card_info' do
     # Use BrowserManager to get browser and context
     browser = BrowserManager.get_browser
     context = BrowserManager.create_browser_context(request_id)
-    page = context.new_page
-
+    
     begin
       # Create a new page for the search
       search_page = context.new_page
+      PageManager.configure_page(search_page, request_id)
       BrowserManager.add_page(request_id, search_page)
-      
-      # Enable request interception to prevent redirects
-      search_page.request_interception = true
-      search_page.on('request') do |request|
-        # Add proper headers for TCGPlayer
-        headers = request.headers.merge({
-          'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-          'Accept-Language' => 'en-US,en;q=0.9',
-          'Accept-Encoding' => 'gzip, deflate, br',
-          'Connection' => 'keep-alive',
-          'Upgrade-Insecure-Requests' => '1',
-          'Sec-Fetch-Dest' => 'document',
-          'Sec-Fetch-Mode' => 'navigate',
-          'Sec-Fetch-Site' => 'none',
-          'Sec-Fetch-User' => '?1',
-          'Cache-Control' => 'max-age=0'
-        })
-
-        if request.navigation_request? && !request.redirect_chain.empty?
-          # Only prevent redirects to error pages
-          if request.url.include?('uhoh')
-            $file_logger.info("Request #{request_id}: Preventing redirect to error page: #{request.url}")
-            request.abort
-          else
-            $file_logger.info("Request #{request_id}: Allowing redirect to: #{request.url}")
-            request.continue(headers: headers)
-          end
-        else
-          # Allow all other requests, including API calls
-          request.continue(headers: headers)
-        end
-      end
-      
-      # Set up console log capture
-      search_page.on('console') do |msg|
-        $file_logger.info("Request #{request_id}: Browser console: #{msg.text}")
-      end
       
       # Navigate to TCGPlayer search
       $file_logger.info("Request #{request_id}: Navigating to TCGPlayer search for: #{card_name}")
@@ -1081,41 +810,7 @@ get '/card_info' do
         
         # Create a new page for each condition
         condition_page = context.new_page
-        condition_page.default_navigation_timeout = 30000  # 30 seconds
-        condition_page.default_timeout = 30000  # 30 seconds
-        
-        # Enable request interception for condition page too
-        condition_page.request_interception = true
-        condition_page.on('request') do |request|
-          # Add proper headers for TCGPlayer
-          headers = request.headers.merge({
-            'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Language' => 'en-US,en;q=0.9',
-            'Accept-Encoding' => 'gzip, deflate, br',
-            'Connection' => 'keep-alive',
-            'Upgrade-Insecure-Requests' => '1',
-            'Sec-Fetch-Dest' => 'document',
-            'Sec-Fetch-Mode' => 'navigate',
-            'Sec-Fetch-Site' => 'none',
-            'Sec-Fetch-User' => '?1',
-            'Cache-Control' => 'max-age=0'
-          })
-
-          if request.navigation_request? && !request.redirect_chain.empty?
-            # Only prevent redirects to error pages
-            if request.url.include?('uhoh')
-              $file_logger.info("Request #{request_id}: Preventing redirect to error page: #{request.url}")
-              request.abort
-            else
-              $file_logger.info("Request #{request_id}: Allowing redirect to: #{request.url}")
-              request.continue(headers: headers)
-            end
-          else
-            # Allow all other requests, including API calls
-            request.continue(headers: headers)
-          end
-        end
+        PageManager.configure_page(condition_page, request_id)
         
         begin
           $file_logger.info("Request #{request_id}: Processing condition: #{condition}")

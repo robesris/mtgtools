@@ -1,5 +1,6 @@
 require_relative 'logging'
 require_relative 'price_processor'
+require_relative 'javascript_evaluator'
 
 module PriceExtractor
   # JavaScript code for extracting prices from TCGPlayer search results
@@ -287,7 +288,7 @@ module PriceExtractor
         var allElements = document.querySelectorAll("*");
         for (var i = 0; i < allElements.length; i++) {
           var el = allElements[i];
-          if (el.textContent && /^[0-9]+\\s+[Ll]isting[s]?$/i.test(el.textContent.trim())) {
+          if (el.textContent && /^[0-9]+\s+[Ll]isting[s]?$/i.test(el.textContent.trim())) {
             listingsHeader = el;
             break;
           }
@@ -399,64 +400,71 @@ module PriceExtractor
   JS
 
   class << self
-    # Extract the lowest priced product from search results
+    private
+
+    def handle_extraction_error(request_id, operation, error)
+      $file_logger.error("Request #{request_id}: Error #{operation}: #{error.message}")
+      {
+        'success' => false,
+        'message' => error.message
+      }
+    end
+
+    public
+
     def extract_lowest_priced_product(page, card_name, request_id)
-      begin
-        lowest_priced_product = page.evaluate(SEARCH_RESULTS_JS, { cardName: card_name }.to_json)
-        
-        if !lowest_priced_product
-          $file_logger.error("Request #{request_id}: No valid products found for: #{card_name}")
-          return nil
-        end
-        
-        $file_logger.info("Request #{request_id}: Found lowest priced product: #{lowest_priced_product['title']} at $#{lowest_priced_product['price']}")
-        lowest_priced_product
-      rescue => e
-        $file_logger.error("Request #{request_id}: Error extracting lowest priced product: #{e.message}")
-        nil
-      end
+      result = JavaScriptEvaluator.evaluate(
+        page,
+        'search_results.js',
+        { cardName: card_name },
+        request_id,
+        "extracting lowest priced product"
+      )
+      return nil unless result
+
+      $file_logger.info("Request #{request_id}: Found lowest priced product: #{result['title']} at $#{result['price']}")
+      result
     end
 
-    # Extract prices from product listings
     def extract_listing_prices(page, request_id)
-      begin
-        listings_html = page.evaluate(LISTINGS_JS)
+      result = JavaScriptEvaluator.evaluate(
+        page,
+        'listings.js',
+        nil,
+        request_id,
+        "extracting listing prices"
+      )
+      return handle_extraction_error(request_id, "extracting listing prices", StandardError.new("No valid listings found")) unless result
+
+      if result['listings']&.first
+        base_price = PriceProcessor.parse_base_price(result['listings'][0]['basePrice']['text'])
+        shipping_price = PriceProcessor.calculate_shipping_price(result['listings'][0])
+        total_price = PriceProcessor.total_price_str(base_price, shipping_price)
         
-        if listings_html.is_a?(Hash) && listings_html['success'] && listings_html['listings'][0]
-          base_price = PriceProcessor.parse_base_price(listings_html['listings'][0]['basePrice']['text'])
-          shipping_price = PriceProcessor.calculate_shipping_price(listings_html['listings'][0])
-          $file_logger.info("Request #{request_id}: Found valid price: $#{base_price}")
-          
-          {
-            'success' => true,
-            'price' => PriceProcessor.total_price_str(base_price, shipping_price).gsub(/[^\d.]/, ''), # Ensure only numeric string
-            'url' => page.url  # Use the current page URL which is our filtered product page
-          }
-        else
-          {
-            'success' => false,
-            'message' => listings_html['message'] || 'No valid listings found'
-          }
-        end
-      rescue => e
-        $file_logger.error("Request #{request_id}: Error extracting listing prices: #{e.message}")
+        $file_logger.info("Request #{request_id}: Found valid price: #{total_price}")
+        
         {
-          'success' => false,
-          'message' => e.message
+          'success' => true,
+          'price' => total_price,  # Keep the dollar sign in the price
+          'url' => page.url
         }
+      else
+        handle_extraction_error(request_id, "extracting listing prices", StandardError.new(result['message'] || 'No valid listings found'))
       end
     end
 
-    # Add redirect prevention to a page
     def add_redirect_prevention(page, request_id)
-      begin
-        page.evaluate(REDIRECT_PREVENTION_JS)
-        $file_logger.info("Request #{request_id}: Added redirect prevention")
-        true
-      rescue => e
-        $file_logger.error("Request #{request_id}: Error adding redirect prevention: #{e.message}")
-        false
-      end
+      result = JavaScriptEvaluator.evaluate(
+        page,
+        'redirect_prevention.js',
+        nil,
+        request_id,
+        "adding redirect prevention"
+      )
+      return false unless result
+
+      $file_logger.info("Request #{request_id}: Added redirect prevention")
+      true
     end
   end
 end 

@@ -40,10 +40,14 @@ module PriceProcessor
   def self.format_prices(prices)
     formatted_prices = {}
     prices.each do |condition, data|
-      # Extract just the numeric price from the price text, but preserve the $ prefix
-      price_value = data['price'].gsub(/[^\d.$]/, '')  # Keep $ and decimal point
-      # Ensure a single dollar sign at the start
-      price_value = "$#{price_value.gsub(/^\$+/, '')}"
+      # Ensure the price has a dollar sign and proper decimal format
+      price_value = data['price'].to_s
+      unless price_value.start_with?('$')
+        # Convert to float and format with 2 decimal places
+        price_float = price_value.gsub(/[^\d.]/, '').to_f
+        price_value = format('$%.2f', price_float)
+      end
+      
       formatted_prices[condition] = {
         'price' => price_value,
         'url' => data['url']

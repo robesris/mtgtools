@@ -1076,6 +1076,10 @@ class CommanderCardScraper
           </div>
           <div>
             <h1>Commander Game Changers List</h1>
+            <div style="text-align: center; margin-bottom: 20px;">
+              <button id="fetch-all-prices" style="padding: 10px 20px; font-size: 16px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; transition: background-color 0.2s;">Fetch All Prices</button>
+              <div id="fetch-status" style="margin-top: 10px; font-style: italic; color: #666;"></div>
+            </div>
             <div class="card-grid">
     HTML
 
@@ -1143,6 +1147,79 @@ class CommanderCardScraper
             const colorCheckboxes = document.querySelectorAll('input[data-color]:not([data-color="all"])');
             const onlyIcons = document.querySelectorAll('.only-icon');
             const cards = document.querySelectorAll('.card');
+            const fetchAllButton = document.getElementById('fetch-all-prices');
+            const fetchStatus = document.getElementById('fetch-status');
+            
+            // Function to fetch prices for a single card
+            async function fetchCardPrices(cardElement) {
+              const cardName = cardElement.querySelector('.card-name').textContent;
+              const priceInfo = cardElement.querySelector('.price-info');
+              
+              try {
+                priceInfo.innerHTML = '<span class="loading">Fetching prices...</span>';
+                const response = await fetch(`/fetch_prices?card=${encodeURIComponent(cardName)}`);
+                const data = await response.json();
+                
+                if (data.prices) {
+                  let html = [];
+                  if (data.prices['near mint']) {
+                    const nm = data.prices['near mint'];
+                    html.push(`NM: <a href="${nm.url}" target="_blank">${nm.total}</a>`);
+                  }
+                  if (data.prices['lightly played']) {
+                    const lp = data.prices['lightly played'];
+                    html.push(`LP: <a href="${lp.url}" target="_blank">${lp.total}</a>`);
+                  }
+                  priceInfo.innerHTML = html.join(' | ') || 'No prices found';
+                } else {
+                  priceInfo.innerHTML = 'No prices found';
+                }
+              } catch (error) {
+                console.error('Error fetching prices:', error);
+                priceInfo.innerHTML = 'Error fetching prices';
+              }
+            }
+            
+            // Function to fetch all prices
+            async function fetchAllPrices() {
+              fetchAllButton.disabled = true;
+              fetchAllButton.style.backgroundColor = '#999';
+              fetchStatus.textContent = 'Fetching prices...';
+              
+              const cardElements = Array.from(cards);
+              let completed = 0;
+              let failed = 0;
+              
+              // Process cards in batches of 5 to avoid overwhelming the server
+              for (let i = 0; i < cardElements.length; i += 5) {
+                const batch = cardElements.slice(i, i + 5);
+                await Promise.all(batch.map(async (card) => {
+                  try {
+                    await fetchCardPrices(card);
+                    completed++;
+                  } catch (error) {
+                    console.error('Error fetching prices for card:', error);
+                    failed++;
+                  }
+                  fetchStatus.textContent = `Fetched ${completed} cards${failed > 0 ? `, ${failed} failed` : ''}...`;
+                }));
+                
+                // Add a small delay between batches
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
+              
+              fetchStatus.textContent = `Completed: ${completed} cards fetched${failed > 0 ? `, ${failed} failed` : ''}`;
+              fetchAllButton.disabled = false;
+              fetchAllButton.style.backgroundColor = '#4CAF50';
+              
+              // Clear status message after 5 seconds
+              setTimeout(() => {
+                fetchStatus.textContent = '';
+              }, 5000);
+            }
+            
+            // Add click handler for the fetch all button
+            fetchAllButton.addEventListener('click', fetchAllPrices);
             
             // Function to update card visibility based on selected colors
             function updateCardVisibility() {

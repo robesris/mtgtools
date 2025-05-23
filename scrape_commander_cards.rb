@@ -820,6 +820,7 @@ class CommanderCardScraper
             width: 30px;
             height: 30px;
             transition: all 0.3s ease;
+            font-size: 0; /* Hide any text content */
           }
           .color-filter-tray.collapsed .toggle-button {
             transform: translateY(-50%);
@@ -1051,7 +1052,7 @@ class CommanderCardScraper
       <body>
         <div class="container">
           <div class="color-filter-tray">
-            <button class="toggle-button" title="Toggle filter tray">◀</button>
+            <button class="toggle-button" title="Toggle filter tray"></button>
             <div class="filter-content">
               <label><input type="checkbox" data-color="Red" /><span>Red</span><span class="only-icon" data-color="Red" title="Show only Red cards">👁️</span></label>
               <label><input type="checkbox" data-color="Blue" /><span>Blue</span><span class="only-icon" data-color="Blue" title="Show only Blue cards">👁️</span></label>

@@ -25,6 +25,21 @@ class CommanderCardScraper
     FileUtils.mkdir_p(@output_dir)
     FileUtils.mkdir_p(File.join(@output_dir, 'card_images'))
     
+    # Hardcoded color mappings for known cards
+    @card_colors = {
+      "DRANNITH MAGISTRATE" => ["WHITE"],
+      "SERRA'S SANCTUM" => ["WHITE"],
+      "TEFERI'S PROTECTION" => ["WHITE"],
+      "THASSA'S ORACLE" => ["BLUE"],
+      "TERGRID, GOD OF FRIGHT" => ["BLACK"],
+      "JESKA'S WILL" => ["RED"],
+      "GAEA'S CRADLE" => ["GREEN"],
+      "LION'S EYE DIAMOND" => ["COLORLESS"],
+      "MISHRA'S WORKSHOP" => ["COLORLESS"],
+      "YURIKO, THE TIGER'S SHADOW" => ["BLUE", "BLACK"],
+      "BOLAS'S CITADEL" => ["BLACK"]
+    }
+    
     # Skip these garbage OCR results
     @skip_cards = [
       'EOE ROSE SES EE Ee',
@@ -182,12 +197,12 @@ class CommanderCardScraper
     # Calculate column boundaries
     col_boundaries = 4.times.map { |i| min_x + i * ((max_x - min_x) / 4.0) }
     col_boundaries << max_x + column_width  # Add rightmost boundary
-    columns = Array.new(4) { [] }
+    @columns = Array.new(4) { [] }  # Store in instance variable
     # Assign each box to a column based on x_start
     sorted_boxes.each do |box|
       x = box[:x_start].to_i
       col_idx = col_boundaries.each_cons(2).find_index { |left, right| x >= left && x < right }
-      columns[col_idx] << box if col_idx
+      @columns[col_idx] << box if col_idx
     end
 
     puts "Processing 4 columns with known sections:"
@@ -196,11 +211,10 @@ class CommanderCardScraper
     puts "Column 3: GREEN, MULTICOLOR"
     puts "Column 4: COLORLESS"
 
-    all_card_names = []
-    columns.each_with_index do |column_boxes, col_idx|
-      # Sort boxes in this column by y-coordinate
+    # Create a mapping of card names to their colors based on the sections
+    card_colors = {}
+    @columns.each_with_index do |column_boxes, col_idx|
       sorted_col = column_boxes.sort_by { |box| box[:y_start].to_i }
-      # Split into sections based on column index
       if col_idx < 3  # First three columns have two sections each
         sec_size = (sorted_col.size / 2.0).ceil
         sections = sorted_col.each_slice(sec_size).to_a
@@ -209,19 +223,91 @@ class CommanderCardScraper
           when 1 then ['BLACK', 'RED']
           when 2 then ['GREEN', 'MULTICOLOR']
         end
+        sections.each_with_index do |section, sec_idx|
+          section.each do |box|
+            name = box[:word].strip
+            next if name.empty? || @skip_cards.include?(name)
+            name = @card_corrections[name] || name
+            # Use hardcoded color if available, otherwise use OCR result
+            card_colors[name] = @card_colors[name] || [section_names[sec_idx]]
+            puts "Card: #{name}, Colors: #{card_colors[name].join(', ')}"
+          end
+        end
+      else  # Last column has one section
+        sorted_col.each do |box|
+          name = box[:word].strip
+          next if name.empty? || @skip_cards.include?(name)
+          name = @card_corrections[name] || name
+          # Use hardcoded color if available, otherwise use COLORLESS
+          card_colors[name] = @card_colors[name] || ['COLORLESS']
+          puts "Card: #{name}, Colors: #{card_colors[name].join(', ')}"
+        end
+      end
+    end
+
+    # Process the lines to get actual card names
+    all_card_names = []
+    @columns.each_with_index do |column_boxes, col_idx|
+      sorted_col = column_boxes.sort_by { |box| box[:y_start].to_i }
+      if col_idx < 3  # First three columns have two sections each
+        sec_size = (sorted_col.size / 2.0).ceil
+        sections = sorted_col.each_slice(sec_size).to_a
+        section_names = case col_idx
+          when 0 then ['WHITE', 'BLUE']
+          when 1 then ['BLACK', 'RED']
+          when 2 then ['GREEN', 'MULTICOLOR']
+        end
+        sections.each_with_index do |section_boxes, sec_idx|
+          puts "\nColumn #{col_idx + 1} (#{column_boxes.size} boxes):"
+          puts "  Section: #{section_names[sec_idx]} (#{section_boxes.size} boxes)"
+          # Skip the first box in each section (assumed to be the section title)
+          card_boxes = section_boxes.drop(1)
+          # Group boxes into lines based on y-coordinates
+          lines = group_boxes_into_lines(card_boxes)
+          valid_lines = []
+          found_first_card = false
+          lines.each do |line_boxes|
+            # Sort boxes in line by x-coordinate
+            sorted_line = line_boxes.sort_by { |box| box[:x_start].to_i }
+            # Group all words in the line within the column's boundaries into a single card name
+            col_left = col_boundaries[col_idx]
+            col_right = col_boundaries[col_idx + 1]
+            card_words = sorted_line.select { |box| box[:x_start].to_i >= col_left && box[:x_start].to_i < col_right }
+            next if card_words.empty?
+            name = merge_line_into_card_name(card_words)
+            name = @card_corrections[name] || name
+            next if name.strip.empty? || name.strip.length < 3
+            next if @skip_cards.include?(name)  # Skip cards in the skip list
+            
+            # Debug output for specific cards
+            if name == "INTUITION" || name == "TERGRID, GOD OF FRIGHT"
+              puts "\nDEBUG: Found #{name} in OCR:"
+              puts "  Raw boxes: #{card_words.inspect}"
+              puts "  Merged name: #{name}"
+              puts "  Column: #{col_idx + 1} (#{col_left} to #{col_right})"
+              puts "  Line boxes: #{line_boxes.inspect}\n"
+            end
+            
+            # Assign color based on section
+            card_colors[name] = @card_colors[name] || [section_names[sec_idx]]
+            puts "Card: #{name}, Colors: #{card_colors[name].join(', ')}"
+            
+            valid_lines << name
+            found_first_card = true
+          end
+          puts "    Cards: " + valid_lines.join(' | ')
+          all_card_names.concat(valid_lines)
+        end
       else  # Last column has one section
         sections = [sorted_col]
         section_names = ['COLORLESS']
-      end
-      puts "\nColumn #{col_idx + 1} (#{column_boxes.size} boxes):"
-      sections.each_with_index do |section_boxes, sec_idx|
-        puts "  Section: #{section_names[sec_idx]} (#{section_boxes.size} boxes)"
-        # Skip the first box in each section (assumed to be the section title)
-        card_boxes = section_boxes.drop(1)
+        puts "\nColumn #{col_idx + 1} (#{column_boxes.size} boxes):"
+        puts "  Section: #{section_names[0]} (#{sorted_col.size} boxes)"
+        # Skip the first box (assumed to be the section title)
+        card_boxes = sorted_col.drop(1)
         # Group boxes into lines based on y-coordinates
         lines = group_boxes_into_lines(card_boxes)
         valid_lines = []
-        found_first_card = false
         lines.each do |line_boxes|
           # Sort boxes in line by x-coordinate
           sorted_line = line_boxes.sort_by { |box| box[:x_start].to_i }
@@ -235,17 +321,11 @@ class CommanderCardScraper
           next if name.strip.empty? || name.strip.length < 3
           next if @skip_cards.include?(name)  # Skip cards in the skip list
           
-          # Debug output for specific cards
-          if name == "INTUITION" || name == "TERGRID, GOD OF FRIGHT"
-            puts "\nDEBUG: Found #{name} in OCR:"
-            puts "  Raw boxes: #{card_words.inspect}"
-            puts "  Merged name: #{name}"
-            puts "  Column: #{col_idx + 1} (#{col_left} to #{col_right})"
-            puts "  Line boxes: #{line_boxes.inspect}\n"
-          end
+          # Assign color based on section
+          card_colors[name] = @card_colors[name] || ['COLORLESS']
+          puts "Card: #{name}, Colors: #{card_colors[name].join(', ')}"
           
           valid_lines << name
-          found_first_card = true
         end
         puts "    Cards: " + valid_lines.join(' | ')
         all_card_names.concat(valid_lines)
@@ -256,6 +336,9 @@ class CommanderCardScraper
     @must_have_cards.each do |must|
       all_card_names << must unless all_card_names.include?(must) || @skip_cards.include?(must)
     end
+    
+    # Store card_colors in instance variable for use in generate_html
+    @card_colors = card_colors
     
     all_card_names.uniq
   end
@@ -797,15 +880,47 @@ class CommanderCardScraper
               font-size: 1em;
             }
           }
+          .color-filter-tray {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-bottom: 20px;
+            padding: 10px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+          }
+          .color-filter-tray label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+          }
+          .color-filter-tray .only-icon {
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+          }
+          .color-filter-tray .only-icon:hover {
+            opacity: 1;
+          }
         </style>
         <script src="card_prices.js"></script>
       </head>
       <body>
         <div class="container">
           <h1>Commander Game Changers List</h1>
+          <div class="color-filter-tray">
+            <label><input type="checkbox" data-color="Red" /> Red <span class="only-icon" data-color="Red" title="Show only Red cards">👁️</span></label>
+            <label><input type="checkbox" data-color="Blue" /> Blue <span class="only-icon" data-color="Blue" title="Show only Blue cards">👁️</span></label>
+            <label><input type="checkbox" data-color="Green" /> Green <span class="only-icon" data-color="Green" title="Show only Green cards">👁️</span></label>
+            <label><input type="checkbox" data-color="White" /> White <span class="only-icon" data-color="White" title="Show only White cards">👁️</span></label>
+            <label><input type="checkbox" data-color="Black" /> Black <span class="only-icon" data-color="Black" title="Show only Black cards">👁️</span></label>
+          </div>
           <div class="card-grid">
     HTML
 
+    # Use the card_colors mapping we created during OCR
     card_names.each do |name|
       image_path = get_card_image(name)
       prices = @price_cache[name]&.dig('prices')
@@ -825,11 +940,15 @@ class CommanderCardScraper
         'Click to load prices'
       end
       
+      # Get the colors for this card from our mapping
+      colors = @card_colors[name] || []
+      data_colors = colors.join(',').downcase
+      
       if image_path
         image_filename = File.basename(image_path)
         relative_path = "card_images/#{image_filename}"
         html += <<~HTML
-          <div class="card">
+          <div class="card" data-colors="#{data_colors}">
             <div class="card-name">#{name}</div>
             <div class="card-image-container">
               <img src="#{relative_path}" alt="#{name}">
@@ -839,7 +958,7 @@ class CommanderCardScraper
         HTML
       else
         html += <<~HTML
-          <div class="card">
+          <div class="card" data-colors="#{data_colors}">
             <div class="card-name">#{name}</div>
             <div class="card-image-container">
               <div class="not-found">Image not found</div>

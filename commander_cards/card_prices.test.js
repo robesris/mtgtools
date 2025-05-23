@@ -7,7 +7,7 @@ document.body.innerHTML = `
 `;
 
 // Import the functions we want to test
-const { getTimestampColor, formatTimestamp, addTimestampToPriceInfo } = require('./card_prices.js');
+const { getTimestampColor, formatTimestamp, addTimestampToPriceInfo, initColorFilterOnly } = require('./card_prices.js');
 
 // Helper function to convert hex to RGB
 function hexToRgb(hex) {
@@ -92,5 +92,65 @@ describe('Timestamp Color Functionality', () => {
     
     const timestampDiv = priceInfo.querySelector('div');
     expect(timestampDiv.style.color).toBe(hexToRgb('#1a8c1a')); // Convert hex to RGB
+  });
+});
+
+describe('Only Color Filter Feature', () => {
+  let colorFilterTray;
+  
+  beforeEach(() => {
+    // Reset DOM for each test
+    document.body.innerHTML = `
+      <div class="color-filter-tray">
+        <label>
+          <input type="checkbox" data-color="Red" />
+          Red
+          <span class="only-icon" data-color="Red">👁️</span>
+        </label>
+        <label>
+          <input type="checkbox" data-color="Blue" />
+          Blue
+          <span class="only-icon" data-color="Blue">👁️</span>
+        </label>
+        <label>
+          <input type="checkbox" data-color="Green" />
+          Green
+          <span class="only-icon" data-color="Green">👁️</span>
+        </label>
+      </div>
+    `;
+    colorFilterTray = document.querySelector('.color-filter-tray');
+    // Initialize the color filter functionality
+    initColorFilterOnly();
+  });
+
+  test('Clicking only icon (eye) next to a color (e.g. Red) unchecks all other checkboxes and leaves (or checks) the Red checkbox, and rechecks Red if it is unchecked', () => {
+    // Get initial state
+    const redCheckbox = colorFilterTray.querySelector('[data-color="Red"]');
+    const blueCheckbox = colorFilterTray.querySelector('[data-color="Blue"]');
+    const greenCheckbox = colorFilterTray.querySelector('[data-color="Green"]');
+    
+    // Set initial state - all unchecked
+    redCheckbox.checked = false;
+    blueCheckbox.checked = false;
+    greenCheckbox.checked = false;
+
+    // Simulate a click on the only icon (eye) next to Red
+    const onlyIconRed = colorFilterTray.querySelector('[data-color="Red"].only-icon');
+    onlyIconRed.click();
+
+    // Verify that Red is checked and others are unchecked
+    expect(redCheckbox.checked).toBe(true);
+    expect(blueCheckbox.checked).toBe(false);
+    expect(greenCheckbox.checked).toBe(false);
+
+    // Uncheck Red
+    redCheckbox.checked = false;
+
+    // Click the only icon again
+    onlyIconRed.click();
+
+    // Verify that Red is rechecked
+    expect(redCheckbox.checked).toBe(true);
   });
 }); 

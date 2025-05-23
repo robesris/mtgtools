@@ -291,6 +291,68 @@ async function refreshAllPrices() {
   }
 }
 
+// Function to fetch all prices
+async function fetchAllPrices() {
+  const fetchAllButton = document.getElementById('fetch-all-prices');
+  const fetchStatus = document.getElementById('fetch-status');
+  const cards = document.querySelectorAll('.card');
+  
+  if (!fetchAllButton || !fetchStatus) {
+    console.error('Required elements not found:', { 
+      hasButton: !!fetchAllButton, 
+      hasStatus: !!fetchStatus 
+    });
+    return;
+  }
+  
+  if (fetchAllButton.disabled) return; // Prevent multiple clicks
+  
+  fetchAllButton.disabled = true;
+  fetchAllButton.style.backgroundColor = '#999';
+  fetchStatus.textContent = 'Fetching prices';
+  let ellipsisInterval = animateEllipsis(fetchStatus, 'Fetching prices');
+  
+  // Get only visible cards (not hidden by filters)
+  const visibleCards = Array.from(cards).filter(card => 
+    !card.classList.contains('hidden-by-color') && 
+    !card.classList.contains('hidden-by-all')
+  );
+  
+  let completed = 0;
+  let failed = 0;
+  
+  // Process each visible card with a delay between requests
+  for (const card of visibleCards) {
+    try {
+      // Clear previous interval before starting new fetch
+      clearInterval(ellipsisInterval);
+      const cardName = card.querySelector('.card-name')?.textContent;
+      fetchStatus.textContent = `Fetching prices for ${cardName} (${completed + 1}/${visibleCards.length})...`;
+      ellipsisInterval = animateEllipsis(fetchStatus, `Fetching prices for ${cardName} (${completed + 1}/${visibleCards.length})...`);
+      
+      // Use updateCardPrices directly
+      await updateCardPrices(card);
+      completed++;
+      
+      // Add a delay between cards to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    } catch (error) {
+      console.error('Error fetching prices for card:', error);
+      failed++;
+    }
+  }
+  
+  clearInterval(ellipsisInterval);
+  fetchStatus.textContent = `Completed: ${completed} cards fetched${failed > 0 ? `, ${failed} failed` : ''}`;
+  fetchAllButton.disabled = false;
+  fetchAllButton.style.backgroundColor = '#4CAF50';
+  
+  // Clear status message after 5 seconds
+  setTimeout(() => {
+    fetchStatus.textContent = '';
+  }, 5000);
+}
+
 // Wait for DOM to be fully loaded before initializing everything
 document.addEventListener('DOMContentLoaded', () => {
   console.log('DOM fully loaded, initializing...');
@@ -305,9 +367,12 @@ document.addEventListener('DOMContentLoaded', () => {
   initColorFilterOnly();
   
   // Add refresh button handler
-  const refreshButton = document.getElementById('refresh-all-prices');
-  if (refreshButton) {
-    refreshButton.addEventListener('click', refreshAllPrices);
+  const fetchAllButton = document.getElementById('fetch-all-prices');
+  if (fetchAllButton) {
+    console.log('Found fetch all prices button, attaching click handler');
+    fetchAllButton.addEventListener('click', fetchAllPrices);
+  } else {
+    console.error('Fetch all prices button not found');
   }
   
   // Set up observer for DOM changes
@@ -439,4 +504,14 @@ if (typeof module !== 'undefined' && module.exports) {
     addTimestampToPriceInfo,
     initColorFilterOnly
   };
+}
+
+// Function to animate ellipsis
+function animateEllipsis(element, text) {
+  let counter = 0;
+  const interval = setInterval(() => {
+    counter++;
+    element.textContent = text + '...'.repeat(counter % 4);
+  }, 500);
+  return interval;
 } 

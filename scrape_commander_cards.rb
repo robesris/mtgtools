@@ -1157,8 +1157,8 @@ class CommanderCardScraper
               
               try {
                 priceInfo.innerHTML = '<span class="loading">Fetching prices...</span>';
-                // Use the correct endpoint that matches our Ruby script
-                const response = await fetch(`/get_card_prices?card=${encodeURIComponent(cardName)}`);
+                // Use the correct endpoint that matches our server
+                const response = await fetch(`/card_info?card=${encodeURIComponent(cardName)}`);
                 if (!response.ok) {
                   throw new Error(`HTTP error! status: ${response.status}`);
                 }
@@ -1166,13 +1166,13 @@ class CommanderCardScraper
                 
                 if (data && data.prices) {
                   let html = [];
-                  if (data.prices['near mint']) {
-                    const nm = data.prices['near mint'];
-                    html.push(`NM: <a href="${nm.url}" target="_blank">${nm.total}</a>`);
+                  if (data.prices['Near Mint']) {
+                    const nm = data.prices['Near Mint'];
+                    html.push(`NM: <a href="${nm.url}" target="_blank">$${nm.price}</a>`);
                   }
-                  if (data.prices['lightly played']) {
-                    const lp = data.prices['lightly played'];
-                    html.push(`LP: <a href="${lp.url}" target="_blank">${lp.total}</a>`);
+                  if (data.prices['Lightly Played']) {
+                    const lp = data.prices['Lightly Played'];
+                    html.push(`LP: <a href="${lp.url}" target="_blank">$${lp.price}</a>`);
                   }
                   // Add timestamp if available
                   if (data.timestamp) {

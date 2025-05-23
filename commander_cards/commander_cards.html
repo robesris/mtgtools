@@ -844,69 +844,19 @@
         let completed = 0;
         let failed = 0;
         
-        // Process cards in batches of 3 to be more conservative
-        for (let i = 0; i < cardElements.length; i += 3) {
-          const batch = cardElements.slice(i, i + 3);
-          await Promise.all(batch.map(async (card) => {
-            try {
-              const cardName = card.querySelector('.card-name').textContent;
-              const priceInfo = card.querySelector('.price-info');
-              
-              priceInfo.innerHTML = '<span class="loading">Fetching prices...</span>';
-              const response = await fetch(`/card_info?card=${encodeURIComponent(cardName)}`);
-              if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-              }
-              const data = await response.json();
-              
-              if (data && data.prices) {
-                // Cache the prices immediately after successful fetch
-                await fetch('/cache_prices', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify({
-                    card: cardName,
-                    prices: data.prices,
-                    timestamp: data.timestamp || Math.floor(Date.now() / 1000)
-                  })
-                });
-
-                let html = [];
-                if (data.prices['near mint']) {
-                  const nm = data.prices['near mint'];
-                  html.push(`Near Mint: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(nm).toFixed(2)}</a>`);
-                }
-                if (data.prices['lightly played']) {
-                  const lp = data.prices['lightly played'];
-                  html.push(`Lightly Played: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(lp).toFixed(2)}</a>`);
-                }
-                // Add timestamp if available
-                if (data.timestamp) {
-                  const timestamp = new Date(data.timestamp * 1000);
-                  const now = new Date();
-                  const hoursAgo = Math.floor((now - timestamp) / (1000 * 60 * 60));
-                  let timestampClass = 'recent';
-                  if (hoursAgo > 24) {
-                    timestampClass = hoursAgo > 48 ? 'very-old' : 'old';
-                  }
-                  html.push(`<span class="price-timestamp ${timestampClass}">Updated ${hoursAgo} hours ago</span>`);
-                }
-                priceInfo.innerHTML = html.join(' | ') || 'No prices found';
-              } else {
-                priceInfo.innerHTML = 'No prices found';
-              }
-              completed++;
-            } catch (error) {
-              console.error('Error fetching prices for card:', error);
-              failed++;
-            }
-            fetchStatus.textContent = `Fetched ${completed} cards${failed > 0 ? `, ${failed} failed` : ''}...`;
-          }));
+        // Process cards one at a time
+        for (const card of cardElements) {
+          try {
+            await fetchCardPrices(card);
+            completed++;
+          } catch (error) {
+            console.error('Error fetching prices for card:', error);
+            failed++;
+          }
+          fetchStatus.textContent = `Fetched ${completed} cards${failed > 0 ? `, ${failed} failed` : ''}...`;
           
-          // Add a longer delay between batches to be more conservative
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          // Add a small delay between cards to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
         
         fetchStatus.textContent = `Completed: ${completed} cards fetched${failed > 0 ? `, ${failed} failed` : ''}`;

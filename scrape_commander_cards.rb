@@ -818,11 +818,27 @@ class CommanderCardScraper
             align-items: center;
             justify-content: center;
             z-index: 2;
-            width: 30px; /* Fixed width for button */
-            height: 30px; /* Fixed height for button */
+            width: 30px;
+            height: 30px;
+            transition: all 0.3s ease;
           }
           .color-filter-tray.collapsed .toggle-button {
-            transform: translateY(-50%) rotate(180deg);
+            transform: translateY(-50%);
+            right: 0;
+            border-radius: 0 4px 4px 0;
+            box-shadow: none;
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            border-left: none;
+          }
+          .color-filter-tray.collapsed .toggle-button::before {
+            content: "▶";
+            transform: none;
+          }
+          .color-filter-tray .toggle-button::before {
+            content: "◀";
+            font-size: 12px;
+            line-height: 1;
           }
           .color-filter-tray label {
             position: relative;

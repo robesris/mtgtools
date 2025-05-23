@@ -785,6 +785,7 @@ class CommanderCardScraper
             opacity: 1;
             visibility: visible;
             transition: opacity 0.2s ease, visibility 0.2s;
+            width: 100%;
           }
           .color-filter-tray .toggle-button {
             position: absolute;
@@ -806,26 +807,34 @@ class CommanderCardScraper
             transform: translateY(-50%) rotate(180deg);
           }
           .color-filter-tray label {
-            display: flex;
+            display: grid;
+            grid-template-columns: auto 1fr auto;
             align-items: center;
-            gap: 5px;
+            gap: 8px;
             cursor: pointer;
             margin-bottom: 10px;
             padding: 5px;
             border-radius: 4px;
             transition: background-color 0.2s;
+            width: 100%;
           }
-          .color-filter-tray label:hover {
-            background-color: #f5f5f5;
+          .color-filter-tray label input[type="checkbox"] {
+            margin: 0;
+          }
+          .color-filter-tray label span:not(.only-icon) {
+            min-width: 60px;  /* Fixed width for color names */
+            text-align: left;
           }
           .color-filter-tray .only-icon {
             cursor: pointer;
             opacity: 0.7;
             transition: opacity 0.2s;
             margin-left: auto;
+            width: 20px;  /* Fixed width for eye icon */
+            text-align: center;
           }
-          .color-filter-tray .only-icon:hover {
-            opacity: 1;
+          .color-filter-tray label:hover {
+            background-color: #f5f5f5;
           }
           .card-grid {
             flex: 1;
@@ -964,12 +973,12 @@ class CommanderCardScraper
           <div class="color-filter-tray">
             <button class="toggle-button" title="Toggle filter tray">◀</button>
             <div class="filter-content">
-              <label><input type="checkbox" data-color="Red" /> Red <span class="only-icon" data-color="Red" title="Show only Red cards">👁️</span></label>
-              <label><input type="checkbox" data-color="Blue" /> Blue <span class="only-icon" data-color="Blue" title="Show only Blue cards">👁️</span></label>
-              <label><input type="checkbox" data-color="Green" /> Green <span class="only-icon" data-color="Green" title="Show only Green cards">👁️</span></label>
-              <label><input type="checkbox" data-color="White" /> White <span class="only-icon" data-color="White" title="Show only White cards">👁️</span></label>
-              <label><input type="checkbox" data-color="Black" /> Black <span class="only-icon" data-color="Black" title="Show only Black cards">👁️</span></label>
-              <label><input type="checkbox" data-color="Colorless" /> Colorless <span class="only-icon" data-color="Colorless" title="Show only Colorless cards">👁️</span></label>
+              <label><input type="checkbox" data-color="Red" /><span>Red</span><span class="only-icon" data-color="Red" title="Show only Red cards">👁️</span></label>
+              <label><input type="checkbox" data-color="Blue" /><span>Blue</span><span class="only-icon" data-color="Blue" title="Show only Blue cards">👁️</span></label>
+              <label><input type="checkbox" data-color="Green" /><span>Green</span><span class="only-icon" data-color="Green" title="Show only Green cards">👁️</span></label>
+              <label><input type="checkbox" data-color="White" /><span>White</span><span class="only-icon" data-color="White" title="Show only White cards">👁️</span></label>
+              <label><input type="checkbox" data-color="Black" /><span>Black</span><span class="only-icon" data-color="Black" title="Show only Black cards">👁️</span></label>
+              <label><input type="checkbox" data-color="Colorless" /><span>Colorless</span><span class="only-icon" data-color="Colorless" title="Show only Colorless cards">👁️</span></label>
             </div>
           </div>
           <div>

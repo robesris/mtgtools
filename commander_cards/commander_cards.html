@@ -14,8 +14,65 @@
       max-width: 1600px;
       margin: 0 auto;
       padding: 0 20px;
+      display: flex;
+      gap: 20px;
+    }
+    .color-filter-tray {
+      width: 200px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      padding: 15px;
+      position: sticky;
+      top: 20px;
+      height: fit-content;
+      transition: transform 0.3s ease;
+    }
+    .color-filter-tray.collapsed {
+      transform: translateX(-180px);
+    }
+    .color-filter-tray .toggle-button {
+      position: absolute;
+      right: -30px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: white;
+      border: none;
+      border-radius: 0 4px 4px 0;
+      padding: 10px;
+      cursor: pointer;
+      box-shadow: 2px 0 4px rgba(0,0,0,0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .color-filter-tray.collapsed .toggle-button {
+      transform: translateY(-50%) rotate(180deg);
+    }
+    .color-filter-tray label {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+      margin-bottom: 10px;
+      padding: 5px;
+      border-radius: 4px;
+      transition: background-color 0.2s;
+    }
+    .color-filter-tray label:hover {
+      background-color: #f5f5f5;
+    }
+    .color-filter-tray .only-icon {
+      cursor: pointer;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+      margin-left: auto;
+    }
+    .color-filter-tray .only-icon:hover {
+      opacity: 1;
     }
     .card-grid {
+      flex: 1;
       display: grid;
       grid-template-columns: repeat(4, 1fr);
       gap: 20px;
@@ -142,37 +199,13 @@
         font-size: 1em;
       }
     }
-    .color-filter-tray {
-      display: flex;
-      gap: 20px;
-      justify-content: center;
-      margin-bottom: 20px;
-      padding: 10px;
-      background: white;
-      border-radius: 8px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    .color-filter-tray label {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      cursor: pointer;
-    }
-    .color-filter-tray .only-icon {
-      cursor: pointer;
-      opacity: 0.7;
-      transition: opacity 0.2s;
-    }
-    .color-filter-tray .only-icon:hover {
-      opacity: 1;
-    }
   </style>
   <script src="card_prices.js"></script>
 </head>
 <body>
   <div class="container">
-    <h1>Commander Game Changers List</h1>
     <div class="color-filter-tray">
+      <button class="toggle-button" title="Toggle filter tray">◀</button>
       <label><input type="checkbox" data-color="Red" /> Red <span class="only-icon" data-color="Red" title="Show only Red cards">👁️</span></label>
       <label><input type="checkbox" data-color="Blue" /> Blue <span class="only-icon" data-color="Blue" title="Show only Blue cards">👁️</span></label>
       <label><input type="checkbox" data-color="Green" /> Green <span class="only-icon" data-color="Green" title="Show only Green cards">👁️</span></label>
@@ -180,7 +213,9 @@
       <label><input type="checkbox" data-color="Black" /> Black <span class="only-icon" data-color="Black" title="Show only Black cards">👁️</span></label>
       <label><input type="checkbox" data-color="Colorless" /> Colorless <span class="only-icon" data-color="Colorless" title="Show only Colorless cards">👁️</span></label>
     </div>
-    <div class="card-grid">
+    <div>
+      <h1>Commander Game Changers List</h1>
+      <div class="card-grid">
 <div class="card" data-colors="white">
   <div class="card-name">DRANNITH MAGISTRATE</div>
   <div class="card-image-container">
@@ -608,10 +643,22 @@
   </div>
   <div class="price-info">Click to load prices</div>
 </div>
-    </div>
-    <div class="source">
-      Source: <a href="https://magic.wizards.com/en/news/announcements/commander-brackets-beta-update-april-22-2025">Commander Brackets Beta Update - April 22, 2025</a>
+      </div>
+      <div class="source">
+        Source: <a href="https://magic.wizards.com/en/news/announcements/commander-brackets-beta-update-april-22-2025">Commander Brackets Beta Update - April 22, 2025</a>
+      </div>
     </div>
   </div>
+  <script>
+    // Add toggle functionality for the filter tray
+    document.addEventListener('DOMContentLoaded', function() {
+      const tray = document.querySelector('.color-filter-tray');
+      const toggleButton = document.querySelector('.toggle-button');
+      
+      toggleButton.addEventListener('click', function() {
+        tray.classList.toggle('collapsed');
+      });
+    });
+  </script>
 </body>
 </html>

@@ -384,11 +384,20 @@ async function fetchAllPrices() {
   fetchAllButton.disabled = true;
   fetchAllButton.style.backgroundColor = '#999';
   
-  // Get only visible cards (not hidden by filters)
-  const visibleCards = Array.from(cards).filter(card => 
-    !card.classList.contains('hidden-by-color') && 
-    !card.classList.contains('hidden-by-all')
-  );
+  // Get only cards that are currently visible (not hidden by any filter)
+  const visibleCards = Array.from(cards).filter(card => {
+    // Check if the card is hidden by any filter
+    const isHiddenByColor = card.classList.contains('hidden-by-color');
+    const isHiddenByAll = card.classList.contains('hidden-by-all');
+    const isHiddenByDisplay = card.style.display === 'none';
+    const isHiddenByVisibility = card.style.visibility === 'hidden';
+    const isHiddenByOpacity = card.style.opacity === '0';
+    
+    // Card is visible if it's not hidden by any filter
+    return !(isHiddenByColor || isHiddenByAll || isHiddenByDisplay || isHiddenByVisibility || isHiddenByOpacity);
+  });
+  
+  console.log(`Found ${visibleCards.length} visible cards out of ${cards.length} total cards`);
   
   let completed = 0;
   let failed = 0;

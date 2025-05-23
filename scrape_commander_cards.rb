@@ -786,6 +786,7 @@ class CommanderCardScraper
             visibility: visible;
             transition: opacity 0.2s ease, visibility 0.2s;
             width: 100%;
+            padding: 5px 0;  /* Add vertical padding */
           }
           .color-filter-tray .toggle-button {
             position: absolute;
@@ -808,38 +809,37 @@ class CommanderCardScraper
           }
           .color-filter-tray label {
             display: grid;
-            grid-template-columns: 20px 60px 20px;  /* Fixed widths for all columns */
+            grid-template-columns: 20px minmax(60px, auto) 20px;  /* Fixed widths for checkbox and eye, flexible for text */
             align-items: center;
-            justify-content: start;  /* Align content to the start */
             gap: 8px;
             cursor: pointer;
-            margin-bottom: 10px;
-            padding: 5px;
+            margin-bottom: 15px;  /* Increased vertical spacing */
+            padding: 8px 5px;  /* Increased padding */
             border-radius: 4px;
             transition: background-color 0.2s;
             width: 100%;
-            position: relative;  /* For absolute positioning of elements */
+          }
+          .color-filter-tray label:last-child {
+            margin-bottom: 0;  /* Remove margin from last item */
+          }
+          .color-filter-tray label:hover {
+            background-color: #f5f5f5;
           }
           .color-filter-tray label input[type="checkbox"] {
             margin: 0;
-            width: 16px;  /* Fixed width for checkbox */
-            height: 16px;  /* Fixed height for checkbox */
-            position: absolute;  /* Position absolutely */
-            left: 5px;  /* Align with padding */
+            width: 16px;
+            height: 16px;
           }
           .color-filter-tray label span:not(.only-icon) {
-            position: absolute;  /* Position absolutely */
-            left: 28px;  /* checkbox width + gap */
-            width: 60px;  /* Fixed width */
+            min-width: 60px;
             text-align: left;
+            white-space: nowrap;  /* Prevent text wrapping */
           }
           .color-filter-tray .only-icon {
             cursor: pointer;
             opacity: 0.7;
             transition: opacity 0.2s;
-            position: absolute;  /* Position absolutely */
-            right: 5px;  /* Align with padding */
-            width: 20px;  /* Fixed width */
+            width: 20px;
             text-align: center;
           }
           .color-filter-tray .only-icon:hover {

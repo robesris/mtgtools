@@ -1212,7 +1212,41 @@ class CommanderCardScraper
                 const batch = cardElements.slice(i, i + 3);
                 await Promise.all(batch.map(async (card) => {
                   try {
-                    await fetchCardPrices(card);
+                    const cardName = card.querySelector('.card-name').textContent;
+                    const priceInfo = card.querySelector('.price-info');
+                    
+                    priceInfo.innerHTML = '<span class="loading">Fetching prices...</span>';
+                    const response = await fetch(`/card_info?card=${encodeURIComponent(cardName)}`);
+                    if (!response.ok) {
+                      throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    const data = await response.json();
+                    
+                    if (data && data.prices) {
+                      let html = [];
+                      if (data.prices['Near Mint']) {
+                        const nm = data.prices['Near Mint'];
+                        html.push(`NM: <a href="${nm.url}" target="_blank">${nm.price}</a>`);
+                      }
+                      if (data.prices['Lightly Played']) {
+                        const lp = data.prices['Lightly Played'];
+                        html.push(`LP: <a href="${lp.url}" target="_blank">${lp.price}</a>`);
+                      }
+                      // Add timestamp if available
+                      if (data.timestamp) {
+                        const timestamp = new Date(data.timestamp * 1000);
+                        const now = new Date();
+                        const hoursAgo = Math.floor((now - timestamp) / (1000 * 60 * 60));
+                        let timestampClass = 'recent';
+                        if (hoursAgo > 24) {
+                          timestampClass = hoursAgo > 48 ? 'very-old' : 'old';
+                        }
+                        html.push(`<span class="price-timestamp ${timestampClass}">Updated ${hoursAgo} hours ago</span>`);
+                      }
+                      priceInfo.innerHTML = html.join(' | ') || 'No prices found';
+                    } else {
+                      priceInfo.innerHTML = 'No prices found';
+                    }
                     completed++;
                   } catch (error) {
                     console.error('Error fetching prices for card:', error);

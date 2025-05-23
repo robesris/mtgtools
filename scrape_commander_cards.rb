@@ -811,18 +811,19 @@ class CommanderCardScraper
           }
           .color-filter-tray label {
             display: grid;
-            grid-template-columns: 20px minmax(60px, auto) 20px;  /* Fixed widths for checkbox and eye, flexible for text */
+            grid-template-columns: 16px minmax(60px, 1fr) 20px;  /* Fixed widths for checkbox and eye, flexible for text */
             align-items: center;
             gap: 8px;
             cursor: pointer;
-            margin-bottom: 15px;  /* Increased vertical spacing */
-            padding: 8px 5px;  /* Increased padding */
+            margin-bottom: 15px;
+            padding: 8px 5px;
             border-radius: 4px;
             transition: background-color 0.2s;
             width: 100%;
+            position: relative;  /* For absolute positioning of eye icon */
           }
           .color-filter-tray label:last-child {
-            margin-bottom: 0;  /* Remove margin from last item */
+            margin-bottom: 0;
           }
           .color-filter-tray label:hover {
             background-color: #f5f5f5;
@@ -831,18 +832,26 @@ class CommanderCardScraper
             margin: 0;
             width: 16px;
             height: 16px;
+            grid-column: 1;  /* Explicitly place in first column */
           }
           .color-filter-tray label span:not(.only-icon) {
+            grid-column: 2;  /* Explicitly place in second column */
             min-width: 60px;
             text-align: left;
-            white-space: nowrap;  /* Prevent text wrapping */
+            white-space: nowrap;
+            padding-right: 28px;  /* Make room for eye icon */
           }
           .color-filter-tray .only-icon {
+            grid-column: 3;  /* Explicitly place in third column */
             cursor: pointer;
             opacity: 0.7;
             transition: opacity 0.2s;
             width: 20px;
             text-align: center;
+            position: absolute;  /* Position absolutely within the label */
+            right: 5px;  /* Align with padding */
+            top: 50%;  /* Center vertically */
+            transform: translateY(-50%);  /* Perfect vertical centering */
           }
           .color-filter-tray .only-icon:hover {
             opacity: 1;

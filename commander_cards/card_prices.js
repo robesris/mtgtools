@@ -353,27 +353,30 @@ function filterCardsByColor() {
   
   console.log('Checked colors:', checkedColors);
 
-  // If no colors are checked, show all cards
-  if (checkedColors.length === 0) {
-    console.log('No colors checked, showing all cards');
-    document.querySelectorAll('.card').forEach(card => {
-      card.classList.remove('hidden');
-    });
-    return;
-  }
-
-  // Filter cards based on checked colors
-  document.querySelectorAll('.card').forEach(card => {
-    const cardColors = card.getAttribute('data-colors')?.toLowerCase().split(',') || [];
-    console.log('Card colors:', cardColors, 'for card:', card.querySelector('.card-name')?.textContent);
-    
-    // Show card if it has any of the checked colors
-    const shouldShow = cardColors.some(color => checkedColors.includes(color.trim()));
-    if (shouldShow) {
-      card.classList.remove('hidden');
-    } else {
-      card.classList.add('hidden');
+  // Batch DOM updates to prevent multiple reflows
+  requestAnimationFrame(() => {
+    // If no colors are checked, show all cards
+    if (checkedColors.length === 0) {
+      console.log('No colors checked, showing all cards');
+      document.querySelectorAll('.card').forEach(card => {
+        card.classList.remove('hidden');
+      });
+      return;
     }
+
+    // Filter cards based on checked colors
+    document.querySelectorAll('.card').forEach(card => {
+      const cardColors = card.getAttribute('data-colors')?.toLowerCase().split(',') || [];
+      console.log('Card colors:', cardColors, 'for card:', card.querySelector('.card-name')?.textContent);
+      
+      // Show card if it has any of the checked colors
+      const shouldShow = cardColors.some(color => checkedColors.includes(color.trim()));
+      if (shouldShow) {
+        card.classList.remove('hidden');
+      } else {
+        card.classList.add('hidden');
+      }
+    });
   });
 }
 
@@ -386,9 +389,16 @@ function initColorFilterOnly() {
   }
   console.log('Found color filter tray, attaching click handlers...');
   
+  // Batch checkbox changes to prevent multiple reflows
+  let isUpdatingCheckboxes = false;
+  
   // Attach change handlers to checkboxes
   tray.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
-    checkbox.addEventListener('change', filterCardsByColor);
+    checkbox.addEventListener('change', () => {
+      if (!isUpdatingCheckboxes) {
+        filterCardsByColor();
+      }
+    });
   });
 
   // Attach click handlers to only icons
@@ -398,14 +408,24 @@ function initColorFilterOnly() {
       e.preventDefault(); // Prevent any default behavior
       e.stopPropagation(); // Stop event from bubbling up
       console.log('Only icon clicked:', icon.getAttribute('data-color'));
+      
+      // Set flag to prevent individual checkbox change handlers from firing
+      isUpdatingCheckboxes = true;
+      
       const color = icon.getAttribute('data-color');
       tray.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
         const checkboxColor = checkbox.getAttribute('data-color');
         console.log(`Setting ${checkboxColor} checkbox to ${checkboxColor === color}`);
         checkbox.checked = (checkboxColor === color);
       });
-      // Trigger filtering after updating checkboxes
+      
+      // Trigger filtering once after all checkboxes are updated
       filterCardsByColor();
+      
+      // Reset flag after a short delay to ensure all updates are complete
+      setTimeout(() => {
+        isUpdatingCheckboxes = false;
+      }, 0);
     });
   });
   console.log('Finished attaching color filter click handlers');

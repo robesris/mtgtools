@@ -33,11 +33,16 @@ class CommanderCardScraper
       "THASSA'S ORACLE" => ["BLUE"],
       "TERGRID, GOD OF FRIGHT" => ["BLACK"],
       "JESKA'S WILL" => ["RED"],
-      "GAEA'S CRADLE" => ["GREEN"],
+      "GAEA'S CRADLE" => ["COLORLESS"],
       "LION'S EYE DIAMOND" => ["COLORLESS"],
       "MISHRA'S WORKSHOP" => ["COLORLESS"],
       "YURIKO, THE TIGER'S SHADOW" => ["BLUE", "BLACK"],
-      "BOLAS'S CITADEL" => ["BLACK"]
+      "BOLAS'S CITADEL" => ["BLACK"],
+      "VAMPIRIC TUTOR" => ["BLACK"],
+      "CYCLONIC RIFT" => ["BLUE"],
+      "CONSECRATED SPHINX" => ["BLUE"],
+      "EXPROPRIATE" => ["BLUE"],
+      "FORCE OF WILL" => ["BLUE"]
     }
     
     # Skip these garbage OCR results
@@ -916,6 +921,7 @@ class CommanderCardScraper
             <label><input type="checkbox" data-color="Green" /> Green <span class="only-icon" data-color="Green" title="Show only Green cards">👁️</span></label>
             <label><input type="checkbox" data-color="White" /> White <span class="only-icon" data-color="White" title="Show only White cards">👁️</span></label>
             <label><input type="checkbox" data-color="Black" /> Black <span class="only-icon" data-color="Black" title="Show only Black cards">👁️</span></label>
+            <label><input type="checkbox" data-color="Colorless" /> Colorless <span class="only-icon" data-color="Colorless" title="Show only Colorless cards">👁️</span></label>
           </div>
           <div class="card-grid">
     HTML

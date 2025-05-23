@@ -1168,11 +1168,11 @@ class CommanderCardScraper
                   let html = [];
                   if (data.prices['Near Mint']) {
                     const nm = data.prices['Near Mint'];
-                    html.push(`NM: <a href="${nm.url}" target="_blank">$${nm.price}</a>`);
+                    html.push(`NM: <a href="${nm.url}" target="_blank">${nm.price}</a>`);
                   }
                   if (data.prices['Lightly Played']) {
                     const lp = data.prices['Lightly Played'];
-                    html.push(`LP: <a href="${lp.url}" target="_blank">$${lp.price}</a>`);
+                    html.push(`LP: <a href="${lp.url}" target="_blank">${lp.price}</a>`);
                   }
                   // Add timestamp if available
                   if (data.timestamp) {

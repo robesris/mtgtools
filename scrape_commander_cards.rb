@@ -925,17 +925,20 @@ class CommanderCardScraper
             align-items: center;
             cursor: pointer;
             transition: transform 0.2s, opacity 0.3s, visibility 0.3s;
-            width: 100%;  /* Take full width of grid cell */
-            box-sizing: border-box;  /* Include padding in width calculation */
-            min-width: 0;  /* Allow card to shrink below its content size */
+            width: 100%;
+            box-sizing: border-box;
+            min-width: 0;
             opacity: 1;
             visibility: visible;
           }
-          .card.hidden {
+          .card.hidden-by-color {
             opacity: 0;
             visibility: hidden;
             pointer-events: none;
             position: absolute;
+          }
+          .card.hidden-by-all {
+            display: none;
           }
           .card:hover {
             transform: translateY(-5px);
@@ -1135,13 +1138,18 @@ class CommanderCardScraper
             
             // Function to update card visibility based on selected colors
             function updateCardVisibility() {
-              // If ALL is checked, show all cards and return immediately
+              // First, remove all visibility classes
+              cards.forEach(card => {
+                card.classList.remove('hidden-by-color');
+                card.classList.remove('hidden-by-all');
+              });
+              
+              // If ALL is checked, we're done - all cards are visible
               if (allCheckbox.checked) {
-                cards.forEach(card => card.classList.remove('hidden'));
                 return;
               }
               
-              // Otherwise, filter by selected colors
+              // Otherwise, apply color filtering
               const selectedColors = Array.from(colorCheckboxes)
                 .filter(cb => cb.checked)
                 .map(cb => cb.dataset.color.toLowerCase());
@@ -1149,26 +1157,23 @@ class CommanderCardScraper
               cards.forEach(card => {
                 const cardColors = card.dataset.colors.split(',');
                 const shouldShow = cardColors.some(color => selectedColors.includes(color));
-                card.classList.toggle('hidden', !shouldShow);
+                if (!shouldShow) {
+                  card.classList.add('hidden-by-color');
+                }
               });
             }
             
-            // Handle ALL checkbox - make it completely independent
+            // Handle ALL checkbox
             allCheckbox.addEventListener('change', function() {
-              // When ALL is checked, show all cards
+              // When ALL is checked, remove all visibility classes
               if (this.checked) {
-                cards.forEach(card => card.classList.remove('hidden'));
-              } else {
-                // When ALL is unchecked, show only cards with selected colors
-                const selectedColors = Array.from(colorCheckboxes)
-                  .filter(cb => cb.checked)
-                  .map(cb => cb.dataset.color.toLowerCase());
-                
                 cards.forEach(card => {
-                  const cardColors = card.dataset.colors.split(',');
-                  const shouldShow = cardColors.some(color => selectedColors.includes(color));
-                  card.classList.toggle('hidden', !shouldShow);
+                  card.classList.remove('hidden-by-color');
+                  card.classList.remove('hidden-by-all');
                 });
+              } else {
+                // When ALL is unchecked, update based on color checkboxes
+                updateCardVisibility();
               }
             });
             
@@ -1411,11 +1416,15 @@ class CommanderCardScraper
         box-shadow: 0 4px 8px rgba(0,0,0,0.1);
       }
 
-      .card.hidden {
+      .card.hidden-by-color {
         opacity: 0;
         visibility: hidden;
         pointer-events: none;
         position: absolute;
+      }
+
+      .card.hidden-by-all {
+        display: none;
       }
 
       /* Rest of your existing card styles... */

@@ -1132,12 +1132,13 @@ class CommanderCardScraper
             const allCheckbox = document.querySelector('input[data-color="all"]');
             const colorCheckboxes = document.querySelectorAll('input[data-color]:not([data-color="all"])');
             const onlyIcons = document.querySelectorAll('.only-icon');
+            const cards = document.querySelectorAll('.card');
             
             // Function to update card visibility based on selected colors
             function updateCardVisibility() {
-              // If ALL is checked, show all cards regardless of color checkboxes
+              // If ALL is checked, show all cards immediately
               if (allCheckbox.checked) {
-                document.querySelectorAll('.card').forEach(card => {
+                cards.forEach(card => {
                   card.classList.remove('hidden');
                 });
                 return;
@@ -1148,7 +1149,7 @@ class CommanderCardScraper
                 .filter(cb => cb.checked)
                 .map(cb => cb.dataset.color.toLowerCase());
               
-              document.querySelectorAll('.card').forEach(card => {
+              cards.forEach(card => {
                 const cardColors = card.dataset.colors.split(',');
                 const shouldShow = cardColors.some(color => selectedColors.includes(color));
                 card.classList.toggle('hidden', !shouldShow);
@@ -1157,9 +1158,24 @@ class CommanderCardScraper
             
             // Handle ALL checkbox - make it completely independent
             allCheckbox.addEventListener('change', function() {
-              // Don't modify any other checkboxes
-              // Just update visibility based on ALL checkbox state
-              updateCardVisibility();
+              // Immediately update visibility based on ALL checkbox state
+              if (this.checked) {
+                // Show all cards
+                cards.forEach(card => {
+                  card.classList.remove('hidden');
+                });
+              } else {
+                // Show only cards with selected colors
+                const selectedColors = Array.from(colorCheckboxes)
+                  .filter(cb => cb.checked)
+                  .map(cb => cb.dataset.color.toLowerCase());
+                
+                cards.forEach(card => {
+                  const cardColors = card.dataset.colors.split(',');
+                  const shouldShow = cardColors.some(color => selectedColors.includes(color));
+                  card.classList.toggle('hidden', !shouldShow);
+                });
+              }
             });
             
             // Handle individual color checkboxes

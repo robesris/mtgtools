@@ -9,7 +9,7 @@ function getTimestampColor(timestamp) {
   
   const age = now - timestamp;
   if (age < oneMonth) {
-    return '#2ecc71';  // Green for < 1 month
+    return '#1a8c1a';  // Darker green for < 1 month
   } else if (age < threeMonths) {
     return '#e67e22';  // Orange for 1-3 months
   } else {
@@ -30,12 +30,12 @@ function addTimestampToPriceInfo(priceInfo, timestamp) {
   const timestampDiv = document.createElement('div');
   // Set styles directly on the element
   Object.assign(timestampDiv.style, {
-    fontSize: '0.65em',
+    fontSize: '0.7em',  // Slightly larger font
     marginTop: '4px',
-    fontStyle: 'italic',
     lineHeight: '1.2',
     color: getTimestampColor(timestamp),
-    display: 'block'
+    display: 'block',
+    textAlign: 'center'  // Center the text horizontally
   });
   timestampDiv.textContent = `Prices retrieved on ${formatTimestamp(timestamp)}`;
   priceInfo.appendChild(timestampDiv);

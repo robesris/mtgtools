@@ -334,4 +334,13 @@ document.addEventListener('DOMContentLoaded', () => {
   } else {
     console.error('Document body not found when setting up observer');
   }
-}); 
+});
+
+// Export functions for testing
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    getTimestampColor,
+    formatTimestamp,
+    addTimestampToPriceInfo
+  };
+} 

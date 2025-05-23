@@ -1195,11 +1195,13 @@ class CommanderCardScraper
                   let html = [];
                   if (data.prices['near mint']) {
                     const nm = data.prices['near mint'];
-                    html.push(`Near Mint: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(nm).toFixed(2)}</a>`);
+                    const nmPrice = typeof nm === 'object' ? nm.total : nm;
+                    html.push(`Near Mint: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(nmPrice).toFixed(2)}</a>`);
                   }
                   if (data.prices['lightly played']) {
                     const lp = data.prices['lightly played'];
-                    html.push(`Lightly Played: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(lp).toFixed(2)}</a>`);
+                    const lpPrice = typeof lp === 'object' ? lp.total : lp;
+                    html.push(`Lightly Played: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(lpPrice).toFixed(2)}</a>`);
                   }
                   // Add timestamp if available
                   if (data.timestamp) {

@@ -1154,6 +1154,12 @@ class CommanderCardScraper
                 colorCheckboxes.forEach(cb => {
                   cb.checked = true;
                 });
+                // Force show all cards when ALL is checked
+                document.querySelectorAll('.card').forEach(card => {
+                  card.classList.remove('hidden');
+                });
+              } else {
+                // When ALL is unchecked, update visibility based on individual checkboxes
                 updateCardVisibility();
               }
             });

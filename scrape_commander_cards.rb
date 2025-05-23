@@ -1150,14 +1150,29 @@ class CommanderCardScraper
             const fetchAllButton = document.getElementById('fetch-all-prices');
             const fetchStatus = document.getElementById('fetch-status');
             
+            // Function to animate ellipsis
+            function animateEllipsis(element, text) {
+              let dots = 0;
+              const maxDots = 3;
+              const interval = setInterval(() => {
+                dots = (dots + 1) % (maxDots + 1);
+                element.innerHTML = `${text}${'.'.repeat(dots)}`;
+              }, 500);
+              return interval;
+            }
+
             // Function to fetch prices for a single card
             async function fetchCardPrices(cardElement) {
               const cardName = cardElement.querySelector('.card-name').textContent;
               const priceInfo = cardElement.querySelector('.price-info');
               
               try {
-                priceInfo.innerHTML = '<span class="loading">Fetching prices...</span>';
+                priceInfo.innerHTML = '<span class="loading">Fetching prices</span>';
+                const ellipsisInterval = animateEllipsis(priceInfo.querySelector('.loading'), 'Fetching prices');
+                
                 const response = await fetch(`/card_info?card=${encodeURIComponent(cardName)}`);
+                clearInterval(ellipsisInterval);
+                
                 if (!response.ok) {
                   throw new Error(`HTTP error! status: ${response.status}`);
                 }
@@ -1213,7 +1228,8 @@ class CommanderCardScraper
               
               fetchAllButton.disabled = true;
               fetchAllButton.style.backgroundColor = '#999';
-              fetchStatus.textContent = 'Fetching prices...';
+              fetchStatus.textContent = 'Fetching prices';
+              const ellipsisInterval = animateEllipsis(fetchStatus, 'Fetching prices');
               
               const cardElements = Array.from(cards);
               let completed = 0;
@@ -1228,12 +1244,16 @@ class CommanderCardScraper
                   console.error('Error fetching prices for card:', error);
                   failed++;
                 }
+                clearInterval(ellipsisInterval);
                 fetchStatus.textContent = `Fetched ${completed} cards${failed > 0 ? `, ${failed} failed` : ''}...`;
+                const newEllipsisInterval = animateEllipsis(fetchStatus, `Fetched ${completed} cards${failed > 0 ? `, ${failed} failed` : ''}`);
+                ellipsisInterval = newEllipsisInterval;
                 
                 // Add a small delay between cards to avoid rate limiting
                 await new Promise(resolve => setTimeout(resolve, 1000));
               }
               
+              clearInterval(ellipsisInterval);
               fetchStatus.textContent = `Completed: ${completed} cards fetched${failed > 0 ? `, ${failed} failed` : ''}`;
               fetchAllButton.disabled = false;
               fetchAllButton.style.backgroundColor = '#4CAF50';

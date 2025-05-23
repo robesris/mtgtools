@@ -789,6 +789,9 @@ class CommanderCardScraper
             transition: opacity 0.2s ease, visibility 0.2s;
             width: 100%;
             padding: 5px 0;  /* Add vertical padding */
+            display: flex;
+            flex-direction: column;
+            gap: 15px;  /* Consistent spacing between labels */
           }
           .color-filter-tray .toggle-button {
             position: absolute;
@@ -813,18 +816,17 @@ class CommanderCardScraper
             position: relative;
             display: block;
             cursor: pointer;
-            margin-bottom: 15px;
-            padding: 8px 5px 8px 29px;  /* Left padding accounts for checkbox */
+            width: 100%;
+            height: 32px;  /* Fixed height */
+            margin: 0;  /* Remove margin */
+            padding: 0;  /* Remove padding */
             border-radius: 4px;
             transition: background-color 0.2s;
-            width: 100%;
             box-sizing: border-box;
-            height: 32px;  /* Fixed height for consistent alignment */
-            line-height: 16px;  /* Match checkbox height */
             overflow: hidden;  /* Prevent content from affecting layout */
           }
           .color-filter-tray label:last-child {
-            margin-bottom: 0;
+            margin: 0;
           }
           .color-filter-tray label:hover {
             background-color: #f5f5f5;
@@ -837,7 +839,8 @@ class CommanderCardScraper
             margin: 0;
             width: 16px;
             height: 16px;
-            z-index: 2;  /* Ensure checkbox stays above other elements */
+            z-index: 2;
+            pointer-events: auto;
           }
           .color-filter-tray label span:not(.only-icon) {
             position: absolute;
@@ -849,7 +852,8 @@ class CommanderCardScraper
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            z-index: 1;  /* Keep text below checkbox */
+            z-index: 1;
+            pointer-events: none;  /* Prevent text from interfering with clicks */
           }
           .color-filter-tray .only-icon {
             position: absolute;
@@ -860,9 +864,13 @@ class CommanderCardScraper
             opacity: 0.7;
             transition: opacity 0.2s;
             width: 20px;
+            height: 20px;  /* Fixed height */
+            line-height: 20px;  /* Center the eye icon vertically */
             text-align: center;
-            z-index: 2;  /* Keep eye icon above other elements */
-            pointer-events: auto;  /* Ensure click events work */
+            z-index: 2;
+            pointer-events: auto;
+            user-select: none;  /* Prevent text selection */
+            -webkit-user-select: none;
           }
           .color-filter-tray .only-icon:hover {
             opacity: 1;

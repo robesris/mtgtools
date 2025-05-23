@@ -1157,10 +1157,14 @@ class CommanderCardScraper
               
               try {
                 priceInfo.innerHTML = '<span class="loading">Fetching prices...</span>';
-                const response = await fetch(`/fetch_prices?card=${encodeURIComponent(cardName)}`);
+                // Use the correct endpoint that matches our Ruby script
+                const response = await fetch(`/get_card_prices?card=${encodeURIComponent(cardName)}`);
+                if (!response.ok) {
+                  throw new Error(`HTTP error! status: ${response.status}`);
+                }
                 const data = await response.json();
                 
-                if (data.prices) {
+                if (data && data.prices) {
                   let html = [];
                   if (data.prices['near mint']) {
                     const nm = data.prices['near mint'];
@@ -1170,18 +1174,31 @@ class CommanderCardScraper
                     const lp = data.prices['lightly played'];
                     html.push(`LP: <a href="${lp.url}" target="_blank">${lp.total}</a>`);
                   }
+                  // Add timestamp if available
+                  if (data.timestamp) {
+                    const timestamp = new Date(data.timestamp * 1000);
+                    const now = new Date();
+                    const hoursAgo = Math.floor((now - timestamp) / (1000 * 60 * 60));
+                    let timestampClass = 'recent';
+                    if (hoursAgo > 24) {
+                      timestampClass = hoursAgo > 48 ? 'very-old' : 'old';
+                    }
+                    html.push(`<span class="price-timestamp ${timestampClass}">Updated ${hoursAgo} hours ago</span>`);
+                  }
                   priceInfo.innerHTML = html.join(' | ') || 'No prices found';
                 } else {
                   priceInfo.innerHTML = 'No prices found';
                 }
               } catch (error) {
-                console.error('Error fetching prices:', error);
-                priceInfo.innerHTML = 'Error fetching prices';
+                console.error('Error fetching prices for', cardName, ':', error);
+                priceInfo.innerHTML = 'Click to load prices';
               }
             }
             
             // Function to fetch all prices
             async function fetchAllPrices() {
+              if (fetchAllButton.disabled) return; // Prevent multiple clicks
+              
               fetchAllButton.disabled = true;
               fetchAllButton.style.backgroundColor = '#999';
               fetchStatus.textContent = 'Fetching prices...';
@@ -1190,9 +1207,9 @@ class CommanderCardScraper
               let completed = 0;
               let failed = 0;
               
-              // Process cards in batches of 5 to avoid overwhelming the server
-              for (let i = 0; i < cardElements.length; i += 5) {
-                const batch = cardElements.slice(i, i + 5);
+              // Process cards in batches of 3 to be more conservative
+              for (let i = 0; i < cardElements.length; i += 3) {
+                const batch = cardElements.slice(i, i + 3);
                 await Promise.all(batch.map(async (card) => {
                   try {
                     await fetchCardPrices(card);
@@ -1204,8 +1221,8 @@ class CommanderCardScraper
                   fetchStatus.textContent = `Fetched ${completed} cards${failed > 0 ? `, ${failed} failed` : ''}...`;
                 }));
                 
-                // Add a small delay between batches
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                // Add a longer delay between batches to be more conservative
+                await new Promise(resolve => setTimeout(resolve, 2000));
               }
               
               fetchStatus.textContent = `Completed: ${completed} cards fetched${failed > 0 ? `, ${failed} failed` : ''}`;

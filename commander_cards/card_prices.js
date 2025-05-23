@@ -357,7 +357,7 @@ function filterCardsByColor() {
   if (checkedColors.length === 0) {
     console.log('No colors checked, showing all cards');
     document.querySelectorAll('.card').forEach(card => {
-      card.style.display = '';
+      card.classList.remove('hidden');
     });
     return;
   }
@@ -369,7 +369,11 @@ function filterCardsByColor() {
     
     // Show card if it has any of the checked colors
     const shouldShow = cardColors.some(color => checkedColors.includes(color.trim()));
-    card.style.display = shouldShow ? '' : 'none';
+    if (shouldShow) {
+      card.classList.remove('hidden');
+    } else {
+      card.classList.add('hidden');
+    }
   });
 }
 

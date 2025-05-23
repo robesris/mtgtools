@@ -78,6 +78,7 @@
       box-sizing: border-box;
       height: 32px;  /* Fixed height for consistent alignment */
       line-height: 16px;  /* Match checkbox height */
+      overflow: hidden;  /* Prevent content from affecting layout */
     }
     .color-filter-tray label:last-child {
       margin-bottom: 0;
@@ -93,6 +94,7 @@
       margin: 0;
       width: 16px;
       height: 16px;
+      z-index: 2;  /* Ensure checkbox stays above other elements */
     }
     .color-filter-tray label span:not(.only-icon) {
       position: absolute;
@@ -104,6 +106,7 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      z-index: 1;  /* Keep text below checkbox */
     }
     .color-filter-tray .only-icon {
       position: absolute;
@@ -115,7 +118,8 @@
       transition: opacity 0.2s;
       width: 20px;
       text-align: center;
-      z-index: 1;  /* Ensure eye stays above other elements */
+      z-index: 2;  /* Keep eye icon above other elements */
+      pointer-events: auto;  /* Ensure click events work */
     }
     .color-filter-tray .only-icon:hover {
       opacity: 1;
@@ -141,10 +145,18 @@
       flex-direction: column;
       align-items: center;
       cursor: pointer;
-      transition: transform 0.2s;
+      transition: transform 0.2s, opacity 0.3s, visibility 0.3s;
       width: 100%;  /* Take full width of grid cell */
       box-sizing: border-box;  /* Include padding in width calculation */
       min-width: 0;  /* Allow card to shrink below its content size */
+      opacity: 1;
+      visibility: visible;
+    }
+    .card.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      position: absolute;
     }
     .card:hover {
       transform: translateY(-5px);

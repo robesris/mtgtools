@@ -759,6 +759,7 @@ class CommanderCardScraper
             padding: 0 20px;
             display: flex;
             gap: 20px;
+            position: relative;  /* For absolute positioning of the tray */
           }
           .color-filter-tray {
             width: 200px;
@@ -770,9 +771,20 @@ class CommanderCardScraper
             top: 20px;
             height: fit-content;
             transition: transform 0.3s ease;
+            z-index: 1;  /* Ensure tray stays above cards */
           }
           .color-filter-tray.collapsed {
-            transform: translateX(-180px);
+            transform: translateX(-170px);  /* Show only 30px of the tray */
+          }
+          .color-filter-tray.collapsed .filter-content {
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s ease, visibility 0.2s;
+          }
+          .color-filter-tray .filter-content {
+            opacity: 1;
+            visibility: visible;
+            transition: opacity 0.2s ease, visibility 0.2s;
           }
           .color-filter-tray .toggle-button {
             position: absolute;
@@ -788,6 +800,7 @@ class CommanderCardScraper
             display: flex;
             align-items: center;
             justify-content: center;
+            z-index: 2;  /* Keep button above tray */
           }
           .color-filter-tray.collapsed .toggle-button {
             transform: translateY(-50%) rotate(180deg);
@@ -820,6 +833,7 @@ class CommanderCardScraper
             grid-template-columns: repeat(4, 1fr);
             gap: 20px;
             margin-top: 20px;
+            margin-left: 30px;  /* Add margin to prevent overlap with toggle button */
           }
           .card {
             background: white;
@@ -949,12 +963,14 @@ class CommanderCardScraper
         <div class="container">
           <div class="color-filter-tray">
             <button class="toggle-button" title="Toggle filter tray">◀</button>
-            <label><input type="checkbox" data-color="Red" /> Red <span class="only-icon" data-color="Red" title="Show only Red cards">👁️</span></label>
-            <label><input type="checkbox" data-color="Blue" /> Blue <span class="only-icon" data-color="Blue" title="Show only Blue cards">👁️</span></label>
-            <label><input type="checkbox" data-color="Green" /> Green <span class="only-icon" data-color="Green" title="Show only Green cards">👁️</span></label>
-            <label><input type="checkbox" data-color="White" /> White <span class="only-icon" data-color="White" title="Show only White cards">👁️</span></label>
-            <label><input type="checkbox" data-color="Black" /> Black <span class="only-icon" data-color="Black" title="Show only Black cards">👁️</span></label>
-            <label><input type="checkbox" data-color="Colorless" /> Colorless <span class="only-icon" data-color="Colorless" title="Show only Colorless cards">👁️</span></label>
+            <div class="filter-content">
+              <label><input type="checkbox" data-color="Red" /> Red <span class="only-icon" data-color="Red" title="Show only Red cards">👁️</span></label>
+              <label><input type="checkbox" data-color="Blue" /> Blue <span class="only-icon" data-color="Blue" title="Show only Blue cards">👁️</span></label>
+              <label><input type="checkbox" data-color="Green" /> Green <span class="only-icon" data-color="Green" title="Show only Green cards">👁️</span></label>
+              <label><input type="checkbox" data-color="White" /> White <span class="only-icon" data-color="White" title="Show only White cards">👁️</span></label>
+              <label><input type="checkbox" data-color="Black" /> Black <span class="only-icon" data-color="Black" title="Show only Black cards">👁️</span></label>
+              <label><input type="checkbox" data-color="Colorless" /> Colorless <span class="only-icon" data-color="Colorless" title="Show only Colorless cards">👁️</span></label>
+            </div>
           </div>
           <div>
             <h1>Commander Game Changers List</h1>

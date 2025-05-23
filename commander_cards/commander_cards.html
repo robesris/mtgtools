@@ -767,45 +767,39 @@
       
       // Function to update card visibility based on selected colors
       function updateCardVisibility() {
+        // If ALL is checked, show all cards regardless of color checkboxes
+        if (allCheckbox.checked) {
+          document.querySelectorAll('.card').forEach(card => {
+            card.classList.remove('hidden');
+          });
+          return;
+        }
+        
+        // Otherwise, filter by selected colors
         const selectedColors = Array.from(colorCheckboxes)
           .filter(cb => cb.checked)
           .map(cb => cb.dataset.color.toLowerCase());
         
         document.querySelectorAll('.card').forEach(card => {
-          // If ALL is checked, show all cards
-          if (allCheckbox.checked) {
-            card.classList.remove('hidden');
-          } else {
-            // Otherwise, show only cards with selected colors
-            const cardColors = card.dataset.colors.split(',');
-            const shouldShow = cardColors.some(color => selectedColors.includes(color));
-            card.classList.toggle('hidden', !shouldShow);
-          }
+          const cardColors = card.dataset.colors.split(',');
+          const shouldShow = cardColors.some(color => selectedColors.includes(color));
+          card.classList.toggle('hidden', !shouldShow);
         });
       }
       
-      // Handle ALL checkbox
+      // Handle ALL checkbox - make it completely independent
       allCheckbox.addEventListener('change', function() {
-        if (this.checked) {
-          // When ALL is checked, check all color checkboxes
-          colorCheckboxes.forEach(cb => {
-            cb.checked = true;
-          });
-        }
-        // Always update visibility after changing checkbox states
+        // Don't modify any other checkboxes
+        // Just update visibility based on ALL checkbox state
         updateCardVisibility();
       });
       
       // Handle individual color checkboxes
       colorCheckboxes.forEach(checkbox => {
         checkbox.addEventListener('change', function() {
-          // Update ALL checkbox state based on other checkboxes
-          if (Array.from(colorCheckboxes).every(cb => cb.checked)) {
-            allCheckbox.checked = true;
-          } else {
-            allCheckbox.checked = false;
-          }
-          // Always update visibility after changing checkbox states
+          // When any color checkbox changes, uncheck ALL
+          allCheckbox.checked = false;
+          // Update visibility based on color checkboxes
           updateCardVisibility();
         });
       });
@@ -824,7 +818,6 @@
             cb.checked = cb.dataset.color.toLowerCase() === color;
           });
           
-          // Always update visibility after changing checkbox states
           updateCardVisibility();
         });
       });

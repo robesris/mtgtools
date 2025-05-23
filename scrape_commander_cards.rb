@@ -808,8 +808,9 @@ class CommanderCardScraper
           }
           .color-filter-tray label {
             display: grid;
-            grid-template-columns: auto 1fr auto;
+            grid-template-columns: 20px 60px 20px;  /* Fixed widths for all columns */
             align-items: center;
+            justify-content: start;  /* Align content to the start */
             gap: 8px;
             cursor: pointer;
             margin-bottom: 10px;
@@ -817,24 +818,32 @@ class CommanderCardScraper
             border-radius: 4px;
             transition: background-color 0.2s;
             width: 100%;
+            position: relative;  /* For absolute positioning of elements */
           }
           .color-filter-tray label input[type="checkbox"] {
             margin: 0;
+            width: 16px;  /* Fixed width for checkbox */
+            height: 16px;  /* Fixed height for checkbox */
+            position: absolute;  /* Position absolutely */
+            left: 5px;  /* Align with padding */
           }
           .color-filter-tray label span:not(.only-icon) {
-            min-width: 60px;  /* Fixed width for color names */
+            position: absolute;  /* Position absolutely */
+            left: 28px;  /* checkbox width + gap */
+            width: 60px;  /* Fixed width */
             text-align: left;
           }
           .color-filter-tray .only-icon {
             cursor: pointer;
             opacity: 0.7;
             transition: opacity 0.2s;
-            margin-left: auto;
-            width: 20px;  /* Fixed width for eye icon */
+            position: absolute;  /* Position absolutely */
+            right: 5px;  /* Align with padding */
+            width: 20px;  /* Fixed width */
             text-align: center;
           }
-          .color-filter-tray label:hover {
-            background-color: #f5f5f5;
+          .color-filter-tray .only-icon:hover {
+            opacity: 1;
           }
           .card-grid {
             flex: 1;

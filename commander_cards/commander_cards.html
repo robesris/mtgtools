@@ -805,11 +805,11 @@
             let html = [];
             if (data.prices['near mint']) {
               const nm = data.prices['near mint'];
-              html.push(`Near Mint: <a href="${data.tcgplayer_url}" target="_blank">$${nm}</a>`);
+              html.push(`Near Mint: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(nm).toFixed(2)}</a>`);
             }
             if (data.prices['lightly played']) {
               const lp = data.prices['lightly played'];
-              html.push(`Lightly Played: <a href="${data.tcgplayer_url}" target="_blank">$${lp}</a>`);
+              html.push(`Lightly Played: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(lp).toFixed(2)}</a>`);
             }
             // Add timestamp if available
             if (data.timestamp) {
@@ -876,11 +876,11 @@
                 let html = [];
                 if (data.prices['near mint']) {
                   const nm = data.prices['near mint'];
-                  html.push(`Near Mint: <a href="${data.tcgplayer_url}" target="_blank">$${nm}</a>`);
+                  html.push(`Near Mint: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(nm).toFixed(2)}</a>`);
                 }
                 if (data.prices['lightly played']) {
                   const lp = data.prices['lightly played'];
-                  html.push(`Lightly Played: <a href="${data.tcgplayer_url}" target="_blank">$${lp}</a>`);
+                  html.push(`Lightly Played: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(lp).toFixed(2)}</a>`);
                 }
                 // Add timestamp if available
                 if (data.timestamp) {

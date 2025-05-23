@@ -1125,7 +1125,6 @@ class CommanderCardScraper
           </div>
         </div>
         <script>
-          // Add toggle functionality for the filter tray
           document.addEventListener('DOMContentLoaded', function() {
             const tray = document.querySelector('.color-filter-tray');
             const toggleButton = document.querySelector('.toggle-button');
@@ -1136,11 +1135,9 @@ class CommanderCardScraper
             
             // Function to update card visibility based on selected colors
             function updateCardVisibility() {
-              // If ALL is checked, show all cards immediately
+              // If ALL is checked, show all cards and return immediately
               if (allCheckbox.checked) {
-                cards.forEach(card => {
-                  card.classList.remove('hidden');
-                });
+                cards.forEach(card => card.classList.remove('hidden'));
                 return;
               }
               
@@ -1158,14 +1155,11 @@ class CommanderCardScraper
             
             // Handle ALL checkbox - make it completely independent
             allCheckbox.addEventListener('change', function() {
-              // Immediately update visibility based on ALL checkbox state
+              // When ALL is checked, show all cards
               if (this.checked) {
-                // Show all cards
-                cards.forEach(card => {
-                  card.classList.remove('hidden');
-                });
+                cards.forEach(card => card.classList.remove('hidden'));
               } else {
-                // Show only cards with selected colors
+                // When ALL is unchecked, show only cards with selected colors
                 const selectedColors = Array.from(colorCheckboxes)
                   .filter(cb => cb.checked)
                   .map(cb => cb.dataset.color.toLowerCase());
@@ -1202,6 +1196,7 @@ class CommanderCardScraper
                   cb.checked = cb.dataset.color.toLowerCase() === color;
                 });
                 
+                // Update visibility
                 updateCardVisibility();
               });
             });

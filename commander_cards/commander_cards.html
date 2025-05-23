@@ -818,15 +818,14 @@
             });
 
             let html = [];
-            if (data.prices['near mint']) {
-              const nm = data.prices['near mint'];
-              const nmPrice = typeof nm === 'object' ? nm.total : nm;
-              html.push(`Near Mint: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(nmPrice).toFixed(2)}</a>`);
+            // The server returns prices with capitalized condition names
+            if (data.prices['Near Mint']) {
+              const nm = data.prices['Near Mint'];
+              html.push(`Near Mint: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(nm).toFixed(2)}</a>`);
             }
-            if (data.prices['lightly played']) {
-              const lp = data.prices['lightly played'];
-              const lpPrice = typeof lp === 'object' ? lp.total : lp;
-              html.push(`Lightly Played: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(lpPrice).toFixed(2)}</a>`);
+            if (data.prices['Lightly Played']) {
+              const lp = data.prices['Lightly Played'];
+              html.push(`Lightly Played: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(lp).toFixed(2)}</a>`);
             }
             // Add timestamp if available
             if (data.timestamp) {

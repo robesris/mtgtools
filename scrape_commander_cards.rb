@@ -1154,25 +1154,15 @@ class CommanderCardScraper
                 colorCheckboxes.forEach(cb => {
                   cb.checked = true;
                 });
-              } else {
-                // When ALL is unchecked, just uncheck all color checkboxes
-                // but keep them enabled
-                colorCheckboxes.forEach(cb => {
-                  cb.checked = false;
-                });
+                updateCardVisibility();
               }
-              updateCardVisibility();
             });
             
             // Handle individual color checkboxes
             colorCheckboxes.forEach(checkbox => {
               checkbox.addEventListener('change', function() {
-                // If any color is unchecked, uncheck ALL
-                if (!this.checked) {
-                  allCheckbox.checked = false;
-                }
                 // If all colors are checked, check ALL
-                else if (Array.from(colorCheckboxes).every(cb => cb.checked)) {
+                if (Array.from(colorCheckboxes).every(cb => cb.checked)) {
                   allCheckbox.checked = true;
                 }
                 updateCardVisibility();

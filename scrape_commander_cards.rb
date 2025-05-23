@@ -810,17 +810,17 @@ class CommanderCardScraper
             transform: translateY(-50%) rotate(180deg);
           }
           .color-filter-tray label {
-            display: grid;
-            grid-template-columns: 16px minmax(60px, 1fr) 20px;  /* Fixed widths for checkbox and eye, flexible for text */
-            align-items: center;
-            gap: 8px;
+            position: relative;
+            display: block;
             cursor: pointer;
             margin-bottom: 15px;
-            padding: 8px 5px;
+            padding: 8px 5px 8px 29px;  /* Left padding accounts for checkbox */
             border-radius: 4px;
             transition: background-color 0.2s;
             width: 100%;
-            position: relative;  /* For absolute positioning of eye icon */
+            box-sizing: border-box;
+            height: 32px;  /* Fixed height for consistent alignment */
+            line-height: 16px;  /* Match checkbox height */
           }
           .color-filter-tray label:last-child {
             margin-bottom: 0;
@@ -829,29 +829,36 @@ class CommanderCardScraper
             background-color: #f5f5f5;
           }
           .color-filter-tray label input[type="checkbox"] {
+            position: absolute;
+            left: 5px;
+            top: 50%;
+            transform: translateY(-50%);
             margin: 0;
             width: 16px;
             height: 16px;
-            grid-column: 1;  /* Explicitly place in first column */
           }
           .color-filter-tray label span:not(.only-icon) {
-            grid-column: 2;  /* Explicitly place in second column */
-            min-width: 60px;
+            position: absolute;
+            left: 29px;  /* checkbox width + padding */
+            right: 29px;  /* eye icon width + padding */
+            top: 50%;
+            transform: translateY(-50%);
             text-align: left;
             white-space: nowrap;
-            padding-right: 28px;  /* Make room for eye icon */
+            overflow: hidden;
+            text-overflow: ellipsis;
           }
           .color-filter-tray .only-icon {
-            grid-column: 3;  /* Explicitly place in third column */
+            position: absolute;
+            right: 5px;
+            top: 50%;
+            transform: translateY(-50%);
             cursor: pointer;
             opacity: 0.7;
             transition: opacity 0.2s;
             width: 20px;
             text-align: center;
-            position: absolute;  /* Position absolutely within the label */
-            right: 5px;  /* Align with padding */
-            top: 50%;  /* Center vertically */
-            transform: translateY(-50%);  /* Perfect vertical centering */
+            z-index: 1;  /* Ensure eye stays above other elements */
           }
           .color-filter-tray .only-icon:hover {
             opacity: 1;

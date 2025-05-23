@@ -1157,7 +1157,6 @@ class CommanderCardScraper
               
               try {
                 priceInfo.innerHTML = '<span class="loading">Fetching prices...</span>';
-                // Use the correct endpoint that matches our server
                 const response = await fetch(`/card_info?card=${encodeURIComponent(cardName)}`);
                 if (!response.ok) {
                   throw new Error(`HTTP error! status: ${response.status}`);
@@ -1165,6 +1164,19 @@ class CommanderCardScraper
                 const data = await response.json();
                 
                 if (data && data.prices) {
+                  // Cache the prices immediately after successful fetch
+                  await fetch('/cache_prices', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                      card: cardName,
+                      prices: data.prices,
+                      timestamp: data.timestamp || Math.floor(Date.now() / 1000)
+                    })
+                  });
+
                   let html = [];
                   if (data.prices['Near Mint']) {
                     const nm = data.prices['Near Mint'];
@@ -1223,6 +1235,19 @@ class CommanderCardScraper
                     const data = await response.json();
                     
                     if (data && data.prices) {
+                      // Cache the prices immediately after successful fetch
+                      await fetch('/cache_prices', {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                          card: cardName,
+                          prices: data.prices,
+                          timestamp: data.timestamp || Math.floor(Date.now() / 1000)
+                        })
+                      });
+
                       let html = [];
                       if (data.prices['Near Mint']) {
                         const nm = data.prices['Near Mint'];

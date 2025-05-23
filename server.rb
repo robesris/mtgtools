@@ -77,7 +77,8 @@ get '/card_info' do
     {
       legality: legality,
       prices: prices,
-      tcgplayer_url: page.url
+      tcgplayer_url: page.url,
+      timestamp: Time.now.to_i
     }.to_json
 
   rescue => e
@@ -85,4 +86,38 @@ get '/card_info' do
   ensure
     browser&.close
   end
+end
+
+# Add endpoint for caching prices
+post '/cache_prices' do
+  content_type :json
+  request.body.rewind
+  data = JSON.parse(request.body.read)
+  
+  card_name = data['card']
+  prices = data['prices']
+  timestamp = data['timestamp']
+  
+  return { error: 'Missing required fields' }.to_json unless card_name && prices && timestamp
+  
+  # Load existing cache
+  cache_file = 'commander_card_prices.json'
+  cache = if File.exist?(cache_file)
+    JSON.parse(File.read(cache_file))
+  else
+    {}
+  end
+  
+  # Update cache
+  cache[card_name] = {
+    'timestamp' => timestamp,
+    'prices' => prices
+  }
+  
+  # Save cache
+  File.write(cache_file, JSON.pretty_generate(cache))
+  
+  { success: true }.to_json
+rescue => e
+  { error: e.message }.to_json
 end 

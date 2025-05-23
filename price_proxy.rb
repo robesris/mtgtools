@@ -88,7 +88,7 @@ get '/card_info' do
   card_name = params['card']
   request_id = SecureRandom.uuid
   $file_logger.info("Starting card info request #{request_id} for: #{card_name}")
-  
+
   begin
     RequestHandler.handle_card_info_request(card_name, request_id)
   rescue ArgumentError => e

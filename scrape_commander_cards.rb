@@ -1092,11 +1092,11 @@ class CommanderCardScraper
         html = []
         if prices['near mint']
           nm = prices['near mint']
-          html << "NM: <a href=\"#{nm['url']}\" target=\"_blank\">#{nm['total']}</a>"
+          html << "Near Mint: <a href=\"#{nm['url']}\" target=\"_blank\">$${nm['total']}</a>"
         end
         if prices['lightly played']
           lp = prices['lightly played']
-          html << "LP: <a href=\"#{lp['url']}\" target=\"_blank\">#{lp['total']}</a>"
+          html << "Lightly Played: <a href=\"#{lp['url']}\" target=\"_blank\">$${lp['total']}</a>"
         end
         html.join(' | ') || 'No prices found'
       else
@@ -1178,13 +1178,13 @@ class CommanderCardScraper
                   });
 
                   let html = [];
-                  if (data.prices['Near Mint']) {
-                    const nm = data.prices['Near Mint'];
-                    html.push(`NM: <a href="${nm.url}" target="_blank">${nm.price}</a>`);
+                  if (data.prices['near mint']) {
+                    const nm = data.prices['near mint'];
+                    html.push(`Near Mint: <a href="${data.tcgplayer_url}" target="_blank">$${nm}</a>`);
                   }
-                  if (data.prices['Lightly Played']) {
-                    const lp = data.prices['Lightly Played'];
-                    html.push(`LP: <a href="${lp.url}" target="_blank">${lp.price}</a>`);
+                  if (data.prices['lightly played']) {
+                    const lp = data.prices['lightly played'];
+                    html.push(`Lightly Played: <a href="${data.tcgplayer_url}" target="_blank">$${lp}</a>`);
                   }
                   // Add timestamp if available
                   if (data.timestamp) {
@@ -1249,13 +1249,13 @@ class CommanderCardScraper
                       });
 
                       let html = [];
-                      if (data.prices['Near Mint']) {
-                        const nm = data.prices['Near Mint'];
-                        html.push(`NM: <a href="${nm.url}" target="_blank">${nm.price}</a>`);
+                      if (data.prices['near mint']) {
+                        const nm = data.prices['near mint'];
+                        html.push(`Near Mint: <a href="${data.tcgplayer_url}" target="_blank">$${nm}</a>`);
                       }
-                      if (data.prices['Lightly Played']) {
-                        const lp = data.prices['Lightly Played'];
-                        html.push(`LP: <a href="${lp.url}" target="_blank">${lp.price}</a>`);
+                      if (data.prices['lightly played']) {
+                        const lp = data.prices['lightly played'];
+                        html.push(`Lightly Played: <a href="${data.tcgplayer_url}" target="_blank">$${lp}</a>`);
                       }
                       // Add timestamp if available
                       if (data.timestamp) {

@@ -827,11 +827,10 @@ class CommanderCardScraper
             right: 0;
             border-radius: 0 4px 4px 0;
             box-shadow: none;
-            background: #f5f5f5;
-            border: 1px solid #ddd;
-            border-left: none;
+            background: white;
+            border: none;
           }
-          .color-filter-tray.collapsed .toggle-button::before {
+          .color-filter-tray .toggle-button::before {
             content: "▶";
             transform: none;
           }

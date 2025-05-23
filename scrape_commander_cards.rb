@@ -848,11 +848,12 @@ class CommanderCardScraper
           .card-grid {
             flex: 1;
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
             gap: 20px;
             margin-top: 20px;
             margin-left: 30px;  /* Add margin to prevent overlap with toggle button */
             align-items: start;  /* Align items to the top */
+            max-width: 1200px;  /* Limit maximum width to prevent cards from getting too large */
           }
           .card {
             background: white;
@@ -867,6 +868,8 @@ class CommanderCardScraper
             transition: transform 0.2s;
             width: 100%;  /* Ensure card takes full width of its grid cell */
             box-sizing: border-box;  /* Include padding in width calculation */
+            max-width: 250px;  /* Limit maximum card width */
+            margin: 0 auto;  /* Center cards in their grid cells */
           }
           .card:hover {
             transform: translateY(-5px);
@@ -958,19 +961,26 @@ class CommanderCardScraper
           }
           @media (max-width: 1200px) {
             .card-grid {
-              grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+              grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            }
+            .card {
+              max-width: 220px;
             }
           }
           @media (max-width: 900px) {
             .card-grid {
-              grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+              grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            }
+            .card {
+              max-width: 200px;
             }
           }
           @media (max-width: 600px) {
             .card-grid {
-              grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+              grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
             }
             .card {
+              max-width: 180px;
               padding: 10px;
             }
             .card-name {

@@ -1140,10 +1140,15 @@ class CommanderCardScraper
                 .map(cb => cb.dataset.color.toLowerCase());
               
               document.querySelectorAll('.card').forEach(card => {
-                const cardColors = card.dataset.colors.split(',');
-                const shouldShow = allCheckbox.checked || 
-                  cardColors.some(color => selectedColors.includes(color));
-                card.classList.toggle('hidden', !shouldShow);
+                // If ALL is checked, show all cards
+                if (allCheckbox.checked) {
+                  card.classList.remove('hidden');
+                } else {
+                  // Otherwise, show only cards with selected colors
+                  const cardColors = card.dataset.colors.split(',');
+                  const shouldShow = cardColors.some(color => selectedColors.includes(color));
+                  card.classList.toggle('hidden', !shouldShow);
+                }
               });
             }
             
@@ -1154,14 +1159,9 @@ class CommanderCardScraper
                 colorCheckboxes.forEach(cb => {
                   cb.checked = true;
                 });
-                // Force show all cards when ALL is checked
-                document.querySelectorAll('.card').forEach(card => {
-                  card.classList.remove('hidden');
-                });
-              } else {
-                // When ALL is unchecked, update visibility based on individual checkboxes
-                updateCardVisibility();
               }
+              // Always update visibility when ALL checkbox changes
+              updateCardVisibility();
             });
             
             // Handle individual color checkboxes

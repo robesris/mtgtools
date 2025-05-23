@@ -764,7 +764,7 @@ class CommanderCardScraper
             box-sizing: border-box;
           }
           .color-filter-tray {
-            width: 200px; /* Reduced from 240px */
+            width: 200px;
             min-width: 200px;
             max-width: 200px;
             background: white;
@@ -774,7 +774,7 @@ class CommanderCardScraper
             position: sticky;
             top: 20px;
             height: fit-content;
-            transition: transform 0.3s ease, width 0.3s ease;
+            transition: width 0.3s ease, min-width 0.3s ease, max-width 0.3s ease, padding 0.3s ease;
             z-index: 1;
             flex-shrink: 0;
           }
@@ -782,19 +782,18 @@ class CommanderCardScraper
             width: 30px;
             min-width: 30px;
             max-width: 30px;
-            transform: translateX(0);
             padding: 15px 5px;
           }
           .color-filter-tray .filter-content {
             opacity: 1;
             visibility: visible;
-            transition: opacity 0.2s ease, visibility 0.2s;
+            transition: opacity 0.2s ease, visibility 0.2s, width 0.3s ease;
             width: 100%;
             padding: 5px 0;
             display: flex;
             flex-direction: column;
             gap: 15px;
-            min-width: 0; /* Allow content to shrink */
+            min-width: 0;
           }
           .color-filter-tray.collapsed .filter-content {
             opacity: 0;
@@ -834,6 +833,10 @@ class CommanderCardScraper
             content: "▶";
             font-size: 12px;
             line-height: 1;
+            transition: transform 0.3s ease;
+          }
+          .color-filter-tray.collapsed .toggle-button::before {
+            transform: rotate(180deg);
           }
           .color-filter-tray label {
             position: relative;

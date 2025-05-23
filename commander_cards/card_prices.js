@@ -2,6 +2,45 @@
 const TCG_API_KEY = 'YOUR_API_KEY_HERE'; // You'll need to replace this with your actual API key
 const TCG_API_URL = 'https://api.tcgplayer.com/v1.39.0';
 
+function getTimestampColor(timestamp) {
+  const now = Date.now();
+  const oneMonth = 30 * 24 * 60 * 60 * 1000;  // 30 days in milliseconds
+  const threeMonths = 3 * oneMonth;
+  
+  const age = now - timestamp;
+  if (age < oneMonth) {
+    return '#2ecc71';  // Green for < 1 month
+  } else if (age < threeMonths) {
+    return '#e67e22';  // Orange for 1-3 months
+  } else {
+    return '#e74c3c';  // Red for > 3 months
+  }
+}
+
+function formatTimestamp(timestamp) {
+  const date = new Date(timestamp);
+  return date.toLocaleDateString() + ' at ' + date.toLocaleTimeString('en-US', { 
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+function addTimestampToPriceInfo(priceInfo, timestamp) {
+  const timestampDiv = document.createElement('div');
+  // Set styles directly on the element
+  Object.assign(timestampDiv.style, {
+    fontSize: '0.65em',
+    marginTop: '4px',
+    fontStyle: 'italic',
+    lineHeight: '1.2',
+    color: getTimestampColor(timestamp),
+    display: 'block'
+  });
+  timestampDiv.textContent = `Prices retrieved on ${formatTimestamp(timestamp)}`;
+  priceInfo.appendChild(timestampDiv);
+}
+
 // Update the updateCardPrices function to use server-provided prices
 async function updateCardPrices(cardElement) {
   const cardName = cardElement.querySelector('.card-name').textContent;
@@ -49,10 +88,24 @@ async function updateCardPrices(cardElement) {
         }
       });
       
+      const now = Date.now();
+      // Store the timestamp element if it exists
+      const existingTimestamp = priceInfo.querySelector('.price-timestamp');
+      // Update the price HTML
       priceInfo.innerHTML = priceHtml;
+      // Add the timestamp back if it existed, or create a new one
+      if (existingTimestamp) {
+        priceInfo.appendChild(existingTimestamp);
+      } else {
+        addTimestampToPriceInfo(priceInfo, now);
+      }
+      
       if (!isLegal) {
         priceInfo.classList.add('illegal');
-        priceInfo.innerHTML += `<div class="illegal-notice">Not legal in Commander (${data.legality})</div>`;
+        const illegalNotice = document.createElement('div');
+        illegalNotice.className = 'illegal-notice';
+        illegalNotice.textContent = `Not legal in Commander (${data.legality})`;
+        priceInfo.appendChild(illegalNotice);
       } else {
         priceInfo.classList.remove('illegal');
       }
@@ -60,15 +113,15 @@ async function updateCardPrices(cardElement) {
       // Cache the price data
       const cacheData = {
         prices: prices,
-        timestamp: Date.now()
+        timestamp: now
       };
       localStorage.setItem(`price_${cardName}`, JSON.stringify(cacheData));
     } else {
-      priceInfo.textContent = 'No price data available';
+      priceInfo.textContent = 'Click to load prices';
     }
   } catch (error) {
     console.error('Error updating prices:', error);
-    priceInfo.textContent = `Error: ${error.message}`;
+    priceInfo.textContent = 'Click to load prices';
   }
 }
 
@@ -128,7 +181,16 @@ function loadCachedPrices() {
           console.log(`Final cached HTML for ${cardName}:`, html);
           const priceInfo = card.querySelector('.price-info');
           if (priceInfo) {
-            priceInfo.innerHTML = html || 'No prices found';
+            // Store the timestamp element if it exists
+            const existingTimestamp = priceInfo.querySelector('.price-timestamp');
+            // Update the price HTML
+            priceInfo.innerHTML = html || 'Click to load prices';
+            // Add the timestamp back if it existed, or create a new one if we have prices
+            if (existingTimestamp) {
+              priceInfo.appendChild(existingTimestamp);
+            } else if (html) {
+              addTimestampToPriceInfo(priceInfo, data.timestamp);
+            }
           } else {
             console.log('No .price-info element found for this card');
           }
@@ -136,7 +198,7 @@ function loadCachedPrices() {
           console.log(`Cache expired for ${cardName}`);
           const priceInfo = card.querySelector('.price-info');
           if (priceInfo) {
-            priceInfo.innerHTML = '';
+            priceInfo.innerHTML = 'Click to load prices';
           }
         }
       } catch (e) {

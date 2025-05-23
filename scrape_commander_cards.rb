@@ -728,6 +728,24 @@ class CommanderCardScraper
           .price-info a:hover {
             text-decoration: underline;
           }
+          /* Make timestamp styling more specific and forceful */
+          .price-info .price-timestamp {
+            display: block;
+            font-size: 0.65em !important;
+            margin-top: 4px;
+            font-style: italic;
+            line-height: 1.2;
+            color: #666;
+          }
+          .price-info .price-timestamp.recent {
+            color: #2ecc71 !important;
+          }
+          .price-info .price-timestamp.old {
+            color: #e67e22 !important;
+          }
+          .price-info .price-timestamp.very-old {
+            color: #e74c3c !important;
+          }
           .loading {
             color: #999;
             font-style: italic;

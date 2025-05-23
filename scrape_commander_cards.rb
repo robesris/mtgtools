@@ -1157,7 +1157,14 @@ class CommanderCardScraper
               
               cards.forEach(card => {
                 const cardColors = card.dataset.colors.split(',');
-                const shouldShow = cardColors.some(color => selectedColors.includes(color));
+                // Special handling for Multicolor cards
+                const shouldShow = selectedColors.some(color => {
+                  if (color === 'multicolor') {
+                    return cardColors.includes('multicolor');
+                  } else {
+                    return cardColors.includes(color);
+                  }
+                });
                 if (!shouldShow) {
                   card.classList.add('hidden-by-color');
                 }
@@ -1199,7 +1206,12 @@ class CommanderCardScraper
                 
                 // Uncheck all colors except the clicked one
                 colorCheckboxes.forEach(cb => {
-                  cb.checked = cb.dataset.color.toLowerCase() === color;
+                  // For Multicolor cards, we need to check if the card has "multicolor" in its colors
+                  if (color === 'multicolor') {
+                    cb.checked = cb.dataset.color.toLowerCase() === color;
+                  } else {
+                    cb.checked = cb.dataset.color.toLowerCase() === color;
+                  }
                 });
                 
                 // Update visibility

@@ -28,7 +28,7 @@ class CommanderCardScraper
     # Hardcoded color mappings for known cards
     @card_colors = {
       "DRANNITH MAGISTRATE" => ["WHITE"],
-      "SERRA'S SANCTUM" => ["WHITE"],
+      "SERRA'S SANCTUM" => ["COLORLESS"],  # Appears in White section but is actually colorless
       "TEFERI'S PROTECTION" => ["WHITE"],
       "THASSA'S ORACLE" => ["BLUE"],
       "TERGRID, GOD OF FRIGHT" => ["BLACK"],

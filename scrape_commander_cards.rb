@@ -1135,23 +1135,20 @@ class CommanderCardScraper
             
             // Function to update card visibility based on selected colors
             function updateCardVisibility() {
-              // If ALL is checked, show all cards and return early
-              if (allCheckbox.checked) {
-                document.querySelectorAll('.card').forEach(card => {
-                  card.classList.remove('hidden');
-                });
-                return;
-              }
-              
-              // Otherwise, filter by selected colors
               const selectedColors = Array.from(colorCheckboxes)
                 .filter(cb => cb.checked)
                 .map(cb => cb.dataset.color.toLowerCase());
               
               document.querySelectorAll('.card').forEach(card => {
-                const cardColors = card.dataset.colors.split(',');
-                const shouldShow = cardColors.some(color => selectedColors.includes(color));
-                card.classList.toggle('hidden', !shouldShow);
+                // If ALL is checked, show all cards
+                if (allCheckbox.checked) {
+                  card.classList.remove('hidden');
+                } else {
+                  // Otherwise, show only cards with selected colors
+                  const cardColors = card.dataset.colors.split(',');
+                  const shouldShow = cardColors.some(color => selectedColors.includes(color));
+                  card.classList.toggle('hidden', !shouldShow);
+                }
               });
             }
             
@@ -1163,20 +1160,20 @@ class CommanderCardScraper
                   cb.checked = true;
                 });
               }
-              // Update visibility immediately
+              // Always update visibility after changing checkbox states
               updateCardVisibility();
             });
             
             // Handle individual color checkboxes
             colorCheckboxes.forEach(checkbox => {
               checkbox.addEventListener('change', function() {
-                // If all colors are checked, check ALL
+                // Update ALL checkbox state based on other checkboxes
                 if (Array.from(colorCheckboxes).every(cb => cb.checked)) {
                   allCheckbox.checked = true;
                 } else {
-                  // If any color is unchecked, uncheck ALL
                   allCheckbox.checked = false;
                 }
+                // Always update visibility after changing checkbox states
                 updateCardVisibility();
               });
             });
@@ -1195,6 +1192,7 @@ class CommanderCardScraper
                   cb.checked = cb.dataset.color.toLowerCase() === color;
                 });
                 
+                // Always update visibility after changing checkbox states
                 updateCardVisibility();
               });
             });

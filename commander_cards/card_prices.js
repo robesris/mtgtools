@@ -41,15 +41,88 @@ function addTimestampToPriceInfo(priceInfo, timestamp) {
   priceInfo.appendChild(timestampDiv);
 }
 
-// Update the updateCardPrices function to use server-provided prices
+// Function to animate ellipsis
+function animateEllipsis(element, text) {
+  if (!element) return null;
+  let counter = 0;
+  const interval = setInterval(() => {
+    counter = (counter + 1) % 4;
+    element.textContent = text + '.'.repeat(counter);
+  }, 500);
+  return interval;
+}
+
+// Function to create a spinner element
+function createSpinner() {
+  const spinner = document.createElement('span');
+  spinner.className = 'spinner';
+  spinner.innerHTML = '⌛';  // Hourglass emoji
+  return spinner;
+}
+
+// Function to get color for card name
+function getCardNameColors(cardElement) {
+  const colors = cardElement.getAttribute('data-colors')?.split(',').map(c => c.trim().toLowerCase()) || [];
+  if (colors.length === 0) return ['#666666']; // Dark gray for colorless
+  if (colors.length === 1) return [getColorCode(colors[0])];
+  return colors.map(getColorCode);
+}
+
+// Function to get color code for a color
+function getColorCode(color) {
+  const colorMap = {
+    'white': '#F8F8F8',  // White
+    'blue': '#0070BA',   // Blue
+    'black': '#150B00',  // Black
+    'red': '#D3202A',    // Red
+    'green': '#00733E',  // Green
+    'multicolor': '#A020F0'  // Purple for multicolor
+  };
+  return colorMap[color.toLowerCase()] || '#666666';
+}
+
+// Function to create colored card name span
+function createColoredCardName(cardElement) {
+  const cardName = cardElement.querySelector('.card-name')?.textContent || '';
+  const colors = getCardNameColors(cardElement);
+  const span = document.createElement('span');
+  
+  if (colors.length === 1) {
+    span.style.color = colors[0];
+    span.textContent = cardName;
+  } else if (colors.length > 1) {
+    const midPoint = Math.ceil(cardName.length / 2);
+    const firstHalf = cardName.substring(0, midPoint);
+    const secondHalf = cardName.substring(midPoint);
+    
+    const firstSpan = document.createElement('span');
+    firstSpan.style.color = colors[0];
+    firstSpan.textContent = firstHalf;
+    
+    const secondSpan = document.createElement('span');
+    secondSpan.style.color = colors[1];
+    secondSpan.textContent = secondHalf;
+    
+    span.appendChild(firstSpan);
+    span.appendChild(secondSpan);
+  }
+  
+  return span;
+}
+
+// Update the updateCardPrices function to use ellipsis animation
 async function updateCardPrices(cardElement) {
   const cardName = cardElement.querySelector('.card-name').textContent;
   const priceInfo = cardElement.querySelector('.price-info');
   
   priceInfo.innerHTML = '<span class="loading">Loading prices</span>';
+  const loadingElement = priceInfo.querySelector('.loading');
+  const ellipsisInterval = animateEllipsis(loadingElement, 'Loading prices');
 
   try {
     const response = await fetch(`http://localhost:4567/card_info?card=${encodeURIComponent(cardName)}`);
+    clearInterval(ellipsisInterval);
+    
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
@@ -120,6 +193,7 @@ async function updateCardPrices(cardElement) {
       priceInfo.textContent = 'Click to load prices';
     }
   } catch (error) {
+    clearInterval(ellipsisInterval);
     console.error('Error updating prices:', error);
     priceInfo.textContent = 'Click to load prices';
   }
@@ -291,7 +365,7 @@ async function refreshAllPrices() {
   }
 }
 
-// Function to fetch all prices
+// Update the fetchAllPrices function to use spinner and colored card names
 async function fetchAllPrices() {
   const fetchAllButton = document.getElementById('fetch-all-prices');
   const fetchStatus = document.getElementById('fetch-status');
@@ -305,12 +379,10 @@ async function fetchAllPrices() {
     return;
   }
   
-  if (fetchAllButton.disabled) return; // Prevent multiple clicks
+  if (fetchAllButton.disabled) return;
   
   fetchAllButton.disabled = true;
   fetchAllButton.style.backgroundColor = '#999';
-  fetchStatus.textContent = 'Fetching prices';
-  let ellipsisInterval = animateEllipsis(fetchStatus, 'Fetching prices');
   
   // Get only visible cards (not hidden by filters)
   const visibleCards = Array.from(cards).filter(card => 
@@ -324,13 +396,30 @@ async function fetchAllPrices() {
   // Process each visible card with a delay between requests
   for (const card of visibleCards) {
     try {
-      // Clear previous interval before starting new fetch
-      clearInterval(ellipsisInterval);
-      const cardName = card.querySelector('.card-name')?.textContent;
-      fetchStatus.textContent = `Fetching prices for ${cardName} (${completed + 1}/${visibleCards.length})...`;
-      ellipsisInterval = animateEllipsis(fetchStatus, `Fetching prices for ${cardName} (${completed + 1}/${visibleCards.length})...`);
+      // Clear previous status
+      fetchStatus.innerHTML = '';
       
-      // Use updateCardPrices directly
+      // Create status container
+      const statusContainer = document.createElement('div');
+      statusContainer.className = 'fetch-status-container';
+      
+      // Add colored card name
+      const cardNameSpan = createColoredCardName(card);
+      statusContainer.appendChild(cardNameSpan);
+      
+      // Add progress text
+      const progressText = document.createElement('span');
+      progressText.textContent = ` (${completed + 1}/${visibleCards.length})`;
+      statusContainer.appendChild(progressText);
+      
+      // Add spinner after the text
+      const spinner = createSpinner();
+      statusContainer.appendChild(spinner);
+      
+      // Update status
+      fetchStatus.appendChild(statusContainer);
+      
+      // Fetch prices
       await updateCardPrices(card);
       completed++;
       
@@ -342,14 +431,18 @@ async function fetchAllPrices() {
     }
   }
   
-  clearInterval(ellipsisInterval);
-  fetchStatus.textContent = `Completed: ${completed} cards fetched${failed > 0 ? `, ${failed} failed` : ''}`;
+  // Clear status and show completion message
+  fetchStatus.innerHTML = '';
+  const completionMessage = document.createElement('div');
+  completionMessage.textContent = `Completed: ${completed} cards fetched${failed > 0 ? `, ${failed} failed` : ''}`;
+  fetchStatus.appendChild(completionMessage);
+  
   fetchAllButton.disabled = false;
   fetchAllButton.style.backgroundColor = '#4CAF50';
   
   // Clear status message after 5 seconds
   setTimeout(() => {
-    fetchStatus.textContent = '';
+    fetchStatus.innerHTML = '';
   }, 5000);
 }
 
@@ -496,6 +589,43 @@ function initColorFilterOnly() {
   console.log('Finished attaching color filter click handlers');
 }
 
+// Update CSS styles for the spinner and status container
+const style = document.createElement('style');
+style.textContent = `
+  .spinner {
+    display: inline-block;
+    animation: spin 1s linear infinite;
+    margin-left: 8px;
+    font-size: 1.2em;
+    font-style: normal;
+  }
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  
+  .fetch-status-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    background-color: #333333;
+    padding: 8px 16px;
+    border-radius: 4px;
+    color: #ffffff;
+  }
+  
+  .fetch-status-container span {
+    color: inherit;
+  }
+  
+  .loading {
+    display: inline-block;
+  }
+`;
+document.head.appendChild(style);
+
 // Export functions for testing
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
@@ -504,14 +634,4 @@ if (typeof module !== 'undefined' && module.exports) {
     addTimestampToPriceInfo,
     initColorFilterOnly
   };
-}
-
-// Function to animate ellipsis
-function animateEllipsis(element, text) {
-  let counter = 0;
-  const interval = setInterval(() => {
-    counter++;
-    element.textContent = text + '...'.repeat(counter % 4);
-  }, 500);
-  return interval;
 } 

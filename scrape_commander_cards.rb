@@ -1112,6 +1112,212 @@ class CommanderCardScraper
 
     File.write(File.join(@output_dir, 'commander_cards.html'), html)
   end
+
+  def generate_filter_tray_html
+    colors = ['White', 'Blue', 'Black', 'Red', 'Green', 'Multicolor', 'Colorless']
+    html = <<~HTML
+      <div class="filter-tray-container">
+        <div class="filter-tray">
+          <div class="filter-tray-content">
+            #{colors.map { |color| generate_filter_label(color) }.join("\n")}
+          </div>
+        </div>
+      </div>
+    HTML
+    html
+  end
+
+  def generate_filter_label(color)
+    color_id = color.downcase
+    <<~HTML
+      <div class="filter-label-wrapper" data-color="#{color_id}">
+        <input type="checkbox" id="filter-#{color_id}" class="filter-checkbox" data-color="#{color_id}">
+        <label for="filter-#{color_id}" class="filter-label">
+          <span class="filter-text">#{color}</span>
+          <span class="only-icon" data-color="#{color_id}" title="Show only #{color} cards">👁️</span>
+        </label>
+      </div>
+    HTML
+  end
+
+  def generate_css
+    <<~CSS
+      /* Reset and base styles */
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        line-height: 1.5;
+        color: #333;
+        background: #f5f5f5;
+        padding: 20px;
+      }
+
+      /* Filter tray container */
+      .filter-tray-container {
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        background: #f5f5f5;
+        padding: 10px 0;
+        margin-bottom: 20px;
+        border-bottom: 1px solid #ddd;
+      }
+
+      .filter-tray {
+        max-width: 1600px;
+        margin: 0 auto;
+        padding: 0 20px;
+      }
+
+      .filter-tray-content {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+      }
+
+      /* Filter label wrapper */
+      .filter-label-wrapper {
+        position: relative;
+        height: 32px;
+        min-width: 120px;
+        flex: 0 1 auto;
+      }
+
+      /* Filter checkbox */
+      .filter-checkbox {
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 16px;
+        height: 16px;
+        margin: 0;
+        z-index: 2;
+        cursor: pointer;
+      }
+
+      /* Filter label */
+      .filter-label {
+        position: relative;
+        display: block;
+        height: 100%;
+        padding: 0 32px 0 24px;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .filter-label:hover {
+        background: #f8f8f8;
+        border-color: #ccc;
+      }
+
+      /* Filter text */
+      .filter-text {
+        display: block;
+        height: 100%;
+        line-height: 32px;
+        font-size: 14px;
+        color: #333;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        pointer-events: none;
+      }
+
+      /* Only icon */
+      .only-icon {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        color: #666;
+        cursor: pointer;
+        z-index: 2;
+        transition: color 0.2s;
+        user-select: none;
+      }
+
+      .only-icon:hover {
+        color: #333;
+      }
+
+      /* Card grid */
+      .card-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 20px;
+        max-width: 1600px;
+        margin: 0 auto;
+        padding: 0 20px;
+      }
+
+      @media (min-width: 1400px) {
+        .card-grid {
+          grid-template-columns: repeat(4, 1fr);
+        }
+      }
+
+      @media (min-width: 1000px) and (max-width: 1399px) {
+        .card-grid {
+          grid-template-columns: repeat(3, 1fr);
+        }
+      }
+
+      @media (min-width: 600px) and (max-width: 999px) {
+        .card-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+
+      @media (max-width: 599px) {
+        .card-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      /* Card styles */
+      .card {
+        position: relative;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 15px;
+        transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s, visibility 0.2s;
+        min-width: 0;
+        cursor: pointer;
+      }
+
+      .card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      }
+
+      .card.hidden {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        position: absolute;
+      }
+
+      /* Rest of your existing card styles... */
+      #{generate_card_css}
+    CSS
+  end
 end
 
 # Run the scraper

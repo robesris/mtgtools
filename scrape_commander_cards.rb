@@ -760,6 +760,8 @@ class CommanderCardScraper
             display: flex;
             gap: 20px;
             position: relative;  /* For absolute positioning of the tray */
+            width: 100%;  /* Ensure container takes full viewport width */
+            box-sizing: border-box;  /* Include padding in width calculation */
           }
           .color-filter-tray {
             width: 200px;
@@ -848,12 +850,13 @@ class CommanderCardScraper
           .card-grid {
             flex: 1;
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            grid-template-columns: repeat(4, minmax(0, 1fr));  /* Force exactly 4 columns */
             gap: 20px;
             margin-top: 20px;
             margin-left: 30px;  /* Add margin to prevent overlap with toggle button */
             align-items: start;  /* Align items to the top */
-            max-width: 1400px;  /* Increased max width to accommodate larger cards */
+            width: 100%;  /* Take full width of container */
+            box-sizing: border-box;  /* Include padding in width calculation */
           }
           .card {
             background: white;
@@ -866,10 +869,9 @@ class CommanderCardScraper
             align-items: center;
             cursor: pointer;
             transition: transform 0.2s;
-            width: 100%;  /* Ensure card takes full width of its grid cell */
+            width: 100%;  /* Take full width of grid cell */
             box-sizing: border-box;  /* Include padding in width calculation */
-            max-width: 280px;  /* Increased max card width */
-            margin: 0 auto;  /* Center cards in their grid cells */
+            min-width: 0;  /* Allow card to shrink below its content size */
           }
           .card:hover {
             transform: translateY(-5px);
@@ -959,28 +961,21 @@ class CommanderCardScraper
             width: 80%;
             text-align: center;
           }
-          @media (max-width: 1200px) {
+          @media (max-width: 1400px) {
             .card-grid {
-              grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            }
-            .card {
-              max-width: 250px;
+              grid-template-columns: repeat(3, minmax(0, 1fr));  /* 3 columns on medium screens */
             }
           }
-          @media (max-width: 900px) {
+          @media (max-width: 1000px) {
             .card-grid {
-              grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-            }
-            .card {
-              max-width: 230px;
+              grid-template-columns: repeat(2, minmax(0, 1fr));  /* 2 columns on smaller screens */
             }
           }
           @media (max-width: 600px) {
             .card-grid {
-              grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+              grid-template-columns: repeat(1, minmax(0, 1fr));  /* 1 column on mobile */
             }
             .card {
-              max-width: 200px;
               padding: 10px;
             }
             .card-name {

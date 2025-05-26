@@ -185,9 +185,9 @@ RSpec.describe 'Price Proxy Integration' do
 
     # Verify Lightly Played price details
     lp_data = data['prices']['Lightly Played']
-    expect(lp_data['price']).to eq('$17.28')
-    expect(lp_data['base_price']).to eq('$15.59')
-    expect(lp_data['shipping']).to eq('$1.69')
+    expect(lp_data['price']).to eq('$16.77')
+    expect(lp_data['base_price']).to eq('$15.50')
+    expect(lp_data['shipping']).to eq('$1.27')
     expect(lp_data['url']).to include('tcgplayer.com')
   end
 

@@ -75,7 +75,7 @@ module RequestHandler
           sleep(2)
           
           # Now wait for network idle
-          search_page.wait_for_load_state('networkidle')
+          search_page.wait_for_network_idle
           $file_logger.info("Request #{request_id}: Network idle state reached")
           
           # Log the page state again

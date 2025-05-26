@@ -35,7 +35,7 @@ module RequestHandler
       
       process_with_browser(card_name, request_id, context, legality)
     rescue => e
-      handle_request_error(e, request_id, legality)
+      handle_request_error(e, request_id, legality, card_name)
     ensure
       BrowserManager.cleanup_context(request_id)
     end
@@ -193,7 +193,7 @@ module RequestHandler
       { error: error_message, legality: legality }.to_json
     end
 
-    def handle_request_error(error, request_id, legality)
+    def handle_request_error(error, request_id, legality, card_name)
       ErrorHandler.handle_puppeteer_error(error, request_id, "Request processing")
       error_response = { 
         error: error.message,

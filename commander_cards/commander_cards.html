@@ -306,6 +306,14 @@
         font-size: 1em;
       }
     }
+    /* Inserted CSS for filter tray color labels */
+    .filter-text-white { background: #fff; color: #333; border: 1px solid #ddd; border-radius: 4px; padding: 2px 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+    .filter-text-blue { background: #0070BA; color: #fff; border-radius: 4px; padding: 2px 8px; }
+    .filter-text-black { background: #150B00; color: #fff; border-radius: 4px; padding: 2px 8px; }
+    .filter-text-red { background: #D3202A; color: #fff; border-radius: 4px; padding: 2px 8px; }
+    .filter-text-green { background: #00733E; color: #fff; border-radius: 4px; padding: 2px 8px; }
+    .filter-text-multicolor { background: linear-gradient(90deg, #0070BA 0%, #D3202A 50%, #00733E 100%); color: #fff; border-radius: 4px; padding: 2px 8px; }
+    .filter-text-colorless { background: #e0e0e0; color: #333; border-radius: 4px; padding: 2px 8px; }
   </style>
   <script src="card_prices.js"></script>
 </head>
@@ -315,13 +323,13 @@
       <button class="toggle-button" title="Toggle filter tray"></button>
       <div class="filter-content">
         <label><input type="checkbox" data-color="all" checked /><span>ALL</span></label>
-        <label><input type="checkbox" data-color="White" checked /><span>White</span><span class="only-icon" data-color="White" title="Show only White cards">👁️</span></label>
-        <label><input type="checkbox" data-color="Blue" checked /><span>Blue</span><span class="only-icon" data-color="Blue" title="Show only Blue cards">👁️</span></label>
-        <label><input type="checkbox" data-color="Black" checked /><span>Black</span><span class="only-icon" data-color="Black" title="Show only Black cards">👁️</span></label>
-        <label><input type="checkbox" data-color="Red" checked /><span>Red</span><span class="only-icon" data-color="Red" title="Show only Red cards">👁️</span></label>
-        <label><input type="checkbox" data-color="Green" checked /><span>Green</span><span class="only-icon" data-color="Green" title="Show only Green cards">👁️</span></label>
-        <label><input type="checkbox" data-color="Multicolor" checked /><span>Multicolor</span><span class="only-icon" data-color="Multicolor" title="Show only Multicolor cards">👁️</span></label>
-        <label><input type="checkbox" data-color="Colorless" checked /><span>Colorless</span><span class="only-icon" data-color="Colorless" title="Show only Colorless cards">👁️</span></label>
+        <label><input type="checkbox" data-color="White" checked /><span class="filter-text filter-text-white">White</span><span class="only-icon" data-color="White" title="Show only White cards">👁️</span></label>
+        <label><input type="checkbox" data-color="Blue" checked /><span class="filter-text filter-text-blue">Blue</span><span class="only-icon" data-color="Blue" title="Show only Blue cards">👁️</span></label>
+        <label><input type="checkbox" data-color="Black" checked /><span class="filter-text filter-text-black">Black</span><span class="only-icon" data-color="Black" title="Show only Black cards">👁️</span></label>
+        <label><input type="checkbox" data-color="Red" checked /><span class="filter-text filter-text-red">Red</span><span class="only-icon" data-color="Red" title="Show only Red cards">👁️</span></label>
+        <label><input type="checkbox" data-color="Green" checked /><span class="filter-text filter-text-green">Green</span><span class="only-icon" data-color="Green" title="Show only Green cards">👁️</span></label>
+        <label><input type="checkbox" data-color="Multicolor" checked /><span class="filter-text filter-text-multicolor">Multicolor</span><span class="only-icon" data-color="Multicolor" title="Show only Multicolor cards">👁️</span></label>
+        <label><input type="checkbox" data-color="Colorless" checked /><span class="filter-text filter-text-colorless">Colorless</span><span class="only-icon" data-color="Colorless" title="Show only Colorless cards">👁️</span></label>
       </div>
     </div>
     <div>
@@ -795,7 +803,7 @@
           priceInfo.innerHTML = '<span class="loading">Fetching prices</span>';
           const ellipsisInterval = animateEllipsis(priceInfo.querySelector('.loading'), 'Fetching prices');
           
-          const response = await fetch(`/card_info?card=${encodeURIComponent(cardName)}`);
+          const response = await fetch(`http://localhost:4567/card_info?card=${encodeURIComponent(cardName)}`);
           clearInterval(ellipsisInterval);
           
           if (!response.ok) {
@@ -805,7 +813,7 @@
           
           if (data && data.prices) {
             // Cache the prices immediately after successful fetch
-            await fetch('/cache_prices', {
+            await fetch('http://localhost:4567/cache_prices', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -818,7 +826,6 @@
             });
 
             let html = [];
-            // The server returns prices with capitalized condition names
             if (data.prices['Near Mint']) {
               const nm = data.prices['Near Mint'];
               html.push(`Near Mint: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(nm).toFixed(2)}</a>`);
@@ -827,7 +834,6 @@
               const lp = data.prices['Lightly Played'];
               html.push(`Lightly Played: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(lp).toFixed(2)}</a>`);
             }
-            // Add timestamp if available
             if (data.timestamp) {
               const timestamp = new Date(data.timestamp * 1000);
               const now = new Date();
@@ -855,7 +861,7 @@
         fetchAllButton.disabled = true;
         fetchAllButton.style.backgroundColor = '#999';
         fetchStatus.textContent = 'Fetching prices';
-        const ellipsisInterval = animateEllipsis(fetchStatus, 'Fetching prices');
+        let ellipsisInterval = animateEllipsis(fetchStatus, 'Fetching prices');
         
         const cardElements = Array.from(cards);
         let completed = 0;
@@ -872,22 +878,13 @@
           }
           clearInterval(ellipsisInterval);
           fetchStatus.textContent = `Fetched ${completed} cards${failed > 0 ? `, ${failed} failed` : ''}...`;
-          const newEllipsisInterval = animateEllipsis(fetchStatus, `Fetched ${completed} cards${failed > 0 ? `, ${failed} failed` : ''}`);
-          ellipsisInterval = newEllipsisInterval;
-          
+          ellipsisInterval = animateEllipsis(fetchStatus, `Fetched ${completed} cards${failed > 0 ? `, ${failed} failed` : ''}`);
           // Add a small delay between cards to avoid rate limiting
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
-        
         clearInterval(ellipsisInterval);
         fetchStatus.textContent = `Completed: ${completed} cards fetched${failed > 0 ? `, ${failed} failed` : ''}`;
         fetchAllButton.disabled = false;
-        fetchAllButton.style.backgroundColor = '#4CAF50';
-        
-        // Clear status message after 5 seconds
-        setTimeout(() => {
-          fetchStatus.textContent = '';
-        }, 5000);
       }
       
       // Add click handler for the fetch all button

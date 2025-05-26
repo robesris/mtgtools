@@ -74,9 +74,14 @@ module RequestHandler
           # Wait a bit for dynamic content
           sleep(2)
           
-          # Now wait for network idle
-          search_page.wait_for_network_idle
-          $file_logger.info("Request #{request_id}: Network idle state reached")
+          # Wait for the search results to appear
+          begin
+            search_page.wait_for_selector('.search-results', timeout: 30000)
+            $file_logger.info("Request #{request_id}: Search results loaded")
+          rescue => e
+            $file_logger.error("Request #{request_id}: Error waiting for search results: #{e.message}")
+            raise
+          end
           
           # Log the page state again
           page_state = search_page.evaluate(<<~JS)

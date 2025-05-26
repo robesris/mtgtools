@@ -36,17 +36,6 @@ module PriceExtractor
           return false;
         }
         
-        // Special case for THE TABERNACLE AT PENDRELL VALE
-        if (cardName.toLowerCase() === "the tabernacle at pendrell vale") {
-          // Try both with and without "The" prefix
-          const withoutThe = title.toLowerCase().replace(/^the\s+/i, '');
-          const normalizedCardName = "tabernacle at pendrell vale";
-          if (withoutThe === normalizedCardName) {
-            console.log('Found match for THE TABERNACLE (without "The" prefix)');
-            return true;
-          }
-        }
-        
         // Normalize both strings
         const normalizedTitle = title.toLowerCase().trim().replace(/\s+/g, ' ');
         const normalizedCardName = String(cardName).toLowerCase().trim().replace(/\s+/g, ' ');

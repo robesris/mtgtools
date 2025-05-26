@@ -147,7 +147,11 @@ RSpec.describe 'Price Proxy Integration' do
     # Check that we got prices for both conditions
     expect(data['prices']).to have_key('Near Mint')
     expect(data['prices']).to have_key('Lightly Played')
-    
+
+    # Expect exact prices for Mox Diamond
+    expect(data['prices']['Near Mint']['price']).to eq('$651.00')
+    expect(data['prices']['Lightly Played']['price']).to eq('$600.00')
+
     # Verify price format
     data['prices'].each do |condition, price_data|
       expect(price_data).to have_key('price')
@@ -155,6 +159,25 @@ RSpec.describe 'Price Proxy Integration' do
       expect(price_data).to have_key('url')
       expect(price_data['url']).to include('tcgplayer.com')
     end
+  end
+
+  it 'fetches DRANNITH MAGISTRATE prices including shipping' do
+    response = HTTParty.get(
+      'http://localhost:4568/card_info',
+      query: { card: 'DRANNITH MAGISTRATE' }
+    )
+
+    expect(response.code).to eq(200)
+    data = JSON.parse(response.body)
+
+    expect(data).to have_key('prices')
+    expect(data['prices']).to be_a(Hash)
+
+    expect(data['prices']).to have_key('Near Mint')
+    expect(data['prices']).to have_key('Lightly Played')
+
+    expect(data['prices']['Near Mint']['price']).to eq('$15.94')
+    expect(data['prices']['Lightly Played']['price']).to eq('$17.28')
   end
 
   xit 'handles invalid card names gracefully' do

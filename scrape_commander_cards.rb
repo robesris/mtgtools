@@ -9,6 +9,9 @@ require 'fileutils'
 require 'uri'
 require 'json'
 
+# IMPORTANT: Do NOT change any user-facing text (e.g., 'Click to load prices', 'Near Mint', 'Lightly Played', 'Loading prices', etc).
+# All such strings must remain EXACTLY as they are, including capitalization and punctuation, regardless of any code changes.
+
 class CommanderCardScraper
   BASE_URL = 'https://gatherer.wizards.com/Pages/Search/Default.aspx'
   CACHE_FILE = 'commander_card_cache.json'
@@ -1170,7 +1173,7 @@ class CommanderCardScraper
                 priceInfo.innerHTML = '<span class="loading">Fetching prices</span>';
                 const ellipsisInterval = animateEllipsis(priceInfo.querySelector('.loading'), 'Fetching prices');
                 
-                const response = await fetch(`/card_info?card=${encodeURIComponent(cardName)}`);
+                const response = await fetch(`http://localhost:4567/card_info?card=${encodeURIComponent(cardName)}`);
                 clearInterval(ellipsisInterval);
                 
                 if (!response.ok) {
@@ -1180,7 +1183,7 @@ class CommanderCardScraper
                 
                 if (data && data.prices) {
                   // Cache the prices immediately after successful fetch
-                  await fetch('/cache_prices', {
+                  await fetch('http://localhost:4567/cache_prices', {
                     method: 'POST',
                     headers: {
                       'Content-Type': 'application/json',
@@ -1375,7 +1378,7 @@ class CommanderCardScraper
       <div class="filter-label-wrapper" data-color="#{color_id}">
         <input type="checkbox" id="filter-#{color_id}" class="filter-checkbox" data-color="#{color_id}">
         <label for="filter-#{color_id}" class="filter-label">
-          <span class="filter-text">#{color}</span>
+          <span class="filter-text filter-text-#{color_id}">#{color}</span>
           <span class="only-icon" data-color="#{color_id}" title="Show only #{color} cards">👁️</span>
         </label>
       </div>
@@ -1468,11 +1471,33 @@ class CommanderCardScraper
         height: 100%;
         line-height: 32px;
         font-size: 14px;
-        color: #333;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
         pointer-events: none;
+      }
+
+      /* Colored filter text classes (restored) */
+      .filter-text-white {
+         background: #fff; color: #333; border: 1px solid #ddd; border-radius: 4px; padding: 2px 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+      }
+      .filter-text-blue {
+         background: #0070BA; color: #fff; border-radius: 4px; padding: 2px 8px;
+      }
+      .filter-text-black {
+         background: #150B00; color: #fff; border-radius: 4px; padding: 2px 8px;
+      }
+      .filter-text-red {
+         background: #D3202A; color: #fff; border-radius: 4px; padding: 2px 8px;
+      }
+      .filter-text-green {
+         background: #00733E; color: #fff; border-radius: 4px; padding: 2px 8px;
+      }
+      .filter-text-multicolor {
+         background: linear-gradient(90deg, #0070BA 0%, #D3202A 50%, #00733E 100%); color: #fff; border-radius: 4px; padding: 2px 8px;
+      }
+      .filter-text-colorless {
+         background: #e0e0e0; color: #333; border-radius: 4px; padding: 2px 8px;
       }
 
       /* Only icon */
@@ -1546,14 +1571,11 @@ class CommanderCardScraper
 
       .card:hover {
         transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        box-shadow: 0 4px 8px rgba(0,0,0, 0.1);
       }
 
       .card.hidden-by-color {
-        opacity: 0;
-        visibility: hidden;
-        pointer-events: none;
-        position: absolute;
+        opacity: 0; visibility: hidden; pointer-events: none; position: absolute;
       }
 
       .card.hidden-by-all {

@@ -1,3 +1,6 @@
+// IMPORTANT: Do NOT change any user-facing text (e.g., 'Click to load prices', 'Near Mint', 'Lightly Played', 'Loading prices', etc).
+// All such strings must remain EXACTLY as they are, including capitalization and punctuation, regardless of any code changes.
+
 // TCGPlayer API configuration
 const TCG_API_KEY = 'YOUR_API_KEY_HERE'; // You'll need to replace this with your actual API key
 const TCG_API_URL = 'https://api.tcgplayer.com/v1.39.0';

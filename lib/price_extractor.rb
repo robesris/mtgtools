@@ -73,13 +73,14 @@ module PriceExtractor
           return false;
         }
         
-        // Normalize both strings
+        // Normalize both strings - be more lenient with special characters
         const normalizedTitle = title.toLowerCase().trim()
-          .replace(/\s+/g, ' ')
-          .replace(/[^a-z0-9\s]/g, ''); // Remove special characters
+          .replace(/\s+/g, ' ')  // Replace multiple spaces with single space
+          .replace(/[^a-z0-9\s\-]/g, ''); // Keep alphanumeric, spaces, and hyphens
+        
         const normalizedCardName = String(cardName).toLowerCase().trim()
-          .replace(/\s+/g, ' ')
-          .replace(/[^a-z0-9\s]/g, ''); // Remove special characters
+          .replace(/\s+/g, ' ')  // Replace multiple spaces with single space
+          .replace(/[^a-z0-9\s\-]/g, ''); // Keep alphanumeric, spaces, and hyphens
         
         console.log('Detailed card name comparison:', {
           originalTitle: title,
@@ -90,7 +91,13 @@ module PriceExtractor
           cardNameLength: normalizedCardName.length,
           exactMatch: normalizedTitle === normalizedCardName,
           containsMatch: normalizedTitle.includes(normalizedCardName),
-          cardNameInTitle: normalizedTitle.indexOf(normalizedCardName) !== -1
+          cardNameInTitle: normalizedTitle.indexOf(normalizedCardName) !== -1,
+          // Add more comparison details
+          titleWords: normalizedTitle.split(/\s+/),
+          cardNameWords: normalizedCardName.split(/\s+/),
+          commonWords: normalizedTitle.split(/\s+/).filter(word => 
+            normalizedCardName.split(/\s+/).includes(word)
+          )
         });
         
         // First try exact match
@@ -105,9 +112,25 @@ module PriceExtractor
           return true;
         }
         
-        // Then try match with punctuation delimiters
+        // Then try word-by-word match (more lenient)
+        const titleWords = normalizedTitle.split(/\s+/);
+        const cardNameWords = normalizedCardName.split(/\s+/);
+        const commonWords = titleWords.filter(word => cardNameWords.includes(word));
+        
+        // If we have at least 2 common words or all words match, consider it a match
+        if (commonWords.length >= 2 || commonWords.length === cardNameWords.length) {
+          console.log('Found word match:', {
+            commonWords,
+            titleWords,
+            cardNameWords,
+            matchType: commonWords.length >= 2 ? 'partial' : 'full'
+          });
+          return true;
+        }
+        
+        // Then try match with punctuation delimiters (most lenient)
         const regex = new RegExp(
-          `(^|\\s|[^a-zA-Z0-9])${normalizedCardName}(\\s|[^a-zA-Z0-9]|$)`,
+          `(^|\\s|[^a-zA-Z0-9])${normalizedCardName.split(/\s+/).join('[^a-zA-Z0-9]+')}(\\s|[^a-zA-Z0-9]|$)`,
           'i'
         );
         

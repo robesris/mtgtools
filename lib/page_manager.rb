@@ -30,9 +30,9 @@ module PageManager
           is_landscape: true
         )
 
-        # Set timeouts using Ruby methods
-        page.set_default_navigation_timeout(30000)  # 30 seconds
-        page.set_default_timeout(30000)  # 30 seconds
+        # Set timeouts using assignment operator
+        page.default_navigation_timeout = 30000  # 30 seconds
+        page.default_timeout = 30000  # 30 seconds
 
         # Set up request handling with less restrictions
         setup_request_handling(page, request_id)
@@ -42,7 +42,7 @@ module PageManager
 
         # Log page configuration
         $file_logger.info("Request #{request_id}: Page configured with viewport: #{page.viewport.inspect}")
-        $file_logger.info("Request #{request_id}: Page timeouts set to 30000ms")
+        $file_logger.info("Request #{request_id}: Page timeouts: navigation=#{page.default_navigation_timeout}ms, default=#{page.default_timeout}ms")
 
         page
       rescue => e

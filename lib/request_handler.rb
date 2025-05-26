@@ -45,7 +45,55 @@ module RequestHandler
       search_url = "https://www.tcgplayer.com/search/magic/product?q=#{CGI.escape(card_name)}&view=grid"
       
       $file_logger.info("Request #{request_id}: Navigating to TCGPlayer search for: #{card_name}")
-      search_page.goto(search_url, wait_until: 'networkidle0')
+      $file_logger.info("Request #{request_id}: Search URL: #{search_url}")
+      
+      # First try a more lenient navigation
+      begin
+        search_page.goto(search_url, wait_until: 'domcontentloaded')
+        $file_logger.info("Request #{request_id}: Initial page load complete")
+        
+        # Log the page state
+        page_state = search_page.evaluate(<<~JS)
+          function() {
+            return {
+              url: window.location.href,
+              title: document.title,
+              readyState: document.readyState,
+              hasSearchResults: !!document.querySelector('.search-results'),
+              hasProductCards: !!document.querySelector('.product-card__product'),
+              bodyContent: document.body.textContent.slice(0, 500) + '...'
+            };
+          }
+        JS
+        $file_logger.info("Request #{request_id}: Initial page state: #{page_state.inspect}")
+        
+        # Wait a bit for dynamic content
+        sleep(2)
+        
+        # Now wait for network idle
+        search_page.wait_for_load_state('networkidle')
+        $file_logger.info("Request #{request_id}: Network idle state reached")
+        
+        # Log the page state again
+        page_state = search_page.evaluate(<<~JS)
+          function() {
+            return {
+              url: window.location.href,
+              title: document.title,
+              readyState: document.readyState,
+              hasSearchResults: !!document.querySelector('.search-results'),
+              hasProductCards: !!document.querySelector('.product-card__product'),
+              bodyContent: document.body.textContent.slice(0, 500) + '...'
+            };
+          }
+        JS
+        $file_logger.info("Request #{request_id}: Final page state: #{page_state.inspect}")
+        
+      rescue => e
+        $file_logger.error("Request #{request_id}: Error during page navigation: #{e.message}")
+        $file_logger.error("Request #{request_id}: Navigation error details: #{e.backtrace.join("\n")}")
+        raise
+      end
       
       PriceExtractor.add_redirect_prevention(search_page, request_id)
       

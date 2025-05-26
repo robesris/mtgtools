@@ -31,17 +31,15 @@ module PageManager
       page.default_navigation_timeout = 30000  # 30 seconds
       page.default_timeout = 30000  # 30 seconds
 
-      # Set up request interception
-      page.request_interception = true
-
-      # Add request handling
+      # Set up request handling with less restrictions
       setup_request_handling(page, request_id)
 
       # Add error handling
       setup_error_handling(page, request_id)
 
-      # Disable frame handling
-      disable_frame_handling(page)
+      # Log page configuration
+      $file_logger.info("Request #{request_id}: Page configured with viewport: #{page.viewport.inspect}")
+      $file_logger.info("Request #{request_id}: Page timeouts: navigation=#{page.default_navigation_timeout}ms, default=#{page.default_timeout}ms")
 
       page
     end
@@ -49,10 +47,12 @@ module PageManager
     private
 
     def setup_request_handling(page, request_id)
+      page.request_interception = true
+      
       page.on('request') do |request|
-        # Block iframe requests
-        if request.frame && request.frame.parent_frame
-          $file_logger.info("Request #{request_id}: Blocking iframe request: #{request.url}")
+        # Only block iframes that are not from TCGPlayer
+        if request.frame && request.frame.parent_frame && !request.url.include?('tcgplayer.com')
+          $file_logger.info("Request #{request_id}: Blocking non-TCGPlayer iframe: #{request.url}")
           request.abort
           next
         end
@@ -69,8 +69,15 @@ module PageManager
             request.continue(headers: headers)
           end
         else
-          # Allow all other requests, including API calls
+          # Allow all other requests
           request.continue(headers: headers)
+        end
+      end
+
+      # Add response logging
+      page.on('response') do |response|
+        if response.url.include?('tcgplayer.com')
+          $file_logger.info("Request #{request_id}: Response from #{response.url}: #{response.status}")
         end
       end
     end
@@ -82,6 +89,10 @@ module PageManager
 
       page.on('console') do |msg|
         $file_logger.debug("Request #{request_id}: Browser console: #{msg.text}")
+      end
+
+      page.on('pageerror') do |err|
+        $file_logger.error("Request #{request_id}: Page JavaScript error: #{err.message}")
       end
     end
 

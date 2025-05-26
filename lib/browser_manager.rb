@@ -19,7 +19,7 @@ module BrowserManager
       if @browser.nil? || !@browser.connected?
         $file_logger.info("Initializing new browser instance")
         @browser = Puppeteer.launch(
-          headless: false,
+          headless: true,
           args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',

@@ -1193,7 +1193,6 @@ class CommanderCardScraper
                   });
 
                   let html = [];
-                  // The server returns prices with capitalized condition names
                   if (data.prices['Near Mint']) {
                     const nm = data.prices['Near Mint'];
                     html.push(`Near Mint: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(nm).toFixed(2)}</a>`);
@@ -1202,7 +1201,6 @@ class CommanderCardScraper
                     const lp = data.prices['Lightly Played'];
                     html.push(`Lightly Played: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(lp).toFixed(2)}</a>`);
                   }
-                  // Add timestamp if available
                   if (data.timestamp) {
                     const timestamp = new Date(data.timestamp * 1000);
                     const now = new Date();
@@ -1230,7 +1228,7 @@ class CommanderCardScraper
               fetchAllButton.disabled = true;
               fetchAllButton.style.backgroundColor = '#999';
               fetchStatus.textContent = 'Fetching prices';
-              const ellipsisInterval = animateEllipsis(fetchStatus, 'Fetching prices');
+              let ellipsisInterval = animateEllipsis(fetchStatus, 'Fetching prices');
               
               const cardElements = Array.from(cards);
               let completed = 0;
@@ -1247,22 +1245,13 @@ class CommanderCardScraper
                 }
                 clearInterval(ellipsisInterval);
                 fetchStatus.textContent = `Fetched ${completed} cards${failed > 0 ? `, ${failed} failed` : ''}...`;
-                const newEllipsisInterval = animateEllipsis(fetchStatus, `Fetched ${completed} cards${failed > 0 ? `, ${failed} failed` : ''}`);
-                ellipsisInterval = newEllipsisInterval;
-                
+                ellipsisInterval = animateEllipsis(fetchStatus, `Fetched ${completed} cards${failed > 0 ? `, ${failed} failed` : ''}`);
                 // Add a small delay between cards to avoid rate limiting
                 await new Promise(resolve => setTimeout(resolve, 1000));
               }
-              
               clearInterval(ellipsisInterval);
               fetchStatus.textContent = `Completed: ${completed} cards fetched${failed > 0 ? `, ${failed} failed` : ''}`;
               fetchAllButton.disabled = false;
-              fetchAllButton.style.backgroundColor = '#4CAF50';
-              
-              // Clear status message after 5 seconds
-              setTimeout(() => {
-                fetchStatus.textContent = '';
-              }, 5000);
             }
             
             // Add click handler for the fetch all button

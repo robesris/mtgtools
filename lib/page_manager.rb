@@ -30,9 +30,9 @@ module PageManager
           is_landscape: true
         )
 
-        # Set timeouts using CDP session
-        page.client.command('Page.setDefaultNavigationTimeout', timeout: 30000)  # 30 seconds
-        page.client.command('Page.setDefaultTimeout', timeout: 30000)  # 30 seconds
+        # Set timeouts using Ruby methods
+        page.set_default_navigation_timeout(30000)  # 30 seconds
+        page.set_default_timeout(30000)  # 30 seconds
 
         # Set up request handling with less restrictions
         setup_request_handling(page, request_id)

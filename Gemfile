@@ -1,6 +1,6 @@
 source 'https://rubygems.org'
 
-ruby '3.0.5'  # Updated to match installed version
+ruby '3.3.0'  # Upgraded for Render deployment (latest supported)
 
 gem 'nokogiri', '~> 1.15'
 gem 'httparty', '~> 0.21.0'

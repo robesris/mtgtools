@@ -17,31 +17,38 @@ module PageManager
 
   class << self
     def configure_page(page, request_id = nil)
-      # Set viewport
-      page.viewport = Puppeteer::Viewport.new(
-        width: 1920,
-        height: 1080,
-        device_scale_factor: 1,
-        is_mobile: false,
-        has_touch: false,
-        is_landscape: true
-      )
+      return if page.closed?
 
-      # Set timeouts using assignment operator
-      page.default_navigation_timeout = 30000  # 30 seconds
-      page.default_timeout = 30000  # 30 seconds
+      begin
+        # Set viewport
+        page.viewport = Puppeteer::Viewport.new(
+          width: 1920,
+          height: 1080,
+          device_scale_factor: 1,
+          is_mobile: false,
+          has_touch: false,
+          is_landscape: true
+        )
 
-      # Set up request handling with less restrictions
-      setup_request_handling(page, request_id)
+        # Set timeouts using CDP session
+        page.client.command('Page.setDefaultNavigationTimeout', timeout: 30000)  # 30 seconds
+        page.client.command('Page.setDefaultTimeout', timeout: 30000)  # 30 seconds
 
-      # Add error handling
-      setup_error_handling(page, request_id)
+        # Set up request handling with less restrictions
+        setup_request_handling(page, request_id)
 
-      # Log page configuration
-      $file_logger.info("Request #{request_id}: Page configured with viewport: #{page.viewport.inspect}")
-      $file_logger.info("Request #{request_id}: Page timeouts: navigation=#{page.default_navigation_timeout}ms, default=#{page.default_timeout}ms")
+        # Add error handling
+        setup_error_handling(page, request_id)
 
-      page
+        # Log page configuration
+        $file_logger.info("Request #{request_id}: Page configured with viewport: #{page.viewport.inspect}")
+        $file_logger.info("Request #{request_id}: Page timeouts set to 30000ms")
+
+        page
+      rescue => e
+        $file_logger.error("Request #{request_id}: Error configuring page: #{e.message}")
+        raise
+      end
     end
 
     private

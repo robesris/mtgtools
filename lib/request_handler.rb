@@ -41,71 +41,86 @@ module RequestHandler
     end
 
     def process_with_browser(card_name, request_id, context, legality)
-      search_page = setup_search_page(context, request_id)
-      search_url = "https://www.tcgplayer.com/search/magic/product?q=#{CGI.escape(card_name)}&view=grid"
-      
-      $file_logger.info("Request #{request_id}: Navigating to TCGPlayer search for: #{card_name}")
-      $file_logger.info("Request #{request_id}: Search URL: #{search_url}")
-      
-      # First try a more lenient navigation
+      search_page = nil
       begin
-        search_page.goto(search_url, wait_until: 'domcontentloaded')
-        $file_logger.info("Request #{request_id}: Initial page load complete")
+        search_page = setup_search_page(context, request_id)
+        return format_error_response('Failed to create search page', legality) unless search_page && !search_page.closed?
+
+        search_url = "https://www.tcgplayer.com/search/magic/product?q=#{CGI.escape(card_name)}&view=grid"
         
-        # Log the page state
-        page_state = search_page.evaluate(<<~JS)
-          function() {
-            return {
-              url: window.location.href,
-              title: document.title,
-              readyState: document.readyState,
-              hasSearchResults: !!document.querySelector('.search-results'),
-              hasProductCards: !!document.querySelector('.product-card__product'),
-              bodyContent: document.body.textContent.slice(0, 500) + '...'
-            };
-          }
-        JS
-        $file_logger.info("Request #{request_id}: Initial page state: #{page_state.inspect}")
+        $file_logger.info("Request #{request_id}: Navigating to TCGPlayer search for: #{card_name}")
+        $file_logger.info("Request #{request_id}: Search URL: #{search_url}")
         
-        # Wait a bit for dynamic content
-        sleep(2)
+        # First try a more lenient navigation
+        begin
+          search_page.goto(search_url, wait_until: 'domcontentloaded')
+          $file_logger.info("Request #{request_id}: Initial page load complete")
+          
+          # Log the page state
+          page_state = search_page.evaluate(<<~JS)
+            function() {
+              return {
+                url: window.location.href,
+                title: document.title,
+                readyState: document.readyState,
+                hasSearchResults: !!document.querySelector('.search-results'),
+                hasProductCards: !!document.querySelector('.product-card__product'),
+                bodyContent: document.body.textContent.slice(0, 500) + '...'
+              };
+            }
+          JS
+          $file_logger.info("Request #{request_id}: Initial page state: #{page_state.inspect}")
+          
+          # Wait a bit for dynamic content
+          sleep(2)
+          
+          # Now wait for network idle
+          search_page.wait_for_load_state('networkidle')
+          $file_logger.info("Request #{request_id}: Network idle state reached")
+          
+          # Log the page state again
+          page_state = search_page.evaluate(<<~JS)
+            function() {
+              return {
+                url: window.location.href,
+                title: document.title,
+                readyState: document.readyState,
+                hasSearchResults: !!document.querySelector('.search-results'),
+                hasProductCards: !!document.querySelector('.product-card__product'),
+                bodyContent: document.body.textContent.slice(0, 500) + '...'
+              };
+            }
+          JS
+          $file_logger.info("Request #{request_id}: Final page state: #{page_state.inspect}")
+          
+        rescue => e
+          $file_logger.error("Request #{request_id}: Error during page navigation: #{e.message}")
+          $file_logger.error("Request #{request_id}: Navigation error details: #{e.backtrace.join("\n")}")
+          raise
+        end
         
-        # Now wait for network idle
-        search_page.wait_for_load_state('networkidle')
-        $file_logger.info("Request #{request_id}: Network idle state reached")
+        return format_error_response('Page closed during navigation', legality) if search_page.closed?
         
-        # Log the page state again
-        page_state = search_page.evaluate(<<~JS)
-          function() {
-            return {
-              url: window.location.href,
-              title: document.title,
-              readyState: document.readyState,
-              hasSearchResults: !!document.querySelector('.search-results'),
-              hasProductCards: !!document.querySelector('.product-card__product'),
-              bodyContent: document.body.textContent.slice(0, 500) + '...'
-            };
-          }
-        JS
-        $file_logger.info("Request #{request_id}: Final page state: #{page_state.inspect}")
+        PriceExtractor.add_redirect_prevention(search_page, request_id)
         
-      rescue => e
-        $file_logger.error("Request #{request_id}: Error during page navigation: #{e.message}")
-        $file_logger.error("Request #{request_id}: Navigation error details: #{e.backtrace.join("\n")}")
-        raise
+        lowest_priced_product = PriceExtractor.extract_lowest_priced_product(search_page, card_name, request_id)
+        return format_error_response('No valid product found', legality) unless lowest_priced_product
+        
+        $file_logger.info("Request #{request_id}: Found lowest priced product: #{lowest_priced_product['title']} at $#{lowest_priced_product['price']}")
+        
+        prices = process_conditions(lowest_priced_product, context, request_id)
+        return format_error_response('No valid prices found', legality) if prices.empty?
+        
+        format_success_response(prices, legality, card_name, request_id)
+      ensure
+        if search_page && !search_page.closed?
+          begin
+            search_page.close
+          rescue => e
+            $file_logger.error("Request #{request_id}: Error closing search page: #{e.message}")
+          end
+        end
       end
-      
-      PriceExtractor.add_redirect_prevention(search_page, request_id)
-      
-      lowest_priced_product = PriceExtractor.extract_lowest_priced_product(search_page, card_name, request_id)
-      return format_error_response('No valid product found', legality) unless lowest_priced_product
-      
-      $file_logger.info("Request #{request_id}: Found lowest priced product: #{lowest_priced_product['title']} at $#{lowest_priced_product['price']}")
-      
-      prices = process_conditions(lowest_priced_product, context, request_id)
-      return format_error_response('No valid prices found', legality) if prices.empty?
-      
-      format_success_response(prices, legality, card_name, request_id)
     end
 
     def setup_search_page(context, request_id)

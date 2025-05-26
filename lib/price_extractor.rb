@@ -36,15 +36,31 @@ module PriceExtractor
           return false;
         }
         
+        // Special case for THE TABERNACLE AND PENDRELL VALE
+        if (cardName.toLowerCase() === "the tabernacle and pendrell vale") {
+          // Try both with and without "The" prefix
+          const withoutThe = title.toLowerCase().replace(/^the\s+/i, '');
+          const normalizedCardName = "tabernacle and pendrell vale";
+          if (withoutThe === normalizedCardName) {
+            console.log('Found match for THE TABERNACLE (without "The" prefix)');
+            return true;
+          }
+        }
+        
         // Normalize both strings
         const normalizedTitle = title.toLowerCase().trim().replace(/\s+/g, ' ');
         const normalizedCardName = String(cardName).toLowerCase().trim().replace(/\s+/g, ' ');
         
-        console.log('Comparing card names:', {
+        console.log('Detailed card name comparison:', {
+          originalTitle: title,
+          originalCardName: cardName,
           normalizedTitle,
           normalizedCardName,
           titleLength: normalizedTitle.length,
-          cardNameLength: normalizedCardName.length
+          cardNameLength: normalizedCardName.length,
+          exactMatch: normalizedTitle === normalizedCardName,
+          titleChars: normalizedTitle.split('').map(c => c.charCodeAt(0)),
+          cardNameChars: normalizedCardName.split('').map(c => c.charCodeAt(0))
         });
         
         // First try exact match
@@ -60,10 +76,12 @@ module PriceExtractor
         );
         
         const isMatch = regex.test(normalizedTitle);
-        console.log('Regex match result:', { 
+        console.log('Regex match details:', { 
           isMatch,
           matchIndex: normalizedTitle.search(regex),
-          title: normalizedTitle
+          title: normalizedTitle,
+          regexPattern: regex.toString(),
+          fullMatch: normalizedTitle.match(regex)
         });
         
         return isMatch;

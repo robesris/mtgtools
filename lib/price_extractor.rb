@@ -191,29 +191,74 @@ module PriceExtractor
         }
         
         // Get all product cards
-        const productCards = Array.from(document.querySelectorAll('.product-card__product'));
-        console.log(`Found ${productCards.length} product cards`);
+        const productCards = Array.from(document.querySelectorAll([
+          '.product-card__product',
+          '.product-card',
+          '.product',
+          '[class*="product-card"]',
+          '[class*="product"]'
+        ].join(',')));
+        console.log(`Found ${productCards.length} product cards with flexible selectors`);
+
+        // Log all possible card containers for debugging
+        const allPossibleCards = document.querySelectorAll('*');
+        const possibleCardContainers = Array.from(allPossibleCards).filter(el => {
+          const text = el.textContent.toLowerCase();
+          return text.includes(cardName.toLowerCase()) && 
+                 (el.querySelector('[class*="price"]') || el.querySelector('[class*="cost"]'));
+        });
+        console.log('Possible card containers found:', possibleCardContainers.map(el => ({
+          className: el.className,
+          id: el.id,
+          textContent: el.textContent.slice(0, 100),
+          childElements: Array.from(el.children).map(child => ({
+            tagName: child.tagName,
+            className: child.className,
+            textContent: child.textContent.slice(0, 50)
+          }))
+        })));
 
         // Process each product card
         const validProducts = productCards.map((card, index) => {
           console.log(`\nProcessing card ${index + 1}:`);
           
           // Get elements using multiple possible selectors
-          const titleElement = card.querySelector('.product-card__title') || 
-                             card.querySelector('[class*="title"]') ||
-                             card.querySelector('[class*="name"]') ||
-                             card.querySelector('.product-card__name') ||
-                             card.querySelector('.product__name');
-          const priceElement = card.querySelector('.inventory__price-with-shipping') || 
-                             card.querySelector('[class*="price"]') ||
-                             card.querySelector('.product-card__price') ||
-                             card.querySelector('.product__price');
-          const linkElement = card.querySelector('a[href*="/product/"]') || 
-                            card.closest('a[href*="/product/"]') ||
-                            card.querySelector('a[href*="/magic/"]');
+          const titleElement = card.querySelector([
+            '.product-card__title',
+            '[class*="title"]',
+            '[class*="name"]',
+            '.product-card__name',
+            '.product__name',
+            'h3',
+            'h4',
+            '[class*="product-name"]',
+            '[class*="card-name"]'
+          ].join(','));
+          
+          const priceElement = card.querySelector([
+            '.inventory__price-with-shipping',
+            '[class*="price"]',
+            '.product-card__price',
+            '.product__price',
+            '[class*="cost"]',
+            '[class*="amount"]'
+          ].join(','));
+          
+          const linkElement = card.querySelector([
+            'a[href*="/product/"]',
+            'a[href*="/magic/"]',
+            'a[href*="/card/"]',
+            'a[href*="tcgplayer.com"]'
+          ].join(',')) || card.closest('a[href*="tcgplayer.com"]');
 
-          // Log the entire card HTML for debugging
+          // Log the entire card HTML and all its children for debugging
           console.log('Full card HTML:', card.outerHTML);
+          console.log('All child elements:', Array.from(card.children).map(child => ({
+            tagName: child.tagName,
+            className: child.className,
+            id: child.id,
+            textContent: child.textContent.slice(0, 100)
+          })));
 
           // Log detailed element info
           console.log('Element details:', {

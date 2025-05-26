@@ -198,7 +198,11 @@ async function updateCardPrices(cardElement) {
   } catch (error) {
     clearInterval(ellipsisInterval);
     console.error('Error updating prices:', error);
-    priceInfo.textContent = 'Click to load prices';
+    // Show the error message for 5 seconds, then revert to "Click to load prices"
+    priceInfo.innerHTML = `<span class="error-message">${error.message || 'Error loading prices'}</span>`;
+    setTimeout(() => {
+      priceInfo.textContent = 'Click to load prices';
+    }, 5000);
   }
 }
 
@@ -634,6 +638,11 @@ style.textContent = `
   
   .loading {
     display: inline-block;
+  }
+  
+  .error-message {
+    color: #e74c3c;
+    font-style: italic;
   }
 `;
 document.head.appendChild(style);

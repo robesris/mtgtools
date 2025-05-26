@@ -10,34 +10,56 @@
       padding: 20px;
       background: #f5f5f5;
     }
-    .page-container {
+    .container {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 0 20px;
       display: flex;
       gap: 20px;
-      max-width: 1800px;
-      margin: 0 auto;
       position: relative;
+      width: 100%;
+      box-sizing: border-box;
     }
-    .filter-tray {
+    .color-filter-tray {
       width: 200px;
+      min-width: 200px;
+      max-width: 200px;
       background: white;
-      padding: 15px;
       border-radius: 8px;
       box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-      height: fit-content;
+      padding: 15px;
       position: sticky;
       top: 20px;
-      transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
-      transform-origin: left center;
+      height: fit-content;
+      transition: width 0.3s ease, min-width 0.3s ease, max-width 0.3s ease, padding 0.3s ease;
+      z-index: 1;
       flex-shrink: 0;
     }
-    .filter-tray.collapsed {
-      transform: translateX(-195px);
-      opacity: 0.7;
+    .color-filter-tray.collapsed {
+      width: 30px;
+      min-width: 30px;
+      max-width: 30px;
+      padding: 15px 5px;
     }
-    .filter-tray.collapsed:hover {
+    .color-filter-tray .filter-content {
       opacity: 1;
+      visibility: visible;
+      transition: opacity 0.2s ease, visibility 0.2s, width 0.3s ease;
+      width: 100%;
+      padding: 5px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      min-width: 0;
     }
-    .filter-toggle {
+    .color-filter-tray.collapsed .filter-content {
+      opacity: 0;
+      visibility: hidden;
+      width: 0;
+      min-width: 0;
+      padding: 0;
+    }
+    .color-filter-tray .toggle-button {
       position: absolute;
       right: -30px;
       top: 50%;
@@ -45,71 +67,109 @@
       background: white;
       border: none;
       border-radius: 0 4px 4px 0;
-      padding: 10px 5px;
+      padding: 10px;
       cursor: pointer;
       box-shadow: 2px 0 4px rgba(0,0,0,0.1);
       display: flex;
       align-items: center;
       justify-content: center;
+      z-index: 2;
       width: 30px;
-      height: 60px;
-      z-index: 1;
+      height: 30px;
+      transition: all 0.3s ease;
+      font-size: 0; /* Hide any text content */
     }
-    .filter-toggle:hover {
-      background: #f5f5f5;
+    .color-filter-tray.collapsed .toggle-button {
+      transform: translateY(-50%);
+      right: -30px;
+      border-radius: 0 4px 4px 0;
+      box-shadow: 2px 0 4px rgba(0,0,0,0.1);
+      background: white;
+      border: none;
     }
-    .filter-toggle::after {
-      content: "◀";
+    .color-filter-tray .toggle-button::before {
+      content: "▶";
       font-size: 12px;
-      transition: transform 0.3s ease-in-out;
+      line-height: 1;
+      transition: transform 0.3s ease;
     }
-    .filter-tray.collapsed .filter-toggle::after {
+    .color-filter-tray.collapsed .toggle-button::before {
       transform: rotate(180deg);
     }
-    .filter-tray h2 {
-      margin: 0 0 15px 0;
-      font-size: 1.2em;
-      color: #2c3e50;
-    }
-    .filter-group {
-      margin-bottom: 10px;
-    }
-    .filter-group label {
-      display: flex;
-      align-items: center;
-      gap: 8px;
+    .color-filter-tray label {
+      position: relative;
+      display: block;
       cursor: pointer;
-      user-select: none;
+      width: 100%;
+      height: 32px;  /* Fixed height */
+      margin: 0;  /* Remove margin */
+      padding: 0;  /* Remove padding */
+      border-radius: 4px;
+      transition: background-color 0.2s;
+      box-sizing: border-box;
+      overflow: hidden;  /* Prevent content from affecting layout */
     }
-    .filter-group input[type="checkbox"] {
+    .color-filter-tray label:last-child {
+      margin: 0;
+    }
+    .color-filter-tray label:hover {
+      background-color: #f5f5f5;
+    }
+    .color-filter-tray label input[type="checkbox"] {
+      position: absolute;
+      left: 5px;
+      top: 50%;
+      transform: translateY(-50%);
+      margin: 0;
       width: 16px;
       height: 16px;
+      z-index: 2;
+      pointer-events: auto;
+    }
+    .color-filter-tray label span:not(.only-icon) {
+      position: absolute;
+      left: 29px;  /* checkbox width + padding */
+      right: 29px;  /* eye icon width + padding */
+      top: 50%;
+      transform: translateY(-50%);
+      text-align: left;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      z-index: 1;
+      pointer-events: none;  /* Prevent text from interfering with clicks */
+    }
+    .color-filter-tray .only-icon {
+      position: absolute;
+      right: 5px;
+      top: 50%;
+      transform: translateY(-50%);
       cursor: pointer;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+      width: 20px;
+      height: 20px;  /* Fixed height */
+      line-height: 20px;  /* Center the eye icon vertically */
+      text-align: center;
+      z-index: 2;
+      pointer-events: auto;
+      user-select: none;  /* Prevent text selection */
+      -webkit-user-select: none;
     }
-    .filter-group label span {
-      font-size: 0.9em;
-    }
-    .filter-group.white span { color: #FFFFFF; background: #5a5a5a; padding: 2px 6px; border-radius: 3px; }
-    .filter-group.blue span { color: #0078B7; }
-    .filter-group.black span { color: #150B00; }
-    .filter-group.red span { color: #FF4D4D; }
-    .filter-group.green span { color: #00B36B; }
-    .filter-group.multicolor span { color: #A5A5A5; }
-    .filter-group.colorless span { color: #E0DCD7; }
-    .container {
-      flex: 1;
-      margin: 0 auto;
-      padding: 0 20px;
-      transition: margin-left 0.3s ease-in-out;
-    }
-    .container.expanded {
-      margin-left: -200px;
+    .color-filter-tray .only-icon:hover {
+      opacity: 1;
     }
     .card-grid {
+      flex: 1;
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 20px;
       margin-top: 20px;
+      margin-left: 20px; /* Increased from 10px to 20px to prevent overlap */
+      align-items: start;
+      width: 100%;
+      box-sizing: border-box;
+      min-width: 0;
     }
     .card {
       background: white;
@@ -121,7 +181,21 @@
       flex-direction: column;
       align-items: center;
       cursor: pointer;
-      transition: transform 0.2s;
+      transition: transform 0.2s, opacity 0.3s, visibility 0.3s;
+      width: 100%;
+      box-sizing: border-box;
+      min-width: 0;
+      opacity: 1;
+      visibility: visible;
+    }
+    .card.hidden-by-color {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      position: absolute;
+    }
+    .card.hidden-by-all {
+      display: none;
     }
     .card:hover {
       transform: translateY(-5px);
@@ -163,31 +237,27 @@
     .price-info a:hover {
       text-decoration: underline;
     }
-    .price-info.illegal a {
-      color: #d32f2f;
-    }
-    .price-info.illegal .illegal-notice {
-      color: #d32f2f;
-      font-size: 0.9em;
+    /* Make timestamp styling more specific and forceful */
+    .price-info .price-timestamp {
+      display: block;
+      font-size: 0.65em !important;
       margin-top: 4px;
       font-style: italic;
+      line-height: 1.2;
+      color: #666;
+    }
+    .price-info .price-timestamp.recent {
+      color: #2ecc71 !important;
+    }
+    .price-info .price-timestamp.old {
+      color: #e67e22 !important;
+    }
+    .price-info .price-timestamp.very-old {
+      color: #e74c3c !important;
     }
     .loading {
       color: #999;
       font-style: italic;
-      position: relative;
-    }
-    .loading::after {
-      content: '...';
-      position: absolute;
-      animation: ellipsis 1.5s infinite;
-      width: 1em;
-      text-align: left;
-    }
-    @keyframes ellipsis {
-      0% { content: '.'; }
-      33% { content: '..'; }
-      66% { content: '...'; }
     }
     h1 {
       color: #2c3e50;
@@ -215,19 +285,19 @@
       width: 80%;
       text-align: center;
     }
-    @media (max-width: 1200px) {
+    @media (max-width: 1400px) {
       .card-grid {
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(3, minmax(0, 1fr));  /* 3 columns on medium screens */
       }
     }
-    @media (max-width: 900px) {
+    @media (max-width: 1000px) {
       .card-grid {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(2, minmax(0, 1fr));  /* 2 columns on smaller screens */
       }
     }
     @media (max-width: 600px) {
       .card-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(1, minmax(0, 1fr));  /* 1 column on mobile */
       }
       .card {
         padding: 10px;
@@ -236,604 +306,466 @@
         font-size: 1em;
       }
     }
-    .refresh-container {
-      text-align: center;
-      margin-bottom: 20px;
-    }
-    .refresh-button {
-      background-color: #4CAF50;
-      border: none;
-      color: white;
-      padding: 10px 20px;
-      text-align: center;
-      text-decoration: none;
-      display: inline-block;
-      font-size: 16px;
-      margin: 4px 2px;
-      cursor: pointer;
-      border-radius: 4px;
-      transition: background-color 0.3s;
-    }
-    .refresh-button:hover {
-      background-color: #45a049;
-    }
-    .refresh-button:disabled {
-      background-color: #cccccc;
-      cursor: not-allowed;
-    }
-    .section-header {
-      grid-column: 1 / -1;
-      font-size: 1.5em;
-      font-weight: bold;
-      color: #2c3e50;
-      margin: 20px 0 10px 0;
-      padding: 10px;
-      background: #5a5a5a;
-      border-radius: 4px;
-    }
-    .section-header.white { color: #FFFFFF; }
-    .section-header.blue { color: #0078B7; }
-    .section-header.black { color: #150B00; }
-    .section-header.red { color: #FF4D4D; }
-    .section-header.green { color: #00B36B; }
-    .section-header.multicolor { color: #A5A5A5; }
-    .section-header.colorless { color: #E0DCD7; }
+    /* Inserted CSS for filter tray color labels */
+    .filter-text-white { background: #fff; color: #333; border: 1px solid #ddd; border-radius: 4px; padding: 2px 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+    .filter-text-blue { background: #0070BA; color: #fff; border-radius: 4px; padding: 2px 8px; }
+    .filter-text-black { background: #150B00; color: #fff; border-radius: 4px; padding: 2px 8px; }
+    .filter-text-red { background: #D3202A; color: #fff; border-radius: 4px; padding: 2px 8px; }
+    .filter-text-green { background: #00733E; color: #fff; border-radius: 4px; padding: 2px 8px; }
+    .filter-text-multicolor { background: linear-gradient(90deg, #150B00 0%, #0070BA 25%, #D3202A 50%, #00733E 75%, #fff 100%); color: #fff; border-radius: 4px; padding: 2px 8px; }
+    .filter-text-colorless { background: #e0e0e0; color: #333; border-radius: 4px; padding: 2px 8px; }
   </style>
-  <script src="card_prices.js?v=1"></script>
-  <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      const checkboxes = document.querySelectorAll('.filter-tray input[type="checkbox"]');
-      const cards = document.querySelectorAll('.card');
-      const sectionHeaders = document.querySelectorAll('.section-header');
-
-      function updateVisibility() {
-        const selectedColors = Array.from(checkboxes)
-          .filter(cb => cb.checked)
-          .map(cb => cb.value);
-
-        // Update cards visibility
-        cards.forEach(card => {
-          const cardColor = card.getAttribute('data-color');
-          card.style.display = selectedColors.includes(cardColor) ? '' : 'none';
-        });
-
-        // Update section headers visibility
-        sectionHeaders.forEach(header => {
-          const headerColor = header.className.split(' ')[1]; // Get the color class
-          const hasVisibleCards = Array.from(cards)
-            .filter(card => card.getAttribute('data-color') === headerColor)
-            .some(card => card.style.display !== 'none');
-          header.style.display = hasVisibleCards ? '' : 'none';
-        });
-      }
-
-      // Add change event listeners to all checkboxes
-      checkboxes.forEach(checkbox => {
-        checkbox.addEventListener('change', updateVisibility);
-      });
-
-      // Initial visibility update
-      updateVisibility();
-    });
-  </script>
-  <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      const filterTray = document.querySelector('.filter-tray');
-      const container = document.querySelector('.container');
-      const toggleButton = document.createElement('button');
-      toggleButton.className = 'filter-toggle';
-      toggleButton.setAttribute('aria-label', 'Toggle filter tray');
-      filterTray.appendChild(toggleButton);
-
-      // Load saved state from localStorage
-      const savedState = localStorage.getItem('filterTrayCollapsed');
-      if (savedState === 'true') {
-        filterTray.classList.add('collapsed');
-        container.classList.add('expanded');
-      }
-
-      toggleButton.addEventListener('click', function() {
-        filterTray.classList.toggle('collapsed');
-        container.classList.toggle('expanded');
-        // Save state to localStorage
-        localStorage.setItem('filterTrayCollapsed', filterTray.classList.contains('collapsed'));
-      });
-    });
-  </script>
+  <script src="card_prices.js"></script>
 </head>
 <body>
-  <div class="page-container">
-    <div class="filter-tray">
-      <h2>Filter by Color</h2>
-      <div class="filter-group white">
-        <label>
-          <input type="checkbox" value="white" checked>
-          <span>WHITE</span>
-        </label>
-      </div>
-      <div class="filter-group blue">
-        <label>
-          <input type="checkbox" value="blue" checked>
-          <span>BLUE</span>
-        </label>
-      </div>
-      <div class="filter-group black">
-        <label>
-          <input type="checkbox" value="black" checked>
-          <span>BLACK</span>
-        </label>
-      </div>
-      <div class="filter-group red">
-        <label>
-          <input type="checkbox" value="red" checked>
-          <span>RED</span>
-        </label>
-      </div>
-      <div class="filter-group green">
-        <label>
-          <input type="checkbox" value="green" checked>
-          <span>GREEN</span>
-        </label>
-      </div>
-      <div class="filter-group multicolor">
-        <label>
-          <input type="checkbox" value="multicolor" checked>
-          <span>MULTICOLOR</span>
-        </label>
-      </div>
-      <div class="filter-group colorless">
-        <label>
-          <input type="checkbox" value="colorless" checked>
-          <span>COLORLESS</span>
-        </label>
+  <div class="container">
+    <div class="color-filter-tray">
+      <button class="toggle-button" title="Toggle filter tray"></button>
+      <div class="filter-content">
+        <label><input type="checkbox" data-color="all" checked /><span>ALL</span></label>
+        <label><input type="checkbox" data-color="White" checked /><span class="filter-text filter-text-white">White</span><span class="only-icon" data-color="White" title="Show only White cards">👁️</span></label>
+        <label><input type="checkbox" data-color="Blue" checked /><span class="filter-text filter-text-blue">Blue</span><span class="only-icon" data-color="Blue" title="Show only Blue cards">👁️</span></label>
+        <label><input type="checkbox" data-color="Black" checked /><span class="filter-text filter-text-black">Black</span><span class="only-icon" data-color="Black" title="Show only Black cards">👁️</span></label>
+        <label><input type="checkbox" data-color="Red" checked /><span class="filter-text filter-text-red">Red</span><span class="only-icon" data-color="Red" title="Show only Red cards">👁️</span></label>
+        <label><input type="checkbox" data-color="Green" checked /><span class="filter-text filter-text-green">Green</span><span class="only-icon" data-color="Green" title="Show only Green cards">👁️</span></label>
+        <label><input type="checkbox" data-color="Multicolor" checked /><span class="filter-text filter-text-multicolor">Multicolor</span><span class="only-icon" data-color="Multicolor" title="Show only Multicolor cards">👁️</span></label>
+        <label><input type="checkbox" data-color="Colorless" checked /><span class="filter-text filter-text-colorless">Colorless</span><span class="only-icon" data-color="Colorless" title="Show only Colorless cards">👁️</span></label>
       </div>
     </div>
-    <div class="container">
+    <div>
       <h1>Commander Game Changers List</h1>
-      <div class="refresh-container">
-        <button id="refresh-all-prices" class="refresh-button">Refresh All Prices</button>
+      <div style="text-align: center; margin-bottom: 20px;">
+        <button id="fetch-all-prices" style="padding: 10px 20px; font-size: 16px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; transition: background-color 0.2s;">Fetch All Prices</button>
+        <div id="fetch-status" style="margin-top: 10px; font-style: italic; color: #666;"></div>
       </div>
       <div class="card-grid">
-        <div class="section-header white">WHITE</div>
-        <div class="card" data-color="white">
-          <div class="card-name">DRANNITH MAGISTRATE</div>
-          <div class="card-image-container">
-            <img src="card_images/479531.jpg" alt="DRANNITH MAGISTRATE">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="white">
-          <div class="card-name">ENLIGHTENED TUTOR</div>
-          <div class="card-image-container">
-            <img src="card_images/598880.jpg" alt="ENLIGHTENED TUTOR">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="white">
-          <div class="card-name">HUMILITY</div>
-          <div class="card-image-container">
-            <img src="card_images/397614.jpg" alt="HUMILITY">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="white">
-          <div class="card-name">SERRA'S SANCTUM</div>
-          <div class="card-image-container">
-            <img src="card_images/9674.jpg" alt="SERRA'S SANCTUM">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="white">
-          <div class="card-name">SMOTHERING TITHE</div>
-          <div class="card-image-container">
-            <img src="card_images/632392.jpg" alt="SMOTHERING TITHE">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="white">
-          <div class="card-name">TEFERI'S PROTECTION</div>
-          <div class="card-image-container">
-            <img src="card_images/571365.jpg" alt="TEFERI'S PROTECTION">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-
-        <div class="section-header blue">BLUE</div>
-        <div class="card" data-color="blue">
-          <div class="card-name">CYCLONIC RIFT</div>
-          <div class="card-image-container">
-            <img src="card_images/645410.jpg" alt="CYCLONIC RIFT">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="blue">
-          <div class="card-name">CONSECRATED SPHINX</div>
-          <div class="card-image-container">
-            <img src="card_images/573395.jpg" alt="CONSECRATED SPHINX">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="blue">
-          <div class="card-name">EXPROPRIATE</div>
-          <div class="card-image-container">
-            <img src="card_images/677358.jpg" alt="EXPROPRIATE">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="blue">
-          <div class="card-name">FORCE OF WILL</div>
-          <div class="card-image-container">
-            <img src="card_images/601353.jpg" alt="FORCE OF WILL">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="blue">
-          <div class="card-name">GUARDIANSHIP</div>
-          <div class="card-image-container">
-            <img src="card_images/626344.jpg" alt="GUARDIANSHIP">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="blue">
-          <div class="card-name">GIFTS UNGIVEN</div>
-          <div class="card-image-container">
-            <img src="card_images/571384.jpg" alt="GIFTS UNGIVEN">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="blue">
-          <div class="card-name">INTUITION</div>
-          <div class="card-image-container">
-            <img src="card_images/397633.jpg" alt="INTUITION">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="blue">
-          <div class="card-name">JIN-GITAXIAS, CORE AUGUR</div>
-          <div class="card-image-container">
-            <img src="card_images/611316.jpg" alt="JIN-GITAXIAS, CORE AUGUR">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="blue">
-          <div class="card-name">MYSTICAL TUTOR</div>
-          <div class="card-image-container">
-            <img src="card_images/600972.jpg" alt="MYSTICAL TUTOR">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="blue">
-          <div class="card-name">NARSET, PARTER OF VEILS</div>
-          <div class="card-image-container">
-            <img src="card_images/677708.jpg" alt="NARSET, PARTER OF VEILS">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="blue">
-          <div class="card-name">RHYSTIC STUDY</div>
-          <div class="card-image-container">
-            <img src="card_images/632453.jpg" alt="RHYSTIC STUDY">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="blue">
-          <div class="card-name">SWAY OF THE STARS</div>
-          <div class="card-image-container">
-            <img src="card_images/74034.jpg" alt="SWAY OF THE STARS">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="blue">
-          <div class="card-name">THASSA'S ORACLE</div>
-          <div class="card-image-container">
-            <img src="card_images/677452.jpg" alt="THASSA'S ORACLE">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="blue">
-          <div class="card-name">URZA, LORD HIGH ARTIFICER</div>
-          <div class="card-image-container">
-            <img src="card_images/677521.jpg" alt="URZA, LORD HIGH ARTIFICER">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-
-        <div class="section-header black">BLACK</div>
-        <div class="card" data-color="black">
-          <div class="card-name">AD NAUSEAM</div>
-          <div class="card-image-container">
-            <img src="card_images/489749.jpg" alt="AD NAUSEAM">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="black">
-          <div class="card-name">BRAIDS, CABAL MINION</div>
-          <div class="card-image-container">
-            <img src="card_images/526244.jpg" alt="BRAIDS, CABAL MINION">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="black">
-          <div class="card-name">BOLAS'S CITADEL</div>
-          <div class="card-image-container">
-            <img src="card_images/677715.jpg" alt="BOLAS'S CITADEL">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="black">
-          <div class="card-name">DEMONIC TUTOR</div>
-          <div class="card-image-container">
-            <img src="card_images/622758.jpg" alt="DEMONIC TUTOR">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="black">
-          <div class="card-name">IMPERIAL SEAL</div>
-          <div class="card-image-container">
-            <img src="card_images/571412.jpg" alt="IMPERIAL SEAL">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="black">
-          <div class="card-name">NECROPOTENCE</div>
-          <div class="card-image-container">
-            <img src="card_images/632459.jpg" alt="NECROPOTENCE">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="black">
-          <div class="card-name">OPPOSITION AGENT</div>
-          <div class="card-image-container">
-            <img src="card_images/502324.jpg" alt="OPPOSITION AGENT">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="black">
-          <div class="card-name">ORCISH BOWMASTERS</div>
-          <div class="card-image-container">
-            <img src="card_images/616933.jpg" alt="ORCISH BOWMASTERS">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="black">
-          <div class="card-name">TERGRID, GOD OF FRIGHT</div>
-          <div class="card-image-container">
-            <img src="card_images/507654.jpg" alt="TERGRID, GOD OF FRIGHT">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="black">
-          <div class="card-name">VAMPIRIC TUTOR</div>
-          <div class="card-image-container">
-            <img src="card_images/600981.jpg" alt="VAMPIRIC TUTOR">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-
-        <div class="section-header red">RED</div>
-        <div class="card" data-color="red">
-          <div class="card-name">DEFLECTING SWAT</div>
-          <div class="card-image-container">
-            <img src="card_images/626387.jpg" alt="DEFLECTING SWAT">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="red">
-          <div class="card-name">GAMBLE</div>
-          <div class="card-image-container">
-            <img src="card_images/651682.jpg" alt="GAMBLE">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="red">
-          <div class="card-name">JESKA'S WILL</div>
-          <div class="card-image-container">
-            <img src="card_images/650250.jpg" alt="JESKA'S WILL">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="red">
-          <div class="card-name">UNDERWORLD BREACH</div>
-          <div class="card-image-container">
-            <img src="card_images/677477.jpg" alt="UNDERWORLD BREACH">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-
-        <div class="section-header green">GREEN</div>
-        <div class="card" data-color="green">
-          <div class="card-name">CROP ROTATION</div>
-          <div class="card-image-container">
-            <img src="card_images/599028.jpg" alt="CROP ROTATION">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="green">
-          <div class="card-name">FOOD CHAIN</div>
-          <div class="card-image-container">
-            <img src="card_images/571480.jpg" alt="FOOD CHAIN">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="green">
-          <div class="card-name">GAEA'S CRADLE</div>
-          <div class="card-image-container">
-            <img src="card_images/10422.jpg" alt="GAEA'S CRADLE">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="green">
-          <div class="card-name">NATURAL ORDER</div>
-          <div class="card-image-container">
-            <img src="card_images/677487.jpg" alt="NATURAL ORDER">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="green">
-          <div class="card-name">SEEDBORN MUSE</div>
-          <div class="card-image-container">
-            <img src="card_images/696424.jpg" alt="SEEDBORN MUSE">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="green">
-          <div class="card-name">SURVIVAL OF THE FITTEST</div>
-          <div class="card-image-container">
-            <img src="card_images/397535.jpg" alt="SURVIVAL OF THE FITTEST">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="green">
-          <div class="card-name">VORINCLEX, VOICE OF HUNGER</div>
-          <div class="card-image-container">
-            <img src="card_images/611334.jpg" alt="VORINCLEX, VOICE OF HUNGER">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="green">
-          <div class="card-name">WORLDLY TUTOR</div>
-          <div class="card-image-container">
-            <img src="card_images/600993.jpg" alt="WORLDLY TUTOR">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-
-        <div class="section-header multicolor">MULTICOLOR</div>
-        <div class="card" data-color="multicolor">
-          <div class="card-name">AURA SHARDS</div>
-          <div class="card-image-container">
-            <img src="card_images/247184.jpg" alt="AURA SHARDS">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="multicolor">
-          <div class="card-name">COALITION VICTORY</div>
-          <div class="card-image-container">
-            <img src="card_images/109718.jpg" alt="COALITION VICTORY">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="multicolor">
-          <div class="card-name">KINNAN, BONDER PRODIGY</div>
-          <div class="card-image-container">
-            <img src="card_images/479712.jpg" alt="KINNAN, BONDER PRODIGY">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="multicolor">
-          <div class="card-name">GRAND ARBITER AUGUSTIN IV</div>
-          <div class="card-image-container">
-            <img src="card_images/573041.jpg" alt="GRAND ARBITER AUGUSTIN IV">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="multicolor">
-          <div class="card-name">NOTION THIEF</div>
-          <div class="card-image-container">
-            <img src="card_images/660844.jpg" alt="NOTION THIEF">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="multicolor">
-          <div class="card-name">WINOTA, JOINER OF FORCES</div>
-          <div class="card-image-container">
-            <img src="card_images/479736.jpg" alt="WINOTA, JOINER OF FORCES">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="multicolor">
-          <div class="card-name">YURIKO, THE TIGER'S SHADOW</div>
-          <div class="card-image-container">
-            <img src="card_images/627828.jpg" alt="YURIKO, THE TIGER'S SHADOW">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-
-        <div class="section-header colorless">COLORLESS</div>
-        <div class="card" data-color="colorless">
-          <div class="card-name">ANCIENT TOMB</div>
-          <div class="card-image-container">
-            <img src="card_images/622589.jpg" alt="ANCIENT TOMB">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="colorless">
-          <div class="card-name">CHROME MOX</div>
-          <div class="card-image-container">
-            <img src="card_images/693158.jpg" alt="CHROME MOX">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="colorless">
-          <div class="card-name">FIELD OF THE DEAD</div>
-          <div class="card-image-container">
-            <img src="card_images/651686.jpg" alt="FIELD OF THE DEAD">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="colorless">
-          <div class="card-name">GLACIAL CHASM</div>
-          <div class="card-image-container">
-            <img src="card_images/288996.jpg" alt="GLACIAL CHASM">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="colorless">
-          <div class="card-name">GRIM MONOLITH</div>
-          <div class="card-image-container">
-            <img src="card_images/12626.jpg" alt="GRIM MONOLITH">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="colorless">
-          <div class="card-name">LION'S EYE DIAMOND</div>
-          <div class="card-image-container">
-            <img src="card_images/383000.jpg" alt="LION'S EYE DIAMOND">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="colorless">
-          <div class="card-name">MANA VAULT</div>
-          <div class="card-image-container">
-            <img src="card_images/573056.jpg" alt="MANA VAULT">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="colorless">
-          <div class="card-name">MOX DIAMOND</div>
-          <div class="card-image-container">
-            <img src="card_images/397482.jpg" alt="MOX DIAMOND">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="colorless">
-          <div class="card-name">MISHRA'S WORKSHOP</div>
-          <div class="card-image-container">
-            <img src="card_images/383015.jpg" alt="MISHRA'S WORKSHOP">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="colorless">
-          <div class="card-name">PANOPTIC MIRROR</div>
-          <div class="card-image-container">
-            <img src="card_images/47930.jpg" alt="PANOPTIC MIRROR">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="colorless">
-          <div class="card-name">THE ONE RING</div>
-          <div class="card-image-container">
-            <img src="card_images/636294.jpg" alt="THE ONE RING">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
-        <div class="card" data-color="colorless">
-          <div class="card-name">THE TABERNACLE AT PENDRELL VALE</div>
-          <div class="card-image-container">
-            <img src="card_images/201236.jpg" alt="THE TABERNACLE AT PENDRELL VALE">
-          </div>
-          <div class="price-info">Click to load prices</div>
-        </div>
+<div class="card" data-colors="white">
+  <div class="card-name">DRANNITH MAGISTRATE</div>
+  <div class="card-image-container">
+    <img src="card_images/479531.jpg" alt="DRANNITH MAGISTRATE">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="white">
+  <div class="card-name">ENLIGHTENED TUTOR</div>
+  <div class="card-image-container">
+    <img src="card_images/598880.jpg" alt="ENLIGHTENED TUTOR">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="white">
+  <div class="card-name">HUMILITY</div>
+  <div class="card-image-container">
+    <img src="card_images/397614.jpg" alt="HUMILITY">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="colorless">
+  <div class="card-name">SERRA'S SANCTUM</div>
+  <div class="card-image-container">
+    <img src="card_images/9674.jpg" alt="SERRA'S SANCTUM">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="white">
+  <div class="card-name">SMOTHERING TITHE</div>
+  <div class="card-image-container">
+    <img src="card_images/632392.jpg" alt="SMOTHERING TITHE">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="white">
+  <div class="card-name">TEFERI'S PROTECTION</div>
+  <div class="card-image-container">
+    <img src="card_images/571365.jpg" alt="TEFERI'S PROTECTION">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="blue">
+  <div class="card-name">CYCLONIC RIFT</div>
+  <div class="card-image-container">
+    <img src="card_images/645410.jpg" alt="CYCLONIC RIFT">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="blue">
+  <div class="card-name">CONSECRATED SPHINX</div>
+  <div class="card-image-container">
+    <img src="card_images/573395.jpg" alt="CONSECRATED SPHINX">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="blue">
+  <div class="card-name">EXPROPRIATE</div>
+  <div class="card-image-container">
+    <img src="card_images/677358.jpg" alt="EXPROPRIATE">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="blue">
+  <div class="card-name">FORCE OF WILL</div>
+  <div class="card-image-container">
+    <img src="card_images/601353.jpg" alt="FORCE OF WILL">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="blue">
+  <div class="card-name">GUARDIANSHIP</div>
+  <div class="card-image-container">
+    <img src="card_images/626344.jpg" alt="GUARDIANSHIP">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="blue">
+  <div class="card-name">GIFTS UNGIVEN</div>
+  <div class="card-image-container">
+    <img src="card_images/571384.jpg" alt="GIFTS UNGIVEN">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="blue">
+  <div class="card-name">INTUITION</div>
+  <div class="card-image-container">
+    <img src="card_images/397633.jpg" alt="INTUITION">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="blue">
+  <div class="card-name">JIN-GITAXIAS, CORE AUGUR</div>
+  <div class="card-image-container">
+    <img src="card_images/611316.jpg" alt="JIN-GITAXIAS, CORE AUGUR">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="blue">
+  <div class="card-name">MYSTICAL TUTOR</div>
+  <div class="card-image-container">
+    <img src="card_images/600972.jpg" alt="MYSTICAL TUTOR">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="blue">
+  <div class="card-name">NARSET, PARTER OF VEILS</div>
+  <div class="card-image-container">
+    <img src="card_images/677708.jpg" alt="NARSET, PARTER OF VEILS">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="blue">
+  <div class="card-name">RHYSTIC STUDY</div>
+  <div class="card-image-container">
+    <img src="card_images/632453.jpg" alt="RHYSTIC STUDY">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="blue">
+  <div class="card-name">SWAY OF THE STARS</div>
+  <div class="card-image-container">
+    <img src="card_images/74034.jpg" alt="SWAY OF THE STARS">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="blue">
+  <div class="card-name">THASSA'S ORACLE</div>
+  <div class="card-image-container">
+    <img src="card_images/677452.jpg" alt="THASSA'S ORACLE">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="blue">
+  <div class="card-name">URZA, LORD HIGH ARTIFICER</div>
+  <div class="card-image-container">
+    <img src="card_images/677521.jpg" alt="URZA, LORD HIGH ARTIFICER">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="black">
+  <div class="card-name">AD NAUSEAM</div>
+  <div class="card-image-container">
+    <img src="card_images/489749.jpg" alt="AD NAUSEAM">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="black">
+  <div class="card-name">BRAIDS, CABAL MINION</div>
+  <div class="card-image-container">
+    <img src="card_images/526244.jpg" alt="BRAIDS, CABAL MINION">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="black">
+  <div class="card-name">BOLAS'S CITADEL</div>
+  <div class="card-image-container">
+    <img src="card_images/677715.jpg" alt="BOLAS'S CITADEL">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="black">
+  <div class="card-name">DEMONIC TUTOR</div>
+  <div class="card-image-container">
+    <img src="card_images/622758.jpg" alt="DEMONIC TUTOR">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="black">
+  <div class="card-name">IMPERIAL SEAL</div>
+  <div class="card-image-container">
+    <img src="card_images/571412.jpg" alt="IMPERIAL SEAL">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="black">
+  <div class="card-name">NECROPOTENCE</div>
+  <div class="card-image-container">
+    <img src="card_images/632459.jpg" alt="NECROPOTENCE">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="black">
+  <div class="card-name">OPPOSITION AGENT</div>
+  <div class="card-image-container">
+    <img src="card_images/502324.jpg" alt="OPPOSITION AGENT">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="black">
+  <div class="card-name">ORCISH BOWMASTERS</div>
+  <div class="card-image-container">
+    <img src="card_images/616933.jpg" alt="ORCISH BOWMASTERS">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="black">
+  <div class="card-name">TERGRID, GOD OF FRIGHT</div>
+  <div class="card-image-container">
+    <img src="card_images/507654.jpg" alt="TERGRID, GOD OF FRIGHT">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="black">
+  <div class="card-name">VAMPIRIC TUTOR</div>
+  <div class="card-image-container">
+    <img src="card_images/600981.jpg" alt="VAMPIRIC TUTOR">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="red">
+  <div class="card-name">DEFLECTING SWAT</div>
+  <div class="card-image-container">
+    <img src="card_images/626387.jpg" alt="DEFLECTING SWAT">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="red">
+  <div class="card-name">GAMBLE</div>
+  <div class="card-image-container">
+    <img src="card_images/651682.jpg" alt="GAMBLE">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="red">
+  <div class="card-name">JESKA'S WILL</div>
+  <div class="card-image-container">
+    <img src="card_images/650250.jpg" alt="JESKA'S WILL">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="red">
+  <div class="card-name">UNDERWORLD BREACH</div>
+  <div class="card-image-container">
+    <img src="card_images/677477.jpg" alt="UNDERWORLD BREACH">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="green">
+  <div class="card-name">CROP ROTATION</div>
+  <div class="card-image-container">
+    <img src="card_images/599028.jpg" alt="CROP ROTATION">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="green">
+  <div class="card-name">FOOD CHAIN</div>
+  <div class="card-image-container">
+    <img src="card_images/571480.jpg" alt="FOOD CHAIN">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="colorless">
+  <div class="card-name">GAEA'S CRADLE</div>
+  <div class="card-image-container">
+    <img src="card_images/10422.jpg" alt="GAEA'S CRADLE">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="green">
+  <div class="card-name">NATURAL ORDER</div>
+  <div class="card-image-container">
+    <img src="card_images/677487.jpg" alt="NATURAL ORDER">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="green">
+  <div class="card-name">SEEDBORN MUSE</div>
+  <div class="card-image-container">
+    <img src="card_images/696424.jpg" alt="SEEDBORN MUSE">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="green">
+  <div class="card-name">SURVIVAL OF THE FITTEST</div>
+  <div class="card-image-container">
+    <img src="card_images/397535.jpg" alt="SURVIVAL OF THE FITTEST">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="green">
+  <div class="card-name">VORINCLEX, VOICE OF HUNGER</div>
+  <div class="card-image-container">
+    <img src="card_images/611334.jpg" alt="VORINCLEX, VOICE OF HUNGER">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="green">
+  <div class="card-name">WORLDLY TUTOR</div>
+  <div class="card-image-container">
+    <img src="card_images/600993.jpg" alt="WORLDLY TUTOR">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="multicolor,green,white">
+  <div class="card-name">AURA SHARDS</div>
+  <div class="card-image-container">
+    <img src="card_images/247184.jpg" alt="AURA SHARDS">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="multicolor,green,white,red,blue,black">
+  <div class="card-name">COALITION VICTORY</div>
+  <div class="card-image-container">
+    <img src="card_images/109718.jpg" alt="COALITION VICTORY">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="multicolor,blue,green">
+  <div class="card-name">KINNAN, BONDER PRODIGY</div>
+  <div class="card-image-container">
+    <img src="card_images/479712.jpg" alt="KINNAN, BONDER PRODIGY">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="multicolor,white,blue">
+  <div class="card-name">GRAND ARBITER AUGUSTIN IV</div>
+  <div class="card-image-container">
+    <img src="card_images/573041.jpg" alt="GRAND ARBITER AUGUSTIN IV">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="multicolor,blue,black">
+  <div class="card-name">NOTION THIEF</div>
+  <div class="card-image-container">
+    <img src="card_images/660844.jpg" alt="NOTION THIEF">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="multicolor,red,white">
+  <div class="card-name">WINOTA, JOINER OF FORCES</div>
+  <div class="card-image-container">
+    <img src="card_images/479736.jpg" alt="WINOTA, JOINER OF FORCES">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="multicolor,blue,black">
+  <div class="card-name">YURIKO, THE TIGER'S SHADOW</div>
+  <div class="card-image-container">
+    <img src="card_images/627828.jpg" alt="YURIKO, THE TIGER'S SHADOW">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="colorless">
+  <div class="card-name">ANCIENT TOMB</div>
+  <div class="card-image-container">
+    <img src="card_images/622589.jpg" alt="ANCIENT TOMB">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="colorless">
+  <div class="card-name">CHROME MOX</div>
+  <div class="card-image-container">
+    <img src="card_images/693158.jpg" alt="CHROME MOX">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="colorless">
+  <div class="card-name">FIELD OF THE DEAD</div>
+  <div class="card-image-container">
+    <img src="card_images/651686.jpg" alt="FIELD OF THE DEAD">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="colorless">
+  <div class="card-name">GLACIAL CHASM</div>
+  <div class="card-image-container">
+    <img src="card_images/288996.jpg" alt="GLACIAL CHASM">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="colorless">
+  <div class="card-name">GRIM MONOLITH</div>
+  <div class="card-image-container">
+    <img src="card_images/12626.jpg" alt="GRIM MONOLITH">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="colorless">
+  <div class="card-name">LION'S EYE DIAMOND</div>
+  <div class="card-image-container">
+    <img src="card_images/383000.jpg" alt="LION'S EYE DIAMOND">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="colorless">
+  <div class="card-name">MANA VAULT</div>
+  <div class="card-image-container">
+    <img src="card_images/573056.jpg" alt="MANA VAULT">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="colorless">
+  <div class="card-name">MOX DIAMOND</div>
+  <div class="card-image-container">
+    <img src="card_images/397482.jpg" alt="MOX DIAMOND">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="colorless">
+  <div class="card-name">MISHRA'S WORKSHOP</div>
+  <div class="card-image-container">
+    <img src="card_images/383015.jpg" alt="MISHRA'S WORKSHOP">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="colorless">
+  <div class="card-name">PANOPTIC MIRROR</div>
+  <div class="card-image-container">
+    <img src="card_images/47930.jpg" alt="PANOPTIC MIRROR">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="colorless">
+  <div class="card-name">THE ONE RING</div>
+  <div class="card-image-container">
+    <img src="card_images/636294.jpg" alt="THE ONE RING">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
+<div class="card" data-colors="colorless">
+  <div class="card-name">THE TABERNACLE AT PENDRELL VALE</div>
+  <div class="card-image-container">
+    <img src="card_images/201236.jpg" alt="THE TABERNACLE AT PENDRELL VALE">
+  </div>
+  <div class="price-info">Click to load prices</div>
+</div>
       </div>
       <div class="source">
         Source: <a href="https://magic.wizards.com/en/news/announcements/commander-brackets-beta-update-april-22-2025">Commander Brackets Beta Update - April 22, 2025</a>
@@ -842,13 +774,211 @@
   </div>
   <script>
     document.addEventListener('DOMContentLoaded', function() {
-      // Remove the duplicate updateCardPrices function and event handlers
-      // They are already defined in card_prices.js
+      const tray = document.querySelector('.color-filter-tray');
+      const toggleButton = document.querySelector('.toggle-button');
+      const allCheckbox = document.querySelector('input[data-color="all"]');
+      const colorCheckboxes = document.querySelectorAll('input[data-color]:not([data-color="all"])');
+      const onlyIcons = document.querySelectorAll('.only-icon');
+      const cards = document.querySelectorAll('.card');
+      const fetchAllButton = document.getElementById('fetch-all-prices');
+      const fetchStatus = document.getElementById('fetch-status');
       
-      // Just keep the refresh button handler
-      document.getElementById('refresh-all-prices').addEventListener('click', function() {
-        refreshAllPrices();  // This function is defined in card_prices.js
+      // Function to animate ellipsis
+      function animateEllipsis(element, text) {
+        let dots = 0;
+        const maxDots = 3;
+        const interval = setInterval(() => {
+          dots = (dots + 1) % (maxDots + 1);
+          element.innerHTML = `${text}${'.'.repeat(dots)}`;
+        }, 500);
+        return interval;
+      }
+
+      // Function to fetch prices for a single card
+      async function fetchCardPrices(cardElement) {
+        const cardName = cardElement.querySelector('.card-name').textContent;
+        const priceInfo = cardElement.querySelector('.price-info');
+        
+        try {
+          priceInfo.innerHTML = '<span class="loading">Fetching prices</span>';
+          const ellipsisInterval = animateEllipsis(priceInfo.querySelector('.loading'), 'Fetching prices');
+          
+          const response = await fetch(`http://localhost:4567/card_info?card=${encodeURIComponent(cardName)}`);
+          clearInterval(ellipsisInterval);
+          
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          const data = await response.json();
+          
+          if (data && data.prices) {
+            // Cache the prices immediately after successful fetch
+            await fetch('http://localhost:4567/cache_prices', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                card: cardName,
+                prices: data.prices,
+                timestamp: data.timestamp || Math.floor(Date.now() / 1000)
+              })
+            });
+
+            let html = [];
+            if (data.prices['Near Mint']) {
+              const nm = data.prices['Near Mint'];
+              html.push(`Near Mint: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(nm).toFixed(2)}</a>`);
+            }
+            if (data.prices['Lightly Played']) {
+              const lp = data.prices['Lightly Played'];
+              html.push(`Lightly Played: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(lp).toFixed(2)}</a>`);
+                }
+            if (data.timestamp) {
+              const timestamp = new Date(data.timestamp * 1000);
+              const now = new Date();
+              const hoursAgo = Math.floor((now - timestamp) / (1000 * 60 * 60));
+              let timestampClass = 'recent';
+              if (hoursAgo > 24) {
+                timestampClass = hoursAgo > 48 ? 'very-old' : 'old';
+              }
+              html.push(`<span class="price-timestamp ${timestampClass}">Updated ${hoursAgo} hours ago</span>`);
+            }
+            priceInfo.innerHTML = html.join(' | ') || 'No prices found';
+          } else {
+            priceInfo.innerHTML = 'No prices found';
+          }
+        } catch (error) {
+          console.error('Error fetching prices for', cardName, ':', error);
+          priceInfo.innerHTML = 'Click to load prices';
+        }
+      }
+      
+      // Function to fetch all prices
+      async function fetchAllPrices() {
+        if (fetchAllButton.disabled) return; // Prevent multiple clicks
+        
+        fetchAllButton.disabled = true;
+        fetchAllButton.style.backgroundColor = '#999';
+        fetchStatus.textContent = 'Fetching prices';
+        let ellipsisInterval = animateEllipsis(fetchStatus, 'Fetching prices');
+        
+        const cardElements = Array.from(cards);
+        let completed = 0;
+        let failed = 0;
+        
+        // Process cards one at a time
+        for (const card of cardElements) {
+          try {
+            await fetchCardPrices(card);
+            completed++;
+          } catch (error) {
+            console.error('Error fetching prices for card:', error);
+            failed++;
+          }
+          clearInterval(ellipsisInterval);
+          fetchStatus.textContent = `Fetched ${completed} cards${failed > 0 ? `, ${failed} failed` : ''}...`;
+          ellipsisInterval = animateEllipsis(fetchStatus, `Fetched ${completed} cards${failed > 0 ? `, ${failed} failed` : ''}`);
+          // Add a small delay between cards to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        clearInterval(ellipsisInterval);
+        fetchStatus.textContent = `Completed: ${completed} cards fetched${failed > 0 ? `, ${failed} failed` : ''}`;
+        fetchAllButton.disabled = false;
+      }
+      
+      // Add click handler for the fetch all button
+      fetchAllButton.addEventListener('click', fetchAllPrices);
+      
+      // Function to update card visibility based on selected colors
+      function updateCardVisibility() {
+        // First, remove all visibility classes
+        cards.forEach(card => {
+          card.classList.remove('hidden-by-color');
+          card.classList.remove('hidden-by-all');
+        });
+        
+        // If ALL is checked, we're done - all cards are visible
+        if (allCheckbox.checked) {
+          return;
+        }
+        
+        // Otherwise, apply color filtering
+        const selectedColors = Array.from(colorCheckboxes)
+          .filter(cb => cb.checked)
+          .map(cb => cb.dataset.color.toLowerCase());
+        
+        cards.forEach(card => {
+          const cardColors = card.dataset.colors.split(',');
+          // Special handling for Multicolor cards
+          const shouldShow = selectedColors.some(color => {
+            if (color === 'multicolor') {
+              return cardColors.includes('multicolor');
+            } else {
+              return cardColors.includes(color);
+            }
+          });
+          if (!shouldShow) {
+            card.classList.add('hidden-by-color');
+          }
+        });
+      }
+      
+      // Handle ALL checkbox
+      allCheckbox.addEventListener('change', function() {
+        // When ALL is checked, remove all visibility classes
+        if (this.checked) {
+          cards.forEach(card => {
+            card.classList.remove('hidden-by-color');
+            card.classList.remove('hidden-by-all');
+          });
+        } else {
+          // When ALL is unchecked, update based on color checkboxes
+          updateCardVisibility();
+        }
       });
+      
+      // Handle individual color checkboxes
+      colorCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+          // When any color checkbox changes, uncheck ALL
+          allCheckbox.checked = false;
+          // Update visibility based on color checkboxes
+          updateCardVisibility();
+        });
+      });
+      
+      // Handle "only" icons
+      onlyIcons.forEach(icon => {
+        icon.addEventListener('click', function(e) {
+          e.stopPropagation(); // Prevent label click
+          const color = this.dataset.color.toLowerCase();
+          
+          // Uncheck ALL
+          allCheckbox.checked = false;
+          
+          // Uncheck all colors except the clicked one
+          colorCheckboxes.forEach(cb => {
+            // For Multicolor cards, we need to check if the card has "multicolor" in its colors
+            if (color === 'multicolor') {
+              cb.checked = cb.dataset.color.toLowerCase() === color;
+            } else {
+              cb.checked = cb.dataset.color.toLowerCase() === color;
+            }
+          });
+          
+          // Update visibility
+          updateCardVisibility();
+        });
+      });
+      
+      // Toggle tray
+      toggleButton.addEventListener('click', function() {
+        tray.classList.toggle('collapsed');
+      });
+      
+      // Initial visibility update
+      updateCardVisibility();
     });
   </script>
 </body>

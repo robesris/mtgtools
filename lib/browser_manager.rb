@@ -1,84 +1,92 @@
 require 'puppeteer-ruby'
+require 'concurrent'
 require_relative 'logging'
 
-class BrowserManager
+module BrowserManager
+  # Global browser instance and context tracking
+  @browser = nil
+  @browser_contexts = Concurrent::Hash.new  # Track active contexts
+  @browser_mutex = Mutex.new
+  @browser_retry_count = 0
+  MAX_RETRIES = 3
+  SESSION_TIMEOUT = 1800  # 30 minutes
+
   class << self
+    attr_reader :browser_contexts
+
+    # Get or initialize browser
     def get_browser
-      if $browser.nil? || !$browser.connected?
-        $logger.info("Initializing new browser instance")
+      if @browser.nil? || !@browser.connected?
+        $file_logger.info("Initializing new browser instance")
+        @browser = Puppeteer.launch(
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--disable-gpu',
+            '--window-size=1920,1080',
+            '--disable-web-security',
+            '--disable-features=IsolateOrigins,site-per-process',
+            '--disable-features=site-per-process',  # Disable site isolation
+            '--disable-features=IsolateOrigins',    # Disable origin isolation
+            '--disable-features=CrossSiteDocumentBlocking',  # Disable cross-site blocking
+            '--disable-features=CrossSiteDocumentBlockingAlways',  # Disable cross-site blocking
+            '--disable-blink-features=AutomationControlled',
+            '--disable-automation',
+            '--disable-infobars',
+            '--lang=en-US,en',
+            '--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+          ],
+          ignore_default_args: ['--enable-automation']
+        )
+        
+        # Set up global browser settings
+        setup_browser_event_handlers
+        
+        # Create a test page to resize the browser
+        test_page = @browser.new_page
         begin
-          $browser = Puppeteer.launch(
-            headless: true,
-            args: [
-              '--no-sandbox',
-              '--disable-setuid-sandbox',
-              '--disable-dev-shm-usage',
-              '--disable-accelerated-2d-canvas',
-              '--disable-gpu',
-              '--window-size=1920,1080',
-              '--disable-web-security',
-              '--disable-features=IsolateOrigins,site-per-process',
-              '--disable-features=site-per-process',
-              '--disable-features=IsolateOrigins',
-              '--disable-features=CrossSiteDocumentBlocking',
-              '--disable-features=CrossSiteDocumentBlockingAlways',
-              '--disable-blink-features=AutomationControlled',
-              '--disable-automation',
-              '--disable-infobars',
-              '--lang=en-US,en',
-              '--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
-            ],
-            ignore_default_args: ['--enable-automation']
-          )
+          PageManager.configure_page(test_page)
           
-          # Set up global browser settings
-          $browser.on('targetcreated') do |target|
-            if target.type == 'page'
-              begin
-                page = target.page
-                # Additional page setup can be added here
-                $logger.debug("New page created in browser")
-              rescue => e
-                $logger.error("Error setting up new page: #{e.message}")
-              end
-            end
-          end
-
-          # Add browser disconnect handler
-          $browser.on('disconnected') do
-            $logger.warn("Browser disconnected, will reinitialize on next request")
-            $browser = nil
-          end
-
-          # Verify browser is working by creating a test page
-          test_page = $browser.new_page
-          begin
-            test_page.goto('about:blank')
-            test_page.close
-            $logger.info("Browser initialization verified with test page")
-          rescue => e
-            $logger.error("Browser verification failed: #{e.message}")
-            cleanup_browser
-            raise e
-          end
-
-          $logger.info("Browser initialized successfully")
-        rescue => e
-          $logger.error("Failed to initialize browser: #{e.message}")
-          $logger.error(e.backtrace.join("\n"))
-          cleanup_browser
-          raise e
+          # Verify the viewport size
+          actual_viewport = test_page.evaluate(<<~JS)
+            function() {
+              return {
+                windowWidth: window.innerWidth,
+                windowHeight: window.innerHeight,
+                devicePixelRatio: window.devicePixelRatio,
+                screenWidth: window.screen.width,
+                screenHeight: window.screen.height,
+                viewportWidth: document.documentElement.clientWidth,
+                viewportHeight: document.documentElement.clientHeight
+              };
+            }
+          JS
+          $file_logger.info("Browser viewport after resize: #{actual_viewport.inspect}")
+        ensure
+          test_page.close
         end
       end
-      $browser
+      @browser
     end
 
+    # Create a new page with proper settings
+    def create_page
+      browser = get_browser
+      page = browser.new_page
+      PageManager.configure_page(page)
+      page
+    end
+
+    # Add a method to create a new context with proper tracking
     def create_browser_context(request_id)
       browser = get_browser
       context = browser.create_incognito_browser_context
       
       # Track the context
-      $browser_contexts[request_id] = {
+      @browser_contexts[request_id] = {
         context: context,
         created_at: Time.now,
         pages: []
@@ -87,9 +95,10 @@ class BrowserManager
       # Listen for target destruction to track when pages are closed
       context.on('targetdestroyed') do |target|
         if target.type == 'page'
-          $logger.info("Request #{request_id}: Page destroyed in context")
-          if $browser_contexts[request_id]
-            $browser_contexts[request_id][:pages].delete_if { |page| page.target == target }
+          $file_logger.info("Request #{request_id}: Page destroyed in context")
+          # Remove the page from our tracking if it exists
+          if @browser_contexts[request_id]
+            @browser_contexts[request_id][:pages].delete_if { |page| page.target == target }
           end
         end
       end
@@ -99,12 +108,13 @@ class BrowserManager
         if target.type == 'page'
           begin
             page = target.page
-            if $browser_contexts[request_id]
-              $browser_contexts[request_id][:pages] << page
-              $logger.info("Request #{request_id}: New page created in context")
+            if @browser_contexts[request_id]
+              @browser_contexts[request_id][:pages] << page
+              $file_logger.info("Request #{request_id}: New page created in context")
+              setup_page_error_handling(page, request_id)
             end
           rescue => e
-            $logger.error("Request #{request_id}: Error handling new page: #{e.message}")
+            handle_puppeteer_error(e, request_id, "Page creation")
           end
         end
       end
@@ -112,101 +122,163 @@ class BrowserManager
       context
     end
 
-    def create_page
-      browser = get_browser
-      page = browser.new_page
-      
-      # Set up page-specific settings
-      page.default_navigation_timeout = 30000  # 30 seconds
-      page.default_timeout = 30000  # 30 seconds
-      
-      # Set up request interception
-      page.request_interception = true
-      
-      # Add proper headers for TCGPlayer
-      page.on('request') do |request|
-        # Block iframe requests
-        if request.frame && request.frame.parent_frame
-          $logger.info("Blocking iframe request: #{request.url}")
-          request.abort
-          next
-        end
-        
-        headers = request.headers.merge({
-          'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-          'Accept-Language' => 'en-US,en;q=0.9',
-          'Accept-Encoding' => 'gzip, deflate, br',
-          'Connection' => 'keep-alive',
-          'Upgrade-Insecure-Requests' => '1',
-          'Sec-Fetch-Dest' => 'document',
-          'Sec-Fetch-Mode' => 'navigate',
-          'Sec-Fetch-Site' => 'none',
-          'Sec-Fetch-User' => '?1',
-          'Cache-Control' => 'max-age=0'
-        })
-
-        if request.navigation_request? && !request.redirect_chain.empty?
-          if request.url.include?('uhoh')
-            $logger.info("Preventing redirect to error page: #{request.url}")
-            request.abort
-          else
-            $logger.info("Allowing redirect to: #{request.url}")
-            request.continue(headers: headers)
-          end
-        else
-          request.continue(headers: headers)
-        end
-      end
-
-      # Add error handling
-      page.on('error') do |err|
-        $logger.error("Page error: #{err.message}")
-      end
-
-      # Add console logging
-      page.on('console') do |msg|
-        $logger.debug("Browser console: #{msg.text}")
-      end
-
-      page
-    end
-
-    def cleanup_browser
-      if $browser
+    # Cleanup browser without mutex lock
+    def cleanup_browser_internal
+      # Clean up all active contexts
+      @browser_contexts.each do |request_id, context_data|
         begin
-          $logger.info("Cleaning up browser...")
-          $browser.close
-          $logger.info("Browser closed successfully")
+          $file_logger.info("Cleaning up browser context for request #{request_id}")
+          context_data[:context].close if context_data[:context]
         rescue => e
-          $logger.error("Error closing browser: #{e.message}")
+          handle_puppeteer_error(e, request_id, "Context cleanup")
         ensure
-          $browser = nil
+          @browser_contexts.delete(request_id)
+        end
+      end
+      
+      if @browser
+        begin
+          $file_logger.info("Cleaning up browser...")
+          @browser.close
+        rescue => e
+          handle_puppeteer_error(e, nil, "Browser cleanup")
+        ensure
+          @browser = nil
+          # Force garbage collection
+          GC.start
         end
       end
     end
 
+    # Cleanup browser with mutex lock
+    def cleanup_browser
+      @browser_mutex.synchronize do
+        cleanup_browser_internal
+      end
+    end
+
+    # Track a new context
+    def track_context(request_id, context)
+      @browser_contexts[request_id] = {
+        context: context,
+        created_at: Time.now,
+        pages: []
+      }
+    end
+
+    # Add a page to a context's tracking
+    def add_page(request_id, page)
+      if @browser_contexts[request_id]
+        @browser_contexts[request_id][:pages] << page
+      end
+    end
+
+    # Remove a page from a context's tracking
+    def remove_page(request_id, target)
+      if @browser_contexts[request_id]
+        @browser_contexts[request_id][:pages].delete_if { |page| page.target == target }
+      end
+    end
+
+    # Clean up a specific context and its pages
+    def cleanup_context(request_id)
+      if @browser_contexts[request_id]
+        begin
+          # Close all pages in the context
+          @browser_contexts[request_id][:pages].each do |page|
+            begin
+              page.close
+            rescue => e
+              handle_puppeteer_error(e, request_id, "Page cleanup")
+            end
+          end
+          
+          # Close the context
+          @browser_contexts[request_id][:context].close
+          $file_logger.info("Request #{request_id}: Closed browser context and pages")
+        rescue => e
+          handle_puppeteer_error(e, request_id, "Context cleanup")
+        ensure
+          @browser_contexts.delete(request_id)
+        end
+      end
+    end
+
+    # Clean up old contexts (older than 10 minutes)
     def cleanup_old_contexts
-      $browser_contexts.delete_if do |_, context_data|
+      @browser_contexts.delete_if do |request_id, context_data|
         if context_data[:created_at] < (Time.now - 600)  # 10 minutes
           begin
+            # Close any remaining pages
             context_data[:pages].each do |page|
               begin
                 page.close
               rescue => e
-                $logger.error("Error closing stale page: #{e.message}")
+                handle_puppeteer_error(e, request_id, "Stale page cleanup")
               end
             end
+            # Close the context
             context_data[:context].close
-            true
+            $file_logger.info("Cleaned up stale context for request #{request_id}")
           rescue => e
-            $logger.error("Error cleaning up stale context: #{e.message}")
-            true
+            handle_puppeteer_error(e, request_id, "Stale context cleanup")
           end
+          true
         else
           false
         end
       end
+    end
+
+    private
+
+    def setup_browser_event_handlers
+      @browser.on('targetcreated') do |target|
+        if target.type == 'page'
+          begin
+            page = target.page
+            PageManager.configure_page(page)
+            
+            # Log the viewport size after setting it
+            actual_viewport = page.evaluate(<<~JS)
+              function() {
+                return {
+                  windowWidth: window.innerWidth,
+                  windowHeight: window.innerHeight,
+                  devicePixelRatio: window.devicePixelRatio,
+                  screenWidth: window.screen.width,
+                  screenHeight: window.screen.height,
+                  viewportWidth: document.documentElement.clientWidth,
+                  viewportHeight: document.documentElement.clientHeight
+                };
+              }
+            JS
+            $file_logger.info("New page viewport after resize: #{actual_viewport.inspect}")
+          rescue => e
+            $file_logger.error("Error setting up new page: #{e.message}")
+          end
+        end
+      end
+    end
+
+    def setup_page_error_handling(page, request_id)
+      # Add error handling for page crashes
+      page.on('error') do |err|
+        $file_logger.error("Request #{request_id}: Page error: #{err.message}")
+      end
+
+      # Add console logging
+      page.on('console') do |msg|
+        $file_logger.debug("Request #{request_id}: Browser console: #{msg.text}")
+      end
+    end
+
+    def handle_puppeteer_error(e, request_id = nil, context = nil)
+      # Log to file with full details
+      $file_logger.error("Request #{request_id}: #{context} error: #{e.message}")
+      $file_logger.debug("Request #{request_id}: #{context} error details: #{e.backtrace.join("\n")}")
+      # Log to console without backtrace
+      warn("Request #{request_id}: #{context} error: #{e.message}")
     end
   end
 end 

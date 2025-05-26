@@ -1,31 +1,22 @@
 require 'bundler/setup'
-require 'rspec'
-require 'rack/test'
+require 'httparty'
 require 'json'
-require 'uri'
+require 'fileutils'
 
-# Configure RSpec
 RSpec.configure do |config|
-  config.expect_with :rspec do |expectations|
-    expectations.include_chain_clauses_in_custom_matcher_descriptions = true
-  end
+  # Enable flags like --only-failures and --next-failure
+  config.example_status_persistence_file_path = '.rspec_status'
 
-  config.mock_with :rspec do |mocks|
-    mocks.verify_partial_doubles = true
-  end
-
-  config.shared_context_metadata_behavior = :apply_to_host_groups
-  config.filter_run_when_matching :focus
-  config.example_status_persistence_file_path = "spec/examples.txt"
+  # Disable RSpec exposing methods globally on `Module` and `main`
   config.disable_monkey_patching!
 
-  config.order = :random
-  Kernel.srand config.seed
+  config.expect_with :rspec do |c|
+    c.syntax = :expect
+  end
 
-  # Add custom matchers
-  RSpec::Matchers.define :a_string_matching do |pattern|
-    match do |actual|
-      actual =~ pattern
-    end
+  # Clean up any temporary files after each test
+  config.after(:suite) do
+    FileUtils.rm_rf('debug_screenshots')
+    FileUtils.rm_rf('test_screenshots')
   end
 end 

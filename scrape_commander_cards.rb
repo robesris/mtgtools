@@ -9,6 +9,9 @@ require 'fileutils'
 require 'uri'
 require 'json'
 
+# IMPORTANT: Do NOT change any user-facing text (e.g., 'Click to load prices', 'Near Mint', 'Lightly Played', 'Loading prices', etc).
+# All such strings must remain EXACTLY as they are, including capitalization and punctuation, regardless of any code changes.
+
 class CommanderCardScraper
   BASE_URL = 'https://gatherer.wizards.com/Pages/Search/Default.aspx'
   CACHE_FILE = 'commander_card_cache.json'
@@ -24,6 +27,33 @@ class CommanderCardScraper
     @price_cache = load_price_cache
     FileUtils.mkdir_p(@output_dir)
     FileUtils.mkdir_p(File.join(@output_dir, 'card_images'))
+    
+    # Hardcoded color mappings for known cards
+    @card_colors = {
+      "DRANNITH MAGISTRATE" => ["WHITE"],
+      "SERRA'S SANCTUM" => ["COLORLESS"],  # Appears in White section but is actually colorless
+      "TEFERI'S PROTECTION" => ["WHITE"],
+      "THASSA'S ORACLE" => ["BLUE"],
+      "TERGRID, GOD OF FRIGHT" => ["BLACK"],
+      "JESKA'S WILL" => ["RED"],
+      "GAEA'S CRADLE" => ["COLORLESS"],
+      "LION'S EYE DIAMOND" => ["COLORLESS"],
+      "MISHRA'S WORKSHOP" => ["COLORLESS"],
+      # Multicolored cards with both MULTICOLOR and specific colors
+      "YURIKO, THE TIGER'S SHADOW" => ["MULTICOLOR", "BLUE", "BLACK"],
+      "AURA SHARDS" => ["MULTICOLOR", "GREEN", "WHITE"],
+      "COALITION VICTORY" => ["MULTICOLOR", "GREEN", "WHITE", "RED", "BLUE", "BLACK"],
+      "KINNAN, BONDER PRODIGY" => ["MULTICOLOR", "BLUE", "GREEN"],
+      "GRAND ARBITER AUGUSTIN IV" => ["MULTICOLOR", "WHITE", "BLUE"],
+      "NOTION THIEF" => ["MULTICOLOR", "BLUE", "BLACK"],
+      "WINOTA, JOINER OF FORCES" => ["MULTICOLOR", "RED", "WHITE"],
+      "BOLAS'S CITADEL" => ["BLACK"],
+      "VAMPIRIC TUTOR" => ["BLACK"],
+      "CYCLONIC RIFT" => ["BLUE"],
+      "CONSECRATED SPHINX" => ["BLUE"],
+      "EXPROPRIATE" => ["BLUE"],
+      "FORCE OF WILL" => ["BLUE"]
+    }
     
     # Skip these garbage OCR results
     @skip_cards = [
@@ -182,12 +212,12 @@ class CommanderCardScraper
     # Calculate column boundaries
     col_boundaries = 4.times.map { |i| min_x + i * ((max_x - min_x) / 4.0) }
     col_boundaries << max_x + column_width  # Add rightmost boundary
-    columns = Array.new(4) { [] }
+    @columns = Array.new(4) { [] }  # Store in instance variable
     # Assign each box to a column based on x_start
     sorted_boxes.each do |box|
       x = box[:x_start].to_i
       col_idx = col_boundaries.each_cons(2).find_index { |left, right| x >= left && x < right }
-      columns[col_idx] << box if col_idx
+      @columns[col_idx] << box if col_idx
     end
 
     puts "Processing 4 columns with known sections:"
@@ -196,11 +226,10 @@ class CommanderCardScraper
     puts "Column 3: GREEN, MULTICOLOR"
     puts "Column 4: COLORLESS"
 
-    all_card_names = []
-    columns.each_with_index do |column_boxes, col_idx|
-      # Sort boxes in this column by y-coordinate
+    # Create a mapping of card names to their colors based on the sections
+    card_colors = {}
+    @columns.each_with_index do |column_boxes, col_idx|
       sorted_col = column_boxes.sort_by { |box| box[:y_start].to_i }
-      # Split into sections based on column index
       if col_idx < 3  # First three columns have two sections each
         sec_size = (sorted_col.size / 2.0).ceil
         sections = sorted_col.each_slice(sec_size).to_a
@@ -209,19 +238,91 @@ class CommanderCardScraper
           when 1 then ['BLACK', 'RED']
           when 2 then ['GREEN', 'MULTICOLOR']
         end
+        sections.each_with_index do |section, sec_idx|
+          section.each do |box|
+            name = box[:word].strip
+            next if name.empty? || @skip_cards.include?(name)
+            name = @card_corrections[name] || name
+            # Use hardcoded color if available, otherwise use OCR result
+            card_colors[name] = @card_colors[name] || [section_names[sec_idx]]
+            puts "Card: #{name}, Colors: #{card_colors[name].join(', ')}"
+          end
+        end
+      else  # Last column has one section
+        sorted_col.each do |box|
+          name = box[:word].strip
+          next if name.empty? || @skip_cards.include?(name)
+          name = @card_corrections[name] || name
+          # Use hardcoded color if available, otherwise use COLORLESS
+          card_colors[name] = @card_colors[name] || ['COLORLESS']
+          puts "Card: #{name}, Colors: #{card_colors[name].join(', ')}"
+        end
+      end
+    end
+
+    # Process the lines to get actual card names
+    all_card_names = []
+    @columns.each_with_index do |column_boxes, col_idx|
+      sorted_col = column_boxes.sort_by { |box| box[:y_start].to_i }
+      if col_idx < 3  # First three columns have two sections each
+        sec_size = (sorted_col.size / 2.0).ceil
+        sections = sorted_col.each_slice(sec_size).to_a
+        section_names = case col_idx
+          when 0 then ['WHITE', 'BLUE']
+          when 1 then ['BLACK', 'RED']
+          when 2 then ['GREEN', 'MULTICOLOR']
+        end
+        sections.each_with_index do |section_boxes, sec_idx|
+          puts "\nColumn #{col_idx + 1} (#{column_boxes.size} boxes):"
+          puts "  Section: #{section_names[sec_idx]} (#{section_boxes.size} boxes)"
+          # Skip the first box in each section (assumed to be the section title)
+          card_boxes = section_boxes.drop(1)
+          # Group boxes into lines based on y-coordinates
+          lines = group_boxes_into_lines(card_boxes)
+          valid_lines = []
+          found_first_card = false
+          lines.each do |line_boxes|
+            # Sort boxes in line by x-coordinate
+            sorted_line = line_boxes.sort_by { |box| box[:x_start].to_i }
+            # Group all words in the line within the column's boundaries into a single card name
+            col_left = col_boundaries[col_idx]
+            col_right = col_boundaries[col_idx + 1]
+            card_words = sorted_line.select { |box| box[:x_start].to_i >= col_left && box[:x_start].to_i < col_right }
+            next if card_words.empty?
+            name = merge_line_into_card_name(card_words)
+            name = @card_corrections[name] || name
+            next if name.strip.empty? || name.strip.length < 3
+            next if @skip_cards.include?(name)  # Skip cards in the skip list
+            
+            # Debug output for specific cards
+            if name == "INTUITION" || name == "TERGRID, GOD OF FRIGHT"
+              puts "\nDEBUG: Found #{name} in OCR:"
+              puts "  Raw boxes: #{card_words.inspect}"
+              puts "  Merged name: #{name}"
+              puts "  Column: #{col_idx + 1} (#{col_left} to #{col_right})"
+              puts "  Line boxes: #{line_boxes.inspect}\n"
+            end
+            
+            # Assign color based on section
+            card_colors[name] = @card_colors[name] || [section_names[sec_idx]]
+            puts "Card: #{name}, Colors: #{card_colors[name].join(', ')}"
+            
+            valid_lines << name
+            found_first_card = true
+          end
+          puts "    Cards: " + valid_lines.join(' | ')
+          all_card_names.concat(valid_lines)
+        end
       else  # Last column has one section
         sections = [sorted_col]
         section_names = ['COLORLESS']
-      end
-      puts "\nColumn #{col_idx + 1} (#{column_boxes.size} boxes):"
-      sections.each_with_index do |section_boxes, sec_idx|
-        puts "  Section: #{section_names[sec_idx]} (#{section_boxes.size} boxes)"
-        # Skip the first box in each section (assumed to be the section title)
-        card_boxes = section_boxes.drop(1)
+        puts "\nColumn #{col_idx + 1} (#{column_boxes.size} boxes):"
+        puts "  Section: #{section_names[0]} (#{sorted_col.size} boxes)"
+        # Skip the first box (assumed to be the section title)
+        card_boxes = sorted_col.drop(1)
         # Group boxes into lines based on y-coordinates
         lines = group_boxes_into_lines(card_boxes)
         valid_lines = []
-        found_first_card = false
         lines.each do |line_boxes|
           # Sort boxes in line by x-coordinate
           sorted_line = line_boxes.sort_by { |box| box[:x_start].to_i }
@@ -235,17 +336,11 @@ class CommanderCardScraper
           next if name.strip.empty? || name.strip.length < 3
           next if @skip_cards.include?(name)  # Skip cards in the skip list
           
-          # Debug output for specific cards
-          if name == "INTUITION" || name == "TERGRID, GOD OF FRIGHT"
-            puts "\nDEBUG: Found #{name} in OCR:"
-            puts "  Raw boxes: #{card_words.inspect}"
-            puts "  Merged name: #{name}"
-            puts "  Column: #{col_idx + 1} (#{col_left} to #{col_right})"
-            puts "  Line boxes: #{line_boxes.inspect}\n"
-          end
+          # Assign color based on section
+          card_colors[name] = @card_colors[name] || ['COLORLESS']
+          puts "Card: #{name}, Colors: #{card_colors[name].join(', ')}"
           
           valid_lines << name
-          found_first_card = true
         end
         puts "    Cards: " + valid_lines.join(' | ')
         all_card_names.concat(valid_lines)
@@ -256,6 +351,9 @@ class CommanderCardScraper
     @must_have_cards.each do |must|
       all_card_names << must unless all_card_names.include?(must) || @skip_cards.include?(must)
     end
+    
+    # Store card_colors in instance variable for use in generate_html
+    @card_colors = card_colors
     
     all_card_names.uniq
   end
@@ -669,12 +767,162 @@ class CommanderCardScraper
             max-width: 1600px;
             margin: 0 auto;
             padding: 0 20px;
+            display: flex;
+            gap: 20px;
+            position: relative;
+            width: 100%;
+            box-sizing: border-box;
+          }
+          .color-filter-tray {
+            width: 200px;
+            min-width: 200px;
+            max-width: 200px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 15px;
+            position: sticky;
+            top: 20px;
+            height: fit-content;
+            transition: width 0.3s ease, min-width 0.3s ease, max-width 0.3s ease, padding 0.3s ease;
+            z-index: 1;
+            flex-shrink: 0;
+          }
+          .color-filter-tray.collapsed {
+            width: 30px;
+            min-width: 30px;
+            max-width: 30px;
+            padding: 15px 5px;
+          }
+          .color-filter-tray .filter-content {
+            opacity: 1;
+            visibility: visible;
+            transition: opacity 0.2s ease, visibility 0.2s, width 0.3s ease;
+            width: 100%;
+            padding: 5px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            min-width: 0;
+          }
+          .color-filter-tray.collapsed .filter-content {
+            opacity: 0;
+            visibility: hidden;
+            width: 0;
+            min-width: 0;
+            padding: 0;
+          }
+          .color-filter-tray .toggle-button {
+            position: absolute;
+            right: -30px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: white;
+            border: none;
+            border-radius: 0 4px 4px 0;
+            padding: 10px;
+            cursor: pointer;
+            box-shadow: 2px 0 4px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2;
+            width: 30px;
+            height: 30px;
+            transition: all 0.3s ease;
+            font-size: 0; /* Hide any text content */
+          }
+          .color-filter-tray.collapsed .toggle-button {
+            transform: translateY(-50%);
+            right: -30px;
+            border-radius: 0 4px 4px 0;
+            box-shadow: 2px 0 4px rgba(0,0,0,0.1);
+            background: white;
+            border: none;
+          }
+          .color-filter-tray .toggle-button::before {
+            content: "▶";
+            font-size: 12px;
+            line-height: 1;
+            transition: transform 0.3s ease;
+          }
+          .color-filter-tray.collapsed .toggle-button::before {
+            transform: rotate(180deg);
+          }
+          .color-filter-tray label {
+            position: relative;
+            display: block;
+            cursor: pointer;
+            width: 100%;
+            height: 32px;  /* Fixed height */
+            margin: 0;  /* Remove margin */
+            padding: 0;  /* Remove padding */
+            border-radius: 4px;
+            transition: background-color 0.2s;
+            box-sizing: border-box;
+            overflow: hidden;  /* Prevent content from affecting layout */
+          }
+          .color-filter-tray label:last-child {
+            margin: 0;
+          }
+          .color-filter-tray label:hover {
+            background-color: #f5f5f5;
+          }
+          .color-filter-tray label input[type="checkbox"] {
+            position: absolute;
+            left: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+            margin: 0;
+            width: 16px;
+            height: 16px;
+            z-index: 2;
+            pointer-events: auto;
+          }
+          .color-filter-tray label span:not(.only-icon) {
+            position: absolute;
+            left: 29px;  /* checkbox width + padding */
+            right: 29px;  /* eye icon width + padding */
+            top: 50%;
+            transform: translateY(-50%);
+            text-align: left;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            z-index: 1;
+            pointer-events: none;  /* Prevent text from interfering with clicks */
+          }
+          .color-filter-tray .only-icon {
+            position: absolute;
+            right: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+            width: 20px;
+            height: 20px;  /* Fixed height */
+            line-height: 20px;  /* Center the eye icon vertically */
+            text-align: center;
+            z-index: 2;
+            pointer-events: auto;
+            user-select: none;  /* Prevent text selection */
+            -webkit-user-select: none;
+          }
+          .color-filter-tray .only-icon:hover {
+            opacity: 1;
           }
           .card-grid {
+            flex: 1;
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(4, minmax(0, 1fr));
             gap: 20px;
             margin-top: 20px;
+            margin-left: 20px; /* Increased from 10px to 20px to prevent overlap */
+            align-items: start;
+            width: 100%;
+            box-sizing: border-box;
+            min-width: 0;
           }
           .card {
             background: white;
@@ -686,7 +934,21 @@ class CommanderCardScraper
             flex-direction: column;
             align-items: center;
             cursor: pointer;
-            transition: transform 0.2s;
+            transition: transform 0.2s, opacity 0.3s, visibility 0.3s;
+            width: 100%;
+            box-sizing: border-box;
+            min-width: 0;
+            opacity: 1;
+            visibility: visible;
+          }
+          .card.hidden-by-color {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            position: absolute;
+          }
+          .card.hidden-by-all {
+            display: none;
           }
           .card:hover {
             transform: translateY(-5px);
@@ -728,6 +990,24 @@ class CommanderCardScraper
           .price-info a:hover {
             text-decoration: underline;
           }
+          /* Make timestamp styling more specific and forceful */
+          .price-info .price-timestamp {
+            display: block;
+            font-size: 0.65em !important;
+            margin-top: 4px;
+            font-style: italic;
+            line-height: 1.2;
+            color: #666;
+          }
+          .price-info .price-timestamp.recent {
+            color: #2ecc71 !important;
+          }
+          .price-info .price-timestamp.old {
+            color: #e67e22 !important;
+          }
+          .price-info .price-timestamp.very-old {
+            color: #e74c3c !important;
+          }
           .loading {
             color: #999;
             font-style: italic;
@@ -758,19 +1038,19 @@ class CommanderCardScraper
             width: 80%;
             text-align: center;
           }
-          @media (max-width: 1200px) {
+          @media (max-width: 1400px) {
             .card-grid {
-              grid-template-columns: repeat(3, 1fr);
+              grid-template-columns: repeat(3, minmax(0, 1fr));  /* 3 columns on medium screens */
             }
           }
-          @media (max-width: 900px) {
+          @media (max-width: 1000px) {
             .card-grid {
-              grid-template-columns: repeat(2, 1fr);
+              grid-template-columns: repeat(2, minmax(0, 1fr));  /* 2 columns on smaller screens */
             }
           }
           @media (max-width: 600px) {
             .card-grid {
-              grid-template-columns: 1fr;
+              grid-template-columns: repeat(1, minmax(0, 1fr));  /* 1 column on mobile */
             }
             .card {
               padding: 10px;
@@ -784,10 +1064,29 @@ class CommanderCardScraper
       </head>
       <body>
         <div class="container">
-          <h1>Commander Game Changers List</h1>
-          <div class="card-grid">
+          <div class="color-filter-tray">
+            <button class="toggle-button" title="Toggle filter tray"></button>
+            <div class="filter-content">
+              <label><input type="checkbox" data-color="all" checked /><span>ALL</span></label>
+              <label><input type="checkbox" data-color="White" checked /><span>White</span><span class="only-icon" data-color="White" title="Show only White cards">👁️</span></label>
+              <label><input type="checkbox" data-color="Blue" checked /><span>Blue</span><span class="only-icon" data-color="Blue" title="Show only Blue cards">👁️</span></label>
+              <label><input type="checkbox" data-color="Black" checked /><span>Black</span><span class="only-icon" data-color="Black" title="Show only Black cards">👁️</span></label>
+              <label><input type="checkbox" data-color="Red" checked /><span>Red</span><span class="only-icon" data-color="Red" title="Show only Red cards">👁️</span></label>
+              <label><input type="checkbox" data-color="Green" checked /><span>Green</span><span class="only-icon" data-color="Green" title="Show only Green cards">👁️</span></label>
+              <label><input type="checkbox" data-color="Multicolor" checked /><span>Multicolor</span><span class="only-icon" data-color="Multicolor" title="Show only Multicolor cards">👁️</span></label>
+              <label><input type="checkbox" data-color="Colorless" checked /><span>Colorless</span><span class="only-icon" data-color="Colorless" title="Show only Colorless cards">👁️</span></label>
+            </div>
+          </div>
+          <div>
+            <h1>Commander Game Changers List</h1>
+            <div style="text-align: center; margin-bottom: 20px;">
+              <button id="fetch-all-prices" style="padding: 10px 20px; font-size: 16px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; transition: background-color 0.2s;">Fetch All Prices</button>
+              <div id="fetch-status" style="margin-top: 10px; font-style: italic; color: #666;"></div>
+            </div>
+            <div class="card-grid">
     HTML
 
+    # Use the card_colors mapping we created during OCR
     card_names.each do |name|
       image_path = get_card_image(name)
       prices = @price_cache[name]&.dig('prices')
@@ -796,22 +1095,26 @@ class CommanderCardScraper
         html = []
         if prices['near mint']
           nm = prices['near mint']
-          html << "NM: <a href=\"#{nm['url']}\" target=\"_blank\">#{nm['total']}</a>"
+          html << "Near Mint: <a href=\"#{nm['url']}\" target=\"_blank\">$${nm['total']}</a>"
         end
         if prices['lightly played']
           lp = prices['lightly played']
-          html << "LP: <a href=\"#{lp['url']}\" target=\"_blank\">#{lp['total']}</a>"
+          html << "Lightly Played: <a href=\"#{lp['url']}\" target=\"_blank\">$${lp['total']}</a>"
         end
         html.join(' | ') || 'No prices found'
       else
         'Click to load prices'
       end
       
+      # Get the colors for this card from our mapping
+      colors = @card_colors[name] || []
+      data_colors = colors.join(',').downcase
+      
       if image_path
         image_filename = File.basename(image_path)
         relative_path = "card_images/#{image_filename}"
         html += <<~HTML
-          <div class="card">
+          <div class="card" data-colors="#{data_colors}">
             <div class="card-name">#{name}</div>
             <div class="card-image-container">
               <img src="#{relative_path}" alt="#{name}">
@@ -821,7 +1124,7 @@ class CommanderCardScraper
         HTML
       else
         html += <<~HTML
-          <div class="card">
+          <div class="card" data-colors="#{data_colors}">
             <div class="card-name">#{name}</div>
             <div class="card-image-container">
               <div class="not-found">Image not found</div>
@@ -833,16 +1136,455 @@ class CommanderCardScraper
     end
 
     html += <<~HTML
-          </div>
-          <div class="source">
-            Source: <a href="#{@base_url}">Commander Brackets Beta Update - April 22, 2025</a>
+            </div>
+            <div class="source">
+              Source: <a href="#{@base_url}">Commander Brackets Beta Update - April 22, 2025</a>
+            </div>
           </div>
         </div>
+        <script>
+          document.addEventListener('DOMContentLoaded', function() {
+            const tray = document.querySelector('.color-filter-tray');
+            const toggleButton = document.querySelector('.toggle-button');
+            const allCheckbox = document.querySelector('input[data-color="all"]');
+            const colorCheckboxes = document.querySelectorAll('input[data-color]:not([data-color="all"])');
+            const onlyIcons = document.querySelectorAll('.only-icon');
+            const cards = document.querySelectorAll('.card');
+            const fetchAllButton = document.getElementById('fetch-all-prices');
+            const fetchStatus = document.getElementById('fetch-status');
+            
+            // Function to animate ellipsis
+            function animateEllipsis(element, text) {
+              let dots = 0;
+              const maxDots = 3;
+              const interval = setInterval(() => {
+                dots = (dots + 1) % (maxDots + 1);
+                element.innerHTML = `${text}${'.'.repeat(dots)}`;
+              }, 500);
+              return interval;
+            }
+
+            // Function to fetch prices for a single card
+            async function fetchCardPrices(cardElement) {
+              const cardName = cardElement.querySelector('.card-name').textContent;
+              const priceInfo = cardElement.querySelector('.price-info');
+              
+              try {
+                priceInfo.innerHTML = '<span class="loading">Fetching prices</span>';
+                const ellipsisInterval = animateEllipsis(priceInfo.querySelector('.loading'), 'Fetching prices');
+                
+                const response = await fetch(`http://localhost:4567/card_info?card=${encodeURIComponent(cardName)}`);
+                clearInterval(ellipsisInterval);
+                
+                if (!response.ok) {
+                  throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                
+                if (data && data.prices) {
+                  // Cache the prices immediately after successful fetch
+                  await fetch('http://localhost:4567/cache_prices', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                      card: cardName,
+                      prices: data.prices,
+                      timestamp: data.timestamp || Math.floor(Date.now() / 1000)
+                    })
+                  });
+
+                  let html = [];
+                  if (data.prices['Near Mint']) {
+                    const nm = data.prices['Near Mint'];
+                    html.push(`Near Mint: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(nm).toFixed(2)}</a>`);
+                  }
+                  if (data.prices['Lightly Played']) {
+                    const lp = data.prices['Lightly Played'];
+                    html.push(`Lightly Played: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(lp).toFixed(2)}</a>`);
+                  }
+                  if (data.timestamp) {
+                    const timestamp = new Date(data.timestamp * 1000);
+                    const now = new Date();
+                    const hoursAgo = Math.floor((now - timestamp) / (1000 * 60 * 60));
+                    let timestampClass = 'recent';
+                    if (hoursAgo > 24) {
+                      timestampClass = hoursAgo > 48 ? 'very-old' : 'old';
+                    }
+                    html.push(`<span class="price-timestamp ${timestampClass}">Updated ${hoursAgo} hours ago</span>`);
+                  }
+                  priceInfo.innerHTML = html.join(' | ') || 'No prices found';
+                } else {
+                  priceInfo.innerHTML = 'No prices found';
+                }
+              } catch (error) {
+                console.error('Error fetching prices for', cardName, ':', error);
+                priceInfo.innerHTML = 'Click to load prices';
+              }
+            }
+            
+            // Function to fetch all prices
+            async function fetchAllPrices() {
+              if (fetchAllButton.disabled) return; // Prevent multiple clicks
+              
+              fetchAllButton.disabled = true;
+              fetchAllButton.style.backgroundColor = '#999';
+              fetchStatus.textContent = 'Fetching prices';
+              let ellipsisInterval = animateEllipsis(fetchStatus, 'Fetching prices');
+              
+              const cardElements = Array.from(cards);
+              let completed = 0;
+              let failed = 0;
+              
+              // Process cards one at a time
+              for (const card of cardElements) {
+                try {
+                  await fetchCardPrices(card);
+                  completed++;
+                } catch (error) {
+                  console.error('Error fetching prices for card:', error);
+                  failed++;
+                }
+                clearInterval(ellipsisInterval);
+                fetchStatus.textContent = `Fetched ${completed} cards${failed > 0 ? `, ${failed} failed` : ''}...`;
+                ellipsisInterval = animateEllipsis(fetchStatus, `Fetched ${completed} cards${failed > 0 ? `, ${failed} failed` : ''}`);
+                // Add a small delay between cards to avoid rate limiting
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
+              clearInterval(ellipsisInterval);
+              fetchStatus.textContent = `Completed: ${completed} cards fetched${failed > 0 ? `, ${failed} failed` : ''}`;
+              fetchAllButton.disabled = false;
+            }
+            
+            // Add click handler for the fetch all button
+            fetchAllButton.addEventListener('click', fetchAllPrices);
+            
+            // Function to update card visibility based on selected colors
+            function updateCardVisibility() {
+              // First, remove all visibility classes
+              cards.forEach(card => {
+                card.classList.remove('hidden-by-color');
+                card.classList.remove('hidden-by-all');
+              });
+              
+              // If ALL is checked, we're done - all cards are visible
+              if (allCheckbox.checked) {
+                return;
+              }
+              
+              // Otherwise, apply color filtering
+              const selectedColors = Array.from(colorCheckboxes)
+                .filter(cb => cb.checked)
+                .map(cb => cb.dataset.color.toLowerCase());
+              
+              cards.forEach(card => {
+                const cardColors = card.dataset.colors.split(',');
+                // Special handling for Multicolor cards
+                const shouldShow = selectedColors.some(color => {
+                  if (color === 'multicolor') {
+                    return cardColors.includes('multicolor');
+                  } else {
+                    return cardColors.includes(color);
+                  }
+                });
+                if (!shouldShow) {
+                  card.classList.add('hidden-by-color');
+                }
+              });
+            }
+            
+            // Handle ALL checkbox
+            allCheckbox.addEventListener('change', function() {
+              // When ALL is checked, remove all visibility classes
+              if (this.checked) {
+                cards.forEach(card => {
+                  card.classList.remove('hidden-by-color');
+                  card.classList.remove('hidden-by-all');
+                });
+              } else {
+                // When ALL is unchecked, update based on color checkboxes
+                updateCardVisibility();
+              }
+            });
+            
+            // Handle individual color checkboxes
+            colorCheckboxes.forEach(checkbox => {
+              checkbox.addEventListener('change', function() {
+                // When any color checkbox changes, uncheck ALL
+                allCheckbox.checked = false;
+                // Update visibility based on color checkboxes
+                updateCardVisibility();
+              });
+            });
+            
+            // Handle "only" icons
+            onlyIcons.forEach(icon => {
+              icon.addEventListener('click', function(e) {
+                e.stopPropagation(); // Prevent label click
+                const color = this.dataset.color.toLowerCase();
+                
+                // Uncheck ALL
+                allCheckbox.checked = false;
+                
+                // Uncheck all colors except the clicked one
+                colorCheckboxes.forEach(cb => {
+                  // For Multicolor cards, we need to check if the card has "multicolor" in its colors
+                  if (color === 'multicolor') {
+                    cb.checked = cb.dataset.color.toLowerCase() === color;
+                  } else {
+                    cb.checked = cb.dataset.color.toLowerCase() === color;
+                  }
+                });
+                
+                // Update visibility
+                updateCardVisibility();
+              });
+            });
+            
+            // Toggle tray
+            toggleButton.addEventListener('click', function() {
+              tray.classList.toggle('collapsed');
+            });
+            
+            // Initial visibility update
+            updateCardVisibility();
+          });
+        </script>
       </body>
       </html>
     HTML
 
     File.write(File.join(@output_dir, 'commander_cards.html'), html)
+  end
+
+  def generate_filter_tray_html
+    colors = ['White', 'Blue', 'Black', 'Red', 'Green', 'Multicolor', 'Colorless']
+    html = <<~HTML
+      <div class="filter-tray-container">
+        <div class="filter-tray">
+          <div class="filter-tray-content">
+            #{colors.map { |color| generate_filter_label(color) }.join("\n")}
+          </div>
+        </div>
+      </div>
+    HTML
+    html
+  end
+
+  def generate_filter_label(color)
+    color_id = color.downcase
+    <<~HTML
+      <div class="filter-label-wrapper" data-color="#{color_id}">
+        <input type="checkbox" id="filter-#{color_id}" class="filter-checkbox" data-color="#{color_id}">
+        <label for="filter-#{color_id}" class="filter-label">
+          <span class="filter-text filter-text-#{color_id}">#{color}</span>
+          <span class="only-icon" data-color="#{color_id}" title="Show only #{color} cards">👁️</span>
+        </label>
+      </div>
+    HTML
+  end
+
+  def generate_css
+    <<~CSS
+      /* Reset and base styles */
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        line-height: 1.5;
+        color: #333;
+        background: #f5f5f5;
+        padding: 20px;
+      }
+
+      /* Filter tray container */
+      .filter-tray-container {
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        background: #f5f5f5;
+        padding: 10px 0;
+        margin-bottom: 20px;
+        border-bottom: 1px solid #ddd;
+      }
+
+      .filter-tray {
+        max-width: 1600px;
+        margin: 0 auto;
+        padding: 0 20px;
+      }
+
+      .filter-tray-content {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+      }
+
+      /* Filter label wrapper */
+      .filter-label-wrapper {
+        position: relative;
+        height: 32px;
+        min-width: 120px;
+        flex: 0 1 auto;
+      }
+
+      /* Filter checkbox */
+      .filter-checkbox {
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 16px;
+        height: 16px;
+        margin: 0;
+        z-index: 2;
+        cursor: pointer;
+      }
+
+      /* Filter label */
+      .filter-label {
+        position: relative;
+        display: block;
+        height: 100%;
+        padding: 0 32px 0 24px;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .filter-label:hover {
+        background: #f8f8f8;
+        border-color: #ccc;
+      }
+
+      /* Filter text */
+      .filter-text {
+        display: block;
+        height: 100%;
+        line-height: 32px;
+        font-size: 14px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        pointer-events: none;
+      }
+
+      /* Colored filter text classes (restored) */
+      .filter-text-white {
+         background: #fff; color: #333; border: 1px solid #ddd; border-radius: 4px; padding: 2px 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+      }
+      .filter-text-blue {
+         background: #0070BA; color: #fff; border-radius: 4px; padding: 2px 8px;
+      }
+      .filter-text-black {
+         background: #150B00; color: #fff; border-radius: 4px; padding: 2px 8px;
+      }
+      .filter-text-red {
+         background: #D3202A; color: #fff; border-radius: 4px; padding: 2px 8px;
+      }
+      .filter-text-green {
+         background: #00733E; color: #fff; border-radius: 4px; padding: 2px 8px;
+      }
+      .filter-text-multicolor {
+         background: linear-gradient(90deg, #0070BA 0%, #D3202A 50%, #00733E 100%); color: #fff; border-radius: 4px; padding: 2px 8px;
+      }
+      .filter-text-colorless {
+         background: #e0e0e0; color: #333; border-radius: 4px; padding: 2px 8px;
+      }
+
+      /* Only icon */
+      .only-icon {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        color: #666;
+        cursor: pointer;
+        z-index: 2;
+        transition: color 0.2s;
+        user-select: none;
+      }
+
+      .only-icon:hover {
+        color: #333;
+      }
+
+      /* Card grid */
+      .card-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 20px;
+        max-width: 1600px;
+        margin: 0 auto;
+        padding: 0 20px;
+      }
+
+      @media (min-width: 1400px) {
+        .card-grid {
+          grid-template-columns: repeat(4, 1fr);
+        }
+      }
+
+      @media (min-width: 1000px) and (max-width: 1399px) {
+        .card-grid {
+          grid-template-columns: repeat(3, 1fr);
+        }
+      }
+
+      @media (min-width: 600px) and (max-width: 999px) {
+        .card-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+
+      @media (max-width: 599px) {
+        .card-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      /* Card styles */
+      .card {
+        position: relative;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 15px;
+        transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s, visibility 0.2s;
+        min-width: 0;
+        cursor: pointer;
+      }
+
+      .card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0, 0.1);
+      }
+
+      .card.hidden-by-color {
+        opacity: 0; visibility: hidden; pointer-events: none; position: absolute;
+      }
+
+      .card.hidden-by-all {
+        display: none;
+      }
+
+      /* Rest of your existing card styles... */
+      #{generate_card_css}
+    CSS
   end
 end
 

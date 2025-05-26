@@ -1,0 +1,14 @@
+services:
+- type: web
+  name: mtglist-price-proxy
+  env: ruby
+  buildCommand: bundle install
+  startCommand: bundle exec rackup price_proxy.rb -o 0.0.0.0 -p $PORT
+  envVars:
+    - key: RACK_ENV
+      value: production
+    - key: DEBUG_MODE
+      value: "false"
+    - key: RUBY_VERSION
+      value: "3.3.0"
+  plan: free 

@@ -71,18 +71,164 @@ module RequestHandler
           JS
           $file_logger.info("Request #{request_id}: Initial page state: #{page_state.inspect}")
           
-          # Wait a bit for dynamic content
-          sleep(2)
+          # Wait longer for dynamic content to load
+          $file_logger.info("Request #{request_id}: Waiting 5 seconds for dynamic content to load...")
+          sleep(5)
+          $file_logger.info("Request #{request_id}: Finished waiting for dynamic content")
           
-          # Wait for the search results to appear
+          # Additional check for page state after sleep
+          page_state = search_page.evaluate(<<~JS)
+            function() {
+              return {
+                readyState: document.readyState,
+                hasSearchResults: !!document.querySelector('.search-results'),
+                hasProductCards: !!document.querySelector('.product-card__product'),
+                searchResultsCount: document.querySelectorAll('.search-results .product-card__product').length
+              };
+            }
+          JS
+          $file_logger.info("Request #{request_id}: Page state after sleep: #{page_state.inspect}")
+          
+          # Wait for the search results to appear with increased timeout
           begin
-            search_page.wait_for_selector('.search-results', timeout: 30000)
-            $file_logger.info("Request #{request_id}: Search results loaded")
+            $file_logger.info("Request #{request_id}: Waiting for search results container...")
+            search_page.wait_for_selector('.search-results', timeout: 45000)
+            $file_logger.info("Request #{request_id}: Search results container found")
           rescue => e
             $file_logger.error("Request #{request_id}: Error waiting for search results: #{e.message}")
             raise
           end
-          
+
+          # Wait for the product card to appear with increased timeout
+          begin
+            $file_logger.info("Request #{request_id}: Waiting for product cards...")
+            search_page.wait_for_selector('.product-card__product', timeout: 45000)
+            $file_logger.info("Request #{request_id}: Product card(s) found")
+            
+            # Additional check for actual product cards
+            product_count = search_page.evaluate(<<~JS)
+              () => document.querySelectorAll('.product-card__product').length
+            JS
+            $file_logger.info("Request #{request_id}: Found #{product_count} product cards")
+            
+            # Get detailed information about the found card(s)
+            card_details = search_page.evaluate(<<~JS)
+              () => {
+                const cards = Array.from(document.querySelectorAll('.product-card__product'));
+                return cards.map(card => {
+                  // Try multiple possible selectors for price, including the inventory price
+                  const priceSelectors = [
+                    '.inventory__price-with-shipping',
+                    '.product-card__price',
+                    '.price-point__price',
+                    '[data-testid="product-price"]',
+                    '.product-card__price-point',
+                    '.price-point'
+                  ];
+                  
+                  // Try multiple possible selectors for set
+                  const setSelectors = [
+                    '.product-card__set',
+                    '.product-card__set-name',
+                    '[data-testid="product-set"]',
+                    '.set-name'
+                  ];
+                  
+                  // Log all possible price elements found with their full context
+                  const priceElements = priceSelectors.map(selector => {
+                    const element = card.querySelector(selector);
+                    return {
+                      selector,
+                      found: !!element,
+                      text: element?.textContent?.trim() || 'not found',
+                      html: element?.outerHTML || 'not found',
+                      parentHtml: element?.parentElement?.outerHTML || 'not found',
+                      // Get all price-related elements in the card for context
+                      allPriceElements: Array.from(card.querySelectorAll('[class*="price"]')).map(el => ({
+                        class: el.className,
+                        text: el.textContent.trim(),
+                        html: el.outerHTML
+                      }))
+                    };
+                  });
+                  
+                  // Log all possible set elements found
+                  const setElements = setSelectors.map(selector => ({
+                    selector,
+                    found: !!card.querySelector(selector),
+                    text: card.querySelector(selector)?.textContent?.trim() || 'not found',
+                    html: card.querySelector(selector)?.outerHTML || 'not found'
+                  }));
+                  
+                  // Get the first found price and set
+                  const price = priceElements.find(e => e.found)?.text || 'No price found';
+                  const set = setElements.find(e => e.found)?.text || 'No set found';
+                  
+                  return {
+                    title: card.querySelector('.product-card__title')?.textContent?.trim() || 'No title found',
+                    price,
+                    set,
+                    priceElements,
+                    setElements,
+                    // Log the entire card HTML for debugging
+                    fullCardHtml: card.outerHTML
+                  };
+                });
+              }
+            JS
+            $file_logger.info("Request #{request_id}: Searching for card: '#{card_name}'")
+            $file_logger.info("Request #{request_id}: Found card details: #{JSON.pretty_generate(card_details)}")
+            
+            # If we found a card but no price, wait a bit longer and try again
+            if card_details.any? { |card| card['price'] == 'No price found' }
+              $file_logger.info("Request #{request_id}: Found card but no price, waiting additional 2 seconds...")
+              sleep(2)
+              
+              # Try one more time after waiting with updated selectors
+              card_details = search_page.evaluate(<<~JS)
+                () => {
+                  const cards = Array.from(document.querySelectorAll('.product-card__product'));
+                  return cards.map(card => {
+                    // Try to find the price with the specific inventory class first
+                    const priceElement = card.querySelector('.inventory__price-with-shipping, .product-card__price, .price-point__price, [data-testid="product-price"]');
+                    const setElement = card.querySelector('.product-card__set, .product-card__set-name, [data-testid="product-set"]');
+                    
+                    // Log all elements with price in their class name for debugging
+                    const allPriceElements = Array.from(card.querySelectorAll('[class*="price"]')).map(el => ({
+                      class: el.className,
+                      text: el.textContent.trim(),
+                      html: el.outerHTML
+                    }));
+                    
+                    return {
+                      title: card.querySelector('.product-card__title')?.textContent?.trim() || 'No title found',
+                      price: priceElement?.textContent?.trim() || 'No price found',
+                      set: setElement?.textContent?.trim() || 'No set found',
+                      priceHtml: priceElement?.outerHTML || 'not found',
+                      setHtml: setElement?.outerHTML || 'not found',
+                      allPriceElements
+                    };
+                  });
+                }
+              JS
+              $file_logger.info("Request #{request_id}: Card details after additional wait: #{JSON.pretty_generate(card_details)}")
+            end
+            
+            # Additional check for any potential redirects or search refinements
+            page_info = search_page.evaluate(<<~JS)
+              () => ({
+                currentUrl: window.location.href,
+                searchRefinement: document.querySelector('.search-refinement')?.textContent.trim(),
+                searchResultsHeader: document.querySelector('.search-results__header')?.textContent.trim(),
+                searchResultsCount: document.querySelector('.search-results__count')?.textContent.trim()
+              })
+            JS
+            $file_logger.info("Request #{request_id}: Page information: #{JSON.pretty_generate(page_info)}")
+          rescue => e
+            $file_logger.error("Request #{request_id}: Error waiting for product card(s): #{e.message}")
+            raise
+          end
+
           # Log the page state again
           page_state = search_page.evaluate(<<~JS)
             function() {

@@ -51,20 +51,54 @@ module PriceExtractor
           return null;
         }
         
-        // Create and inspect the regex object
-        const priceRegex = /\$\d+\.\d{2}/;  // Simple match for $XX.XX
+        console.log('Processing price text:', {
+          original: priceText,
+          cleaned: priceText.replace(/[^\d.]/g, ''),
+          hasDollarSign: priceText.includes('$'),
+          length: priceText.length
+        });
+        
+        // Updated regex to handle prices with commas and optional decimal places
+        const priceRegex = /\$[\d,]+(\.\d{2})?/;
         
         // Test if the price matches the pattern
-        if (!priceRegex.test(priceText)) {
+        const matches = priceRegex.test(priceText);
+        console.log('Price regex test:', {
+          matches,
+          pattern: priceRegex.toString(),
+          testResult: matches ? 'matched' : 'no match',
+          input: priceText
+        });
+        
+        if (!matches) {
           console.log('No price pattern found in:', priceText);
           return null;
         }
         
-        // Extract just the numeric part (remove the $ sign)
-        const numericStr = priceText.slice(1);
+        // Extract just the numeric part (remove $ and commas)
+        const numericStr = priceText.replace(/[^\d.]/g, '');
         const result = parseFloat(numericStr);
-        console.log('Extracted numeric price:', result, 'from:', numericStr);
-        return isNaN(result) ? null : result;
+        
+        console.log('Price extraction result:', {
+          numericStr,
+          parsedResult: result,
+          isNaN: isNaN(result),
+          originalText: priceText,
+          cleanedText: numericStr,
+          validation: {
+            isPositive: result > 0,
+            isFinite: isFinite(result),
+            isValid: result > 0 && isFinite(result)
+          }
+        });
+        
+        // Only return if we have a valid positive number
+        if (isNaN(result) || !isFinite(result) || result <= 0) {
+          console.log('Invalid price value:', result);
+          return null;
+        }
+        
+        return result;
       }
 
       function isExactCardMatch(title, cardName) {
@@ -74,12 +108,15 @@ module PriceExtractor
         }
         
         // Normalize both strings
-        const normalizedTitle = title.toLowerCase().trim()
-          .replace(/\s+/g, ' ')
-          .replace(/[^a-z0-9\s]/g, ''); // Remove special characters
-        const normalizedCardName = String(cardName).toLowerCase().trim()
-          .replace(/\s+/g, ' ')
-          .replace(/[^a-z0-9\s]/g, ''); // Remove special characters
+        const normalizeString = (str) => {
+          return String(str).toLowerCase().trim()
+            .replace(/\s+/g, ' ')  // Replace multiple spaces with single space
+            .replace(/[^a-z0-9\s]/g, '')  // Remove special characters
+            .replace(/\b(the|a|an)\b/g, '');  // Remove common articles
+        };
+        
+        const normalizedTitle = normalizeString(title);
+        const normalizedCardName = normalizeString(cardName);
         
         console.log('Detailed card name comparison:', {
           originalTitle: title,
@@ -194,13 +231,19 @@ module PriceExtractor
         const productCards = Array.from(document.querySelectorAll('.product-card__product, .product-card'));
         console.log(`Found ${productCards.length} product cards with specific selectors`);
 
-        // Log the search results container first
+        // Log the search results container first (and log the full outerHTML of the product card if it exists)
         const searchResults = document.querySelector('.search-results, [class*="search-results"]');
         console.log('Search results container:', searchResults ? {
           className: searchResults.className,
           childCount: searchResults.children.length,
           html: searchResults.outerHTML.slice(0, 500)
         } : 'Not found');
+        const productCard = document.querySelector('.product-card__product');
+        if (productCard) {
+          console.log("Full outerHTML of product card (if any):", productCard.outerHTML);
+        } else {
+           console.log("No product card found (outerHTML not available).");
+        }
 
         // Process each product card
         const validProducts = productCards.map((card, index) => {
@@ -227,37 +270,17 @@ module PriceExtractor
             hasTitle: !!titleElement,
             hasPrice: !!priceElement,
             hasLink: !!linkElement,
+            titleText: titleElement?.textContent?.trim(),
+            priceText: priceElement?.textContent?.trim(),
+            linkHref: linkElement?.href,
             html: card.outerHTML.slice(0, 500)
-          });
-
-          // Log each child element that might be relevant
-          Array.from(card.children).forEach((child, i) => {
-            if (child.textContent.includes(cardName) || 
-                child.querySelector('[class*="price"]') || 
-                child.querySelector('a[href*="/product/"]')) {
-              console.log(`Relevant child ${i}:`, {
-                tagName: child.tagName,
-                className: child.className,
-                textContent: child.textContent.trim().slice(0, 100),
-                hasPrice: !!child.querySelector('[class*="price"]'),
-                hasLink: !!child.querySelector('a[href*="/product/"]')
-              });
-            }
           });
 
           if (!titleElement || !priceElement) {
             console.log('Missing required elements:', {
               hasTitle: !!titleElement,
               hasPrice: !!priceElement,
-              hasLink: !!linkElement,
-              titleElement: titleElement ? {
-                className: titleElement.className,
-                textContent: titleElement.textContent.trim()
-              } : null,
-              priceElement: priceElement ? {
-                className: priceElement.className,
-                textContent: priceElement.textContent.trim()
-              } : null
+              hasLink: !!linkElement
             });
             return null;
           }
@@ -293,7 +316,7 @@ module PriceExtractor
           }
 
           const isMatch = isExactCardMatch(title, cardName);
-          const hasValidPrice = !isNaN(price) && price > 0;
+          const hasValidPrice = price !== null && !isNaN(price) && isFinite(price) && price > 0;
           
           console.log('Match details:', {
             title,
@@ -301,19 +324,57 @@ module PriceExtractor
             isMatch,
             hasValidPrice,
             matchReason: isMatch ? 'title matches' : 'title does not match',
-            priceReason: hasValidPrice ? 'valid price' : 'invalid price'
+            priceReason: hasValidPrice ? 'valid price' : 'invalid price',
+            priceValidation: {
+              isNull: price === null,
+              isNaN: isNaN(price),
+              isFinite: isFinite(price),
+              priceValue: price,
+              greaterThanZero: price > 0,
+              originalPriceText: priceText
+            }
           });
 
+          // Modified validation logic to be more lenient while maintaining accuracy
           if (isMatch && hasValidPrice) {
-            console.log('Found valid product:', { title, price, url });
-            return { title, price, url };
-          } else {
-            console.log('Invalid product:', { 
+            console.log('Found valid product:', { 
               title, 
               price, 
+              url,
+              validationDetails: {
+                titleMatch: isMatch,
+                priceValid: hasValidPrice,
+                priceValue: price,
+                priceText: priceText,
+                priceValidation: {
+                  isNull: price === null,
+                  isNaN: isNaN(price),
+                  isFinite: isFinite(price),
+                  priceValue: price,
+                  greaterThanZero: price > 0
+                }
+              }
+            });
+            return { title, price, url };
+          } else {
+            // Log detailed rejection reason
+            const rejectionReason = !isMatch ? 'title does not match' : 'invalid price';
+            console.log('Product rejected:', {
+              title,
+              price,
               isMatch,
               hasValidPrice,
-              reason: !isMatch ? 'title does not match' : 'invalid price'
+              rejectionReason,
+              validationDetails: {
+                titleMatch: isMatch,
+                priceValid: hasValidPrice,
+                priceValue: price,
+                priceText: priceText,
+                priceNull: price === null,
+                priceNaN: isNaN(price),
+                priceFinite: isFinite(price),
+                priceGreaterThanZero: price > 0
+              }
             });
             return null;
           }

@@ -88,6 +88,19 @@ module PriceExtractor
             console.log(`Attempt ${attempts}: Found ${cards.length} cards`);
             
             if (cards.length > 0) {
+              // Log details about each card found
+              Array.from(cards).forEach((card, index) => {
+                const title = card.querySelector('.product-card__title');
+                const price = card.querySelector('.inventory__price-with-shipping');
+                console.log(`Card ${index + 1} details:`, {
+                  hasTitle: !!title,
+                  titleText: title ? title.textContent.trim() : null,
+                  hasPrice: !!price,
+                  priceText: price ? price.textContent.trim() : null,
+                  cardHTML: card.outerHTML
+                });
+              });
+              
               // Check if any card has content
               const hasContent = Array.from(cards).some(card => {
                 const title = card.querySelector('.product-card__title');

@@ -88,7 +88,10 @@ module RequestHandler
       begin
         $file_logger.info("Request #{request_id}: Processing condition: #{condition}")
         
-        condition_url = "#{lowest_priced_product['url']}?condition=#{CGI.escape(condition)}"
+        # Build the correct filtered URL
+        delimiter = lowest_priced_product['url'].include?('?') ? '&' : '?'
+        condition_param = CGI.escape(condition)
+        condition_url = "#{lowest_priced_product['url']}#{delimiter}Condition=#{condition_param}&Language=English"
         condition_page.goto(condition_url, wait_until: 'networkidle0')
         
         PriceExtractor.add_redirect_prevention(condition_page, request_id)

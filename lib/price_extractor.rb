@@ -36,11 +36,11 @@ module PriceExtractor
           return false;
         }
         
-        // Special case for THE TABERNACLE AND PENDRELL VALE
-        if (cardName.toLowerCase() === "the tabernacle and pendrell vale") {
+        // Special case for THE TABERNACLE AT PENDRELL VALE
+        if (cardName.toLowerCase() === "the tabernacle at pendrell vale") {
           // Try both with and without "The" prefix
           const withoutThe = title.toLowerCase().replace(/^the\s+/i, '');
-          const normalizedCardName = "tabernacle and pendrell vale";
+          const normalizedCardName = "tabernacle at pendrell vale";
           if (withoutThe === normalizedCardName) {
             console.log('Found match for THE TABERNACLE (without "The" prefix)');
             return true;

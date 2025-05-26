@@ -190,132 +190,93 @@ module PriceExtractor
           console.log('Warning: Elements may not be fully loaded');
         }
         
-        // Get all product cards
-        const productCards = Array.from(document.querySelectorAll([
-          '.product-card__product',
-          '.product-card',
-          '.product',
-          '[class*="product-card"]',
-          '[class*="product"]'
-        ].join(',')));
-        console.log(`Found ${productCards.length} product cards with flexible selectors`);
+        // Get all product cards - be more specific about what we're looking for
+        const productCards = Array.from(document.querySelectorAll('.product-card__product, .product-card'));
+        console.log(`Found ${productCards.length} product cards with specific selectors`);
 
-        // Log all possible card containers for debugging
-        const allPossibleCards = document.querySelectorAll('*');
-        const possibleCardContainers = Array.from(allPossibleCards).filter(el => {
-          const text = el.textContent.toLowerCase();
-          return text.includes(cardName.toLowerCase()) && 
-                 (el.querySelector('[class*="price"]') || el.querySelector('[class*="cost"]'));
-        });
-        console.log('Possible card containers found:', possibleCardContainers.map(el => ({
-          className: el.className,
-          id: el.id,
-          textContent: el.textContent.slice(0, 100),
-          childElements: Array.from(el.children).map(child => ({
-            tagName: child.tagName,
-            className: child.className,
-            textContent: child.textContent.slice(0, 50)
-          }))
-        })));
+        // Log the search results container first
+        const searchResults = document.querySelector('.search-results, [class*="search-results"]');
+        console.log('Search results container:', searchResults ? {
+          className: searchResults.className,
+          childCount: searchResults.children.length,
+          html: searchResults.outerHTML.slice(0, 500)
+        } : 'Not found');
 
         // Process each product card
         const validProducts = productCards.map((card, index) => {
           console.log(`\nProcessing card ${index + 1}:`);
           
-          // Get elements using multiple possible selectors
-          const titleElement = card.querySelector([
-            '.product-card__title',
-            '[class*="title"]',
-            '[class*="name"]',
-            '.product-card__name',
-            '.product__name',
-            'h3',
-            'h4',
-            '[class*="product-name"]',
-            '[class*="card-name"]'
-          ].join(','));
+          // Get elements using specific selectors first, then fall back to more general ones
+          const titleElement = card.querySelector('.product-card__title') || 
+                             card.querySelector('.product-card__name') ||
+                             card.querySelector('[class*="product-card__title"]') ||
+                             card.querySelector('[class*="product-card__name"]');
           
-          const priceElement = card.querySelector([
-            '.inventory__price-with-shipping',
-            '[class*="price"]',
-            '.product-card__price',
-            '.product__price',
-            '[class*="cost"]',
-            '[class*="amount"]'
-          ].join(','));
+          const priceElement = card.querySelector('.inventory__price-with-shipping') || 
+                             card.querySelector('.product-card__price') ||
+                             card.querySelector('[class*="inventory__price"]') ||
+                             card.querySelector('[class*="product-card__price"]');
           
-          const linkElement = card.querySelector([
-            'a[href*="/product/"]',
-            'a[href*="/magic/"]',
-            'a[href*="/card/"]',
-            'a[href*="tcgplayer.com"]'
-          ].join(',')) || card.closest('a[href*="tcgplayer.com"]');
+          const linkElement = card.querySelector('a[href*="/product/"]') || 
+                            card.closest('a[href*="/product/"]');
 
-          // Log the entire card HTML and all its children for debugging
-          console.log('Full card HTML:', card.outerHTML);
-          console.log('All child elements:', Array.from(card.children).map(child => ({
-            tagName: child.tagName,
-            className: child.className,
-            id: child.id,
-            textContent: child.textContent.slice(0, 100)
-          })));
+          // Log the card structure
+          console.log('Card structure:', {
+            className: card.className,
+            childCount: card.children.length,
+            hasTitle: !!titleElement,
+            hasPrice: !!priceElement,
+            hasLink: !!linkElement,
+            html: card.outerHTML.slice(0, 500)
+          });
 
-          // Log detailed element info
-          console.log('Element details:', {
-            title: titleElement ? {
-              exists: true,
-              className: titleElement.className,
-              textContent: titleElement.textContent,
-              innerText: titleElement.innerText,
-              innerHTML: titleElement.innerHTML,
-              textLength: titleElement.textContent.length
-            } : 'Not found',
-            price: priceElement ? {
-              exists: true,
-              className: priceElement.className,
-              textContent: priceElement.textContent,
-              innerText: priceElement.innerText,
-              innerHTML: priceElement.innerHTML,
-              textLength: priceElement.textContent.length
-            } : 'Not found',
-            link: linkElement ? {
-              exists: true,
-              href: linkElement.href
-            } : 'Not found'
+          // Log each child element that might be relevant
+          Array.from(card.children).forEach((child, i) => {
+            if (child.textContent.includes(cardName) || 
+                child.querySelector('[class*="price"]') || 
+                child.querySelector('a[href*="/product/"]')) {
+              console.log(`Relevant child ${i}:`, {
+                tagName: child.tagName,
+                className: child.className,
+                textContent: child.textContent.trim().slice(0, 100),
+                hasPrice: !!child.querySelector('[class*="price"]'),
+                hasLink: !!child.querySelector('a[href*="/product/"]')
+              });
+            }
           });
 
           if (!titleElement || !priceElement) {
             console.log('Missing required elements:', {
               hasTitle: !!titleElement,
               hasPrice: !!priceElement,
-              hasLink: !!linkElement
+              hasLink: !!linkElement,
+              titleElement: titleElement ? {
+                className: titleElement.className,
+                textContent: titleElement.textContent.trim()
+              } : null,
+              priceElement: priceElement ? {
+                className: priceElement.className,
+                textContent: priceElement.textContent.trim()
+              } : null
             });
             return null;
           }
 
-          // Get the text content with fallbacks
-          const title = titleElement.textContent.trim() || 
-                      titleElement.innerText.trim() || 
-                      titleElement.innerHTML.trim();
-          const priceText = priceElement.textContent.trim() || 
-                          priceElement.innerText.trim() || 
-                          priceElement.innerHTML.trim();
+          // Get the text content
+          const title = titleElement.textContent.trim();
+          const priceText = priceElement.textContent.trim();
           
-          console.log('Extracted text content:', {
+          console.log('Extracted content:', {
             title,
             priceText,
             titleLength: title.length,
-            priceTextLength: priceText.length,
-            titleElementType: titleElement.tagName,
-            priceElementType: priceElement.tagName
+            priceTextLength: priceText.length
           });
 
           if (!title || !priceText) {
             console.log('Empty text content:', {
               titleEmpty: !title,
-              priceTextEmpty: !priceText,
-              titleElementHTML: titleElement.outerHTML,
-              priceElementHTML: priceElement.outerHTML
+              priceTextEmpty: !priceText
             });
             return null;
           }
@@ -334,14 +295,17 @@ module PriceExtractor
           const isMatch = isExactCardMatch(title, cardName);
           const hasValidPrice = !isNaN(price) && price > 0;
           
+          console.log('Match details:', {
+            title,
+            price,
+            isMatch,
+            hasValidPrice,
+            matchReason: isMatch ? 'title matches' : 'title does not match',
+            priceReason: hasValidPrice ? 'valid price' : 'invalid price'
+          });
+
           if (isMatch && hasValidPrice) {
-            console.log('Found valid product:', { 
-              title, 
-              price, 
-              url,
-              isMatch,
-              hasValidPrice
-            });
+            console.log('Found valid product:', { title, price, url });
             return { title, price, url };
           } else {
             console.log('Invalid product:', { 
@@ -355,10 +319,10 @@ module PriceExtractor
           }
         }).filter(Boolean);
 
-        console.log(`Found ${validProducts.length} valid products`);
+        console.log(`Found ${validProducts.length} valid products after filtering`);
 
         if (validProducts.length === 0) {
-          console.log('No valid products found');
+          console.log('No valid products found. Card name:', cardName);
           return null;
         }
 

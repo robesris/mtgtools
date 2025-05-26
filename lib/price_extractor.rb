@@ -8,6 +8,43 @@ module PriceExtractor
       const cardName = JSON.parse(params).cardName;
       console.log('Searching for card:', cardName);
       
+      // Add initial page content logging
+      console.log('Initial page state:', {
+        url: window.location.href,
+        title: document.title,
+        hasSearchResults: !!document.querySelector('.search-results'),
+        hasProductCards: !!document.querySelector('.product-card__product'),
+        bodyContent: document.body.textContent.slice(0, 500) + '...', // First 500 chars of body content
+        searchForm: document.querySelector('form[action*="search"]') ? {
+          action: document.querySelector('form[action*="search"]').action,
+          method: document.querySelector('form[action*="search"]').method,
+          html: document.querySelector('form[action*="search"]').outerHTML
+        } : 'No search form found'
+      });
+
+      // Log any error messages that might be present
+      const errorMessages = Array.from(document.querySelectorAll('.error-message, .alert, .message')).map(el => ({
+        text: el.textContent.trim(),
+        className: el.className,
+        html: el.outerHTML
+      }));
+      if (errorMessages.length > 0) {
+        console.log('Found error messages:', errorMessages);
+      }
+
+      // Log the search input if it exists
+      const searchInput = document.querySelector('input[type="search"], input[name*="search"], input[placeholder*="search"]');
+      if (searchInput) {
+        console.log('Search input found:', {
+          value: searchInput.value,
+          name: searchInput.name,
+          placeholder: searchInput.placeholder,
+          html: searchInput.outerHTML
+        });
+      } else {
+        console.log('No search input found');
+      }
+
       function extractNumericPrice(priceText) {
         if (!priceText) {
           console.log('No price text provided');

@@ -8,21 +8,42 @@ module ListingEvaluator
         var listingItems = document.querySelectorAll('.listing-item');
         var listings = [];
         
+        // Log the total number of listings found
+        console.log('Total listings found:', listingItems.length);
+        
         // First, collect all listings for logging
         listingItems.forEach(function(item, index) {
+          // Log all possible price elements for debugging
+          var allPriceElements = item.querySelectorAll('[class*="price"]');
+          console.log('Listing', index + 1, 'price elements:', Array.from(allPriceElements).map(el => ({
+            className: el.className,
+            text: el.textContent.trim(),
+            html: el.outerHTML
+          })));
+          
           var basePrice = item.querySelector('.listing-item__listing-data__info__price');
           var shipping = item.querySelector('.shipping-messages__price');
+          
+          // Log if we found the expected elements
+          console.log('Listing', index + 1, 'element search:', {
+            foundBasePrice: !!basePrice,
+            foundShipping: !!shipping,
+            basePriceClass: basePrice ? basePrice.className : null,
+            shippingClass: shipping ? shipping.className : null
+          });
           
           listings.push({
             index: index,
             containerClasses: item.className,
             basePrice: basePrice ? {
               text: basePrice.textContent.trim(),
-              classes: basePrice.className
+              classes: basePrice.className,
+              html: basePrice.outerHTML  // Include full HTML for debugging
             } : null,
             shipping: shipping ? {
               text: shipping.textContent.trim(),
-              classes: shipping.className
+              classes: shipping.className,
+              html: shipping.outerHTML  // Include full HTML for debugging
             } : null,
             html: item.outerHTML
           });
@@ -55,15 +76,30 @@ module ListingEvaluator
               var shippingMatch = shippingText.match(/\\$([0-9.]+)/);
               var shippingPrice = shippingMatch ? parseFloat(shippingMatch[1]) : 0;
               
+              // Log the shipping details for debugging
+              console.log('Shipping details:', {
+                shippingText,
+                shippingMatch,
+                shippingPrice,
+                shippingElement: shipping ? {
+                  text: shipping.textContent,
+                  html: shipping.outerHTML,
+                  classes: shipping.className
+                } : null
+              });
+              
               priceData = {
                 success: true,
                 found: true,
                 price: (price + shippingPrice).toFixed(2),
+                basePrice: price.toFixed(2),
+                shippingPrice: shippingPrice.toFixed(2),
                 url: window.location.href,
                 details: {
                   basePrice: price.toFixed(2),
                   shippingPrice: shippingPrice.toFixed(2),
-                  shippingText: shippingText
+                  shippingText: shippingText,
+                  shippingElement: shipping ? shipping.outerHTML : null
                 }
               };
             }
@@ -100,13 +136,33 @@ module ListingEvaluator
       listings_html = page.evaluate(LISTING_EVALUATION_JS)
       
       if listings_html.is_a?(Hash) && listings_html['success'] && listings_html['listings'][0]
+        # Log the full HTML of the first listing for debugging
+        $file_logger.info("Request #{request_id}: === FULL LISTING HTML ===")
+        $file_logger.info(listings_html['listings'][0]['html'])
+        $file_logger.info("=== END FULL LISTING HTML ===")
+        
+        # Log the exact text content we're getting
+        $file_logger.info("Request #{request_id}: === EXACT TEXT CONTENT ===")
+        $file_logger.info("Base price element text: #{listings_html['listings'][0]['basePrice']['text']}")
+        $file_logger.info("Shipping element text: #{listings_html['listings'][0]['shipping']&.dig('text')}")
+        $file_logger.info("=== END EXACT TEXT CONTENT ===")
+        
         base_price = PriceProcessor.parse_base_price(listings_html['listings'][0]['basePrice']['text'])
         shipping_price = PriceProcessor.calculate_shipping_price(listings_html['listings'][0])
-        $file_logger.info("Request #{request_id}: Found valid price: $#{base_price}")
+        
+        # Log detailed price information
+        $file_logger.info("Request #{request_id}: Price details:")
+        $file_logger.info("  Base price text: #{listings_html['listings'][0]['basePrice']['text']}")
+        $file_logger.info("  Base price cents: #{base_price}")
+        $file_logger.info("  Shipping text: #{listings_html['listings'][0]['shipping']&.dig('text')}")
+        $file_logger.info("  Shipping cents: #{shipping_price}")
+        $file_logger.info("  Total price: #{PriceProcessor.total_price_str(base_price, shipping_price)}")
         
         {
           'success' => true,
-          'price' => PriceProcessor.total_price_str(base_price, shipping_price).gsub(/[^\d.]/, ''),
+          'price' => PriceProcessor.total_price_str(base_price, shipping_price),
+          'base_price' => PriceProcessor.total_price_str(base_price, 0),
+          'shipping' => PriceProcessor.total_price_str(0, shipping_price),
           'url' => page.url,
           'listings_html' => listings_html  # Include the full listings data for logging
         }

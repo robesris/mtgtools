@@ -19,14 +19,19 @@ module PriceProcessor
   def self.calculate_shipping_price(listing)
     return 0 unless listing.is_a?(Hash)
     
-    shipping_text = listing['shipping'] || listing[:shipping]
+    shipping_text = listing['shipping']&.dig('text') || listing[:shipping]&.dig('text')
     return 0 unless shipping_text.is_a?(String)
     
     # Handle free shipping
     return 0 if shipping_text.downcase.include?('free')
     
-    # Parse shipping price
-    parse_base_price(shipping_text)
+    # Extract just the numeric price from text like "+ $0.99 Shipping"
+    # The pattern now explicitly looks for a dollar sign followed by digits and optional decimal
+    price_match = shipping_text.match(/\+\s*\$(\d+\.?\d*)/)
+    return 0 unless price_match
+    
+    # Convert to cents
+    (price_match[1].to_f * 100).round
   end
 
   def self.total_price_str(base_price_cents, shipping_price_cents)

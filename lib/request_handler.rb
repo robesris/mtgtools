@@ -101,8 +101,13 @@ module RequestHandler
         
         return nil unless result && result.is_a?(Hash) && result['success']
         
+        # Extract base price and shipping from the result
+        base_price = result['base_price'].to_s.gsub(/\$/,'')
+        shipping_price = result['shipping'].to_s.gsub(/\$/,'')
+        
         {
-          'price' => result['price'].to_s.gsub(/\$/,''),
+          'price' => base_price,
+          'shipping' => shipping_price,
           'url' => result['url']
         }
       ensure
@@ -112,7 +117,20 @@ module RequestHandler
 
     def format_success_response(prices, legality, card_name, request_id)
       $file_logger.info("Request #{request_id}: Final prices: #{prices.inspect}")
-      formatted_prices = PriceProcessor.format_prices(prices)
+      formatted_prices = {}
+      
+      prices.each do |condition, data|
+        base_price = data['price'].to_s.gsub(/\$/,'')
+        shipping_price = data['shipping'] ? data['shipping'].to_s.gsub(/\$/,'') : '0.00'
+        total_price = (base_price.to_f + shipping_price.to_f).round(2).to_s
+        
+        formatted_prices[condition] = {
+          'price' => "$#{total_price}",
+          'base_price' => "$#{base_price}",
+          'shipping' => "$#{shipping_price}",
+          'url' => data['url']
+        }
+      end
       
       response = { 
         prices: formatted_prices,

@@ -276,7 +276,8 @@ module PriceExtractor
             } : null,
             shipping: shipping ? {
               text: shipping.textContent.trim(),
-              classes: shipping.className
+              classes: shipping.className,
+              html: shipping.outerHTML  // Add the full HTML for debugging
             } : null,
             html: item.outerHTML
           });
@@ -309,15 +310,30 @@ module PriceExtractor
               var shippingMatch = shippingText.match(/\\$([0-9.]+)/);
               var shippingPrice = shippingMatch ? parseFloat(shippingMatch[1]) : 0;
               
+              // Log the shipping details for debugging
+              console.log('Shipping details:', {
+                shippingText,
+                shippingMatch,
+                shippingPrice,
+                shippingElement: shipping ? {
+                  text: shipping.textContent,
+                  html: shipping.outerHTML,
+                  classes: shipping.className
+                } : null
+              });
+              
               priceData = {
                 success: true,
                 found: true,
-                price: (price + shippingPrice).toFixed(2),
+                price: (price + shippingPrice).toFixed(2),  // Total price
+                basePrice: price.toFixed(2),  // Base price only
+                shippingPrice: shippingPrice.toFixed(2),  // Shipping price only
                 url: window.location.href,  // Use the current URL which is our filtered product page
                 details: {
                   basePrice: price.toFixed(2),
                   shippingPrice: shippingPrice.toFixed(2),
-                  shippingText: shippingText
+                  shippingText: shippingText,
+                  shippingElement: shipping ? shipping.outerHTML : null  // Add shipping element HTML for debugging
                 }
               };
             }
@@ -425,11 +441,20 @@ module PriceExtractor
         if listings_html.is_a?(Hash) && listings_html['success'] && listings_html['listings'][0]
           base_price = PriceProcessor.parse_base_price(listings_html['listings'][0]['basePrice']['text'])
           shipping_price = PriceProcessor.calculate_shipping_price(listings_html['listings'][0])
-          $file_logger.info("Request #{request_id}: Found valid price: $#{base_price}")
+          
+          # Log detailed price information
+          $file_logger.info("Request #{request_id}: Price details:")
+          $file_logger.info("  Base price text: #{listings_html['listings'][0]['basePrice']['text']}")
+          $file_logger.info("  Base price cents: #{base_price}")
+          $file_logger.info("  Shipping text: #{listings_html['listings'][0]['shipping']&.dig('text')}")
+          $file_logger.info("  Shipping cents: #{shipping_price}")
+          $file_logger.info("  Total price: #{PriceProcessor.total_price_str(base_price, shipping_price)}")
           
           {
             'success' => true,
-            'price' => PriceProcessor.total_price_str(base_price, shipping_price).gsub(/[^\d.]/, ''), # Ensure only numeric string
+            'price' => PriceProcessor.total_price_str(base_price, shipping_price),
+            'base_price' => PriceProcessor.total_price_str(base_price, 0),
+            'shipping' => PriceProcessor.total_price_str(0, shipping_price),
             'url' => page.url  # Use the current page URL which is our filtered product page
           }
         else

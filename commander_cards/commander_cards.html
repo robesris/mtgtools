@@ -833,7 +833,7 @@
             if (data.prices['Lightly Played']) {
               const lp = data.prices['Lightly Played'];
               html.push(`Lightly Played: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(lp).toFixed(2)}</a>`);
-            }
+                }
             if (data.timestamp) {
               const timestamp = new Date(data.timestamp * 1000);
               const now = new Date();

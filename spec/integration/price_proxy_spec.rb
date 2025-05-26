@@ -151,7 +151,7 @@ RSpec.describe 'Price Proxy Integration' do
     # Expect exact prices for Mox Diamond
     expect(data['prices']['Near Mint']['price']).to eq('$651.00')
     expect(data['prices']['Lightly Played']['price']).to eq('$600.00')
-
+    
     # Verify price format
     data['prices'].each do |condition, price_data|
       expect(price_data).to have_key('price')
@@ -176,8 +176,19 @@ RSpec.describe 'Price Proxy Integration' do
     expect(data['prices']).to have_key('Near Mint')
     expect(data['prices']).to have_key('Lightly Played')
 
-    expect(data['prices']['Near Mint']['price']).to eq('$15.94')
-    expect(data['prices']['Lightly Played']['price']).to eq('$17.28')
+    # Verify Near Mint price details
+    nm_data = data['prices']['Near Mint']
+    expect(nm_data['price']).to eq('$15.94')
+    expect(nm_data['base_price']).to eq('$14.62')
+    expect(nm_data['shipping']).to eq('$0.00')
+    expect(nm_data['url']).to include('tcgplayer.com')
+
+    # Verify Lightly Played price details
+    lp_data = data['prices']['Lightly Played']
+    expect(lp_data['price']).to eq('$17.28')
+    expect(lp_data['base_price']).to eq('$15.59')
+    expect(lp_data['shipping']).to eq('$1.69')
+    expect(lp_data['url']).to include('tcgplayer.com')
   end
 
   xit 'handles invalid card names gracefully' do

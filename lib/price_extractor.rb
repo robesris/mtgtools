@@ -74,8 +74,12 @@ module PriceExtractor
         }
         
         // Normalize both strings
-        const normalizedTitle = title.toLowerCase().trim().replace(/\s+/g, ' ');
-        const normalizedCardName = String(cardName).toLowerCase().trim().replace(/\s+/g, ' ');
+        const normalizedTitle = title.toLowerCase().trim()
+          .replace(/\s+/g, ' ')
+          .replace(/[^a-z0-9\s]/g, ''); // Remove special characters
+        const normalizedCardName = String(cardName).toLowerCase().trim()
+          .replace(/\s+/g, ' ')
+          .replace(/[^a-z0-9\s]/g, ''); // Remove special characters
         
         console.log('Detailed card name comparison:', {
           originalTitle: title,
@@ -85,13 +89,19 @@ module PriceExtractor
           titleLength: normalizedTitle.length,
           cardNameLength: normalizedCardName.length,
           exactMatch: normalizedTitle === normalizedCardName,
-          titleChars: normalizedTitle.split('').map(c => c.charCodeAt(0)),
-          cardNameChars: normalizedCardName.split('').map(c => c.charCodeAt(0))
+          containsMatch: normalizedTitle.includes(normalizedCardName),
+          cardNameInTitle: normalizedTitle.indexOf(normalizedCardName) !== -1
         });
         
         // First try exact match
         if (normalizedTitle === normalizedCardName) {
           console.log('Found exact match');
+          return true;
+        }
+        
+        // Then try contains match
+        if (normalizedTitle.includes(normalizedCardName)) {
+          console.log('Found contains match');
           return true;
         }
         
@@ -191,11 +201,19 @@ module PriceExtractor
           // Get elements using multiple possible selectors
           const titleElement = card.querySelector('.product-card__title') || 
                              card.querySelector('[class*="title"]') ||
-                             card.querySelector('[class*="name"]');
+                             card.querySelector('[class*="name"]') ||
+                             card.querySelector('.product-card__name') ||
+                             card.querySelector('.product__name');
           const priceElement = card.querySelector('.inventory__price-with-shipping') || 
-                             card.querySelector('[class*="price"]');
+                             card.querySelector('[class*="price"]') ||
+                             card.querySelector('.product-card__price') ||
+                             card.querySelector('.product__price');
           const linkElement = card.querySelector('a[href*="/product/"]') || 
-                            card.closest('a[href*="/product/"]');
+                            card.closest('a[href*="/product/"]') ||
+                            card.querySelector('a[href*="/magic/"]');
+
+          // Log the entire card HTML for debugging
+          console.log('Full card HTML:', card.outerHTML);
 
           // Log detailed element info
           console.log('Element details:', {

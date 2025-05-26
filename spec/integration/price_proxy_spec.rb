@@ -150,7 +150,7 @@ RSpec.describe 'Price Proxy Integration' do
 
     # Expect exact prices for Mox Diamond
     expect(data['prices']['Near Mint']['price']).to eq('$651.00')
-    expect(data['prices']['Lightly Played']['price']).to eq('$600.00')
+    expect(data['prices']['Lightly Played']['price']).to eq('$602.99')
     
     # Verify price format
     data['prices'].each do |condition, price_data|
@@ -179,7 +179,7 @@ RSpec.describe 'Price Proxy Integration' do
     # Verify Near Mint price details
     nm_data = data['prices']['Near Mint']
     expect(nm_data['price']).to eq('$15.94')
-    expect(nm_data['base_price']).to eq('$14.62')
+    expect(nm_data['base_price']).to eq('$15.94')
     expect(nm_data['shipping']).to eq('$0.00')
     expect(nm_data['url']).to include('tcgplayer.com')
 

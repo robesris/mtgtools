@@ -122,12 +122,12 @@ module RequestHandler
       prices.each do |condition, data|
         base_price = data['price'].to_s.gsub(/\$/,'')
         shipping_price = data['shipping'] ? data['shipping'].to_s.gsub(/\$/,'') : '0.00'
-        total_price = (base_price.to_f + shipping_price.to_f).round(2).to_s
+        total_price = sprintf('%.2f', (base_price.to_f + shipping_price.to_f))
         
         formatted_prices[condition] = {
           'price' => "$#{total_price}",
-          'base_price' => "$#{base_price}",
-          'shipping' => "$#{shipping_price}",
+          'base_price' => "$#{sprintf('%.2f', base_price.to_f)}",
+          'shipping' => "$#{sprintf('%.2f', shipping_price.to_f)}",
           'url' => data['url']
         }
       end

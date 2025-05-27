@@ -44,6 +44,12 @@ echo "Tesseract found at: $(which tesseract)"
 echo "Tesseract version:"
 tesseract --version || (echo "Tesseract version check failed" && exit 1)
 
+# Verify Tesseract language data
+echo "Checking Tesseract language data:"
+echo "TESSDATA_PREFIX=$TESSDATA_PREFIX"
+ls -l $TESSDATA_PREFIX/eng.traineddata || (echo "Language data not found at $TESSDATA_PREFIX/eng.traineddata" && exit 1)
+echo "Language data file exists and is readable"
+
 # Set up environment variables
 export DISPLAY=:99
 export TESSDATA_PREFIX=/usr/local/share/tessdata
@@ -64,8 +70,18 @@ echo "Checking if Xvfb is running..."
 ps -p $XVFB_PID > /dev/null || (echo "Xvfb failed to start" && exit 1)
 
 echo "Running scraper script..."
-bundle exec ruby scrape_commander_cards.rb
-SCRAPER_EXIT=$?
+# Run the scraper with error handling and logging
+{
+    bundle exec ruby scrape_commander_cards.rb 2>&1 | tee scraper.log
+    SCRAPER_EXIT=${PIPESTATUS[0]}
+} || {
+    echo "Scraper failed to start"
+    SCRAPER_EXIT=1
+}
+
+echo "Scraper exit code: $SCRAPER_EXIT"
+echo "Last few lines of scraper log:"
+tail -n 50 scraper.log || echo "No scraper log found"
 
 if [ $SCRAPER_EXIT -eq 0 ]; then
     echo "Scraper completed successfully"
@@ -91,5 +107,7 @@ if [ $SCRAPER_EXIT -eq 0 ]; then
 else
     echo "Scraper failed with exit code $SCRAPER_EXIT"
     echo "=== Container startup failed ==="
+    echo "Full scraper log:"
+    cat scraper.log || echo "No scraper log available"
     exit 1
 fi 

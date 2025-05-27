@@ -3,6 +3,9 @@ services:
   name: mtglist-price-proxy
   env: docker
   dockerfilePath: ./Dockerfile
+  dockerContext: .
+  autoDeploy: true
+  branch: main
   envVars:
     - key: RACK_ENV
       value: production
@@ -10,4 +13,6 @@ services:
       value: "false"
     - key: PORT
       value: "10000"
-  plan: free 
+  plan: free
+  healthCheckPath: /
+  numInstances: 1 

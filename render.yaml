@@ -3,7 +3,7 @@ services:
   name: mtglist-price-proxy
   env: ruby
   buildCommand: |
-    apt-get update && apt-get install -y chromium
+    apt-get update && apt-get install -y chromium chromium-driver
     bundle install
   startCommand: bundle exec rackup config.ru -o 0.0.0.0 -p $PORT
   envVars:

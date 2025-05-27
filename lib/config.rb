@@ -10,8 +10,8 @@ module Config
 
     def settings
       {
-        port: @options[:port] || 4567,
-        bind: '0.0.0.0',
+        port: ENV['PORT']&.to_i || @options[:port] || 4567,
+        bind: '0.0.0.0',  # Always bind to all interfaces in production
         public_folder: 'commander_cards'
       }
     end

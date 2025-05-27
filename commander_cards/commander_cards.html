@@ -138,6 +138,44 @@
       text-overflow: ellipsis;
       z-index: 1;
       pointer-events: none;  /* Prevent text from interfering with clicks */
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+    /* Color-specific styles for filter labels */
+    .color-filter-tray label[data-color="White"] span:not(.only-icon) {
+      background: #F8F8F8;
+      color: #333;
+      border: 1px solid #ddd;
+    }
+    .color-filter-tray label[data-color="Blue"] span:not(.only-icon) {
+      background: #0070BA;
+      color: #fff;
+    }
+    .color-filter-tray label[data-color="Black"] span:not(.only-icon) {
+      background: #150B00;
+      color: #fff;
+    }
+    .color-filter-tray label[data-color="Red"] span:not(.only-icon) {
+      background: #D3202A;
+      color: #fff;
+    }
+    .color-filter-tray label[data-color="Green"] span:not(.only-icon) {
+      background: #00733E;
+      color: #fff;
+    }
+    .color-filter-tray label[data-color="Multicolor"] span:not(.only-icon) {
+      background: linear-gradient(90deg, #0070BA 0%, #D3202A 50%, #00733E 100%);
+      color: #fff;
+    }
+    .color-filter-tray label[data-color="Colorless"] span:not(.only-icon) {
+      background: #e0e0e0;
+      color: #333;
+    }
+    .color-filter-tray label[data-color="all"] span:not(.only-icon) {
+      background: none;
+      color: #333;
+      border: none;
+      padding: 2px 8px;
     }
     .color-filter-tray .only-icon {
       position: absolute;
@@ -314,14 +352,14 @@
     <div class="color-filter-tray">
       <button class="toggle-button" title="Toggle filter tray"></button>
       <div class="filter-content">
-        <label><input type="checkbox" data-color="all" checked /><span>ALL</span></label>
-        <label><input type="checkbox" data-color="White" checked /><span>White</span><span class="only-icon" data-color="White" title="Show only White cards">👁️</span></label>
-        <label><input type="checkbox" data-color="Blue" checked /><span>Blue</span><span class="only-icon" data-color="Blue" title="Show only Blue cards">👁️</span></label>
-        <label><input type="checkbox" data-color="Black" checked /><span>Black</span><span class="only-icon" data-color="Black" title="Show only Black cards">👁️</span></label>
-        <label><input type="checkbox" data-color="Red" checked /><span>Red</span><span class="only-icon" data-color="Red" title="Show only Red cards">👁️</span></label>
-        <label><input type="checkbox" data-color="Green" checked /><span>Green</span><span class="only-icon" data-color="Green" title="Show only Green cards">👁️</span></label>
-        <label><input type="checkbox" data-color="Multicolor" checked /><span>Multicolor</span><span class="only-icon" data-color="Multicolor" title="Show only Multicolor cards">👁️</span></label>
-        <label><input type="checkbox" data-color="Colorless" checked /><span>Colorless</span><span class="only-icon" data-color="Colorless" title="Show only Colorless cards">👁️</span></label>
+        <label data-color="all"><input type="checkbox" data-color="all" checked /><span>ALL</span></label>
+        <label data-color="White"><input type="checkbox" data-color="White" checked /><span>White</span><span class="only-icon" data-color="White" title="Show only White cards">👁️</span></label>
+        <label data-color="Blue"><input type="checkbox" data-color="Blue" checked /><span>Blue</span><span class="only-icon" data-color="Blue" title="Show only Blue cards">👁️</span></label>
+        <label data-color="Black"><input type="checkbox" data-color="Black" checked /><span>Black</span><span class="only-icon" data-color="Black" title="Show only Black cards">👁️</span></label>
+        <label data-color="Red"><input type="checkbox" data-color="Red" checked /><span>Red</span><span class="only-icon" data-color="Red" title="Show only Red cards">👁️</span></label>
+        <label data-color="Green"><input type="checkbox" data-color="Green" checked /><span>Green</span><span class="only-icon" data-color="Green" title="Show only Green cards">👁️</span></label>
+        <label data-color="Multicolor"><input type="checkbox" data-color="Multicolor" checked /><span>Multicolor</span><span class="only-icon" data-color="Multicolor" title="Show only Multicolor cards">👁️</span></label>
+        <label data-color="Colorless"><input type="checkbox" data-color="Colorless" checked /><span>Colorless</span><span class="only-icon" data-color="Colorless" title="Show only Colorless cards">👁️</span></label>
       </div>
     </div>
     <div>

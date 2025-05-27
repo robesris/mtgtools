@@ -6,6 +6,7 @@ services:
   dockerContext: .
   autoDeploy: true
   branch: main
+  startCommand: bundle exec rackup config.ru -o 0.0.0.0 -p 10000
   envVars:
     - key: RACK_ENV
       value: production

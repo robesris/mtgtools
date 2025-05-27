@@ -2,16 +2,19 @@ FROM ruby:3.4.3-slim
 
 # Install system dependencies
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
+    apt-get -qq -y install tesseract-ocr && \
+    apt-get -qq -y install libtesseract-dev && \
+    apt-get -qq -y install \
     chromium \
     chromium-driver \
     build-essential \
     curl \
-    tesseract-ocr \
     libmagickwand-dev \
     imagemagick \
     xvfb \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* && \
+    # Verify Tesseract installation
+    tesseract --version
 
 # Set up display for headless environment
 ENV DISPLAY=:99
@@ -24,7 +27,13 @@ WORKDIR /app
 COPY Gemfile Gemfile.lock ./
 
 # Install Ruby dependencies
-RUN bundle install --jobs 4 --retry 3
+RUN gem update --system && \
+    gem install bundler && \
+    bundle config set --local path '/usr/local/bundle' && \
+    bundle config set --local without 'development:test' && \
+    bundle install --jobs 4 --retry 3 && \
+    # Clean up any stale Xvfb lock files
+    rm -f /tmp/.X*-lock /tmp/.X11-unix/*
 
 # Copy the application files
 COPY . .
@@ -36,8 +45,9 @@ RUN chmod +x start.sh
 ENV RACK_ENV=production \
     DEBUG_MODE=false \
     PORT=10000 \
-    BUNDLE_WITHOUT="development:test" \
-    BUNDLE_DEPLOYMENT=1
+    BUNDLE_PATH=/usr/local/bundle \
+    BUNDLE_BIN=/usr/local/bundle/bin \
+    PATH="/usr/local/bundle/bin:${PATH}"
 
 # Expose the port
 EXPOSE 10000

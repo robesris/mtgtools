@@ -1,0 +1,7 @@
+tesseract-ocr
+tesseract-ocr-eng
+xvfb
+chromium
+chromium-driver
+libmagickwand-dev
+imagemagick 

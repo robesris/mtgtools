@@ -1,17 +1,57 @@
 #!/bin/bash
 
-set -e  # Exit on any error
+set -ex  # Exit on any error and print commands as they are executed
 
 echo "=== Starting container ==="
 echo "Current directory: $(pwd)"
-echo "Environment:"
+echo "Environment before setup:"
 echo "  DISPLAY=$DISPLAY"
 echo "  TESSDATA_PREFIX=$TESSDATA_PREFIX"
 echo "  PATH=$PATH"
 
-echo "Checking Tesseract installation..."
-which tesseract
-tesseract --version
+echo "Checking system information:"
+echo "User: $(whoami)"
+echo "Groups: $(groups)"
+echo "Home directory: $HOME"
+echo "Current directory contents:"
+ls -la
+
+echo "Checking package manager status:"
+if command -v apt-get &> /dev/null; then
+    echo "apt-get is available"
+    echo "apt-get version:"
+    apt-get --version || echo "Could not get apt-get version"
+    echo "Checking if we can run apt-get:"
+    apt-get -v || echo "apt-get command failed"
+else
+    echo "apt-get is not available"
+fi
+
+echo "Checking for Tesseract:"
+if ! command -v tesseract &> /dev/null; then
+    echo "Tesseract not found in PATH"
+    echo "Searching for tesseract binary:"
+    find / -name tesseract 2>/dev/null || echo "No tesseract found in root"
+    echo "Checking common locations:"
+    ls -l /usr/bin/tesseract 2>/dev/null || echo "Not in /usr/bin"
+    ls -l /usr/local/bin/tesseract 2>/dev/null || echo "Not in /usr/local/bin"
+    echo "Checking if tesseract packages are installed:"
+    dpkg -l | grep tesseract || echo "No tesseract packages found"
+    exit 1
+fi
+
+echo "Tesseract found at: $(which tesseract)"
+echo "Tesseract version:"
+tesseract --version || (echo "Tesseract version check failed" && exit 1)
+
+# Set up environment variables
+export DISPLAY=:99
+export TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata
+
+echo "Environment after setup:"
+echo "  DISPLAY=$DISPLAY"
+echo "  TESSDATA_PREFIX=$TESSDATA_PREFIX"
+echo "  PATH=$PATH"
 
 echo "Starting Xvfb..."
 Xvfb :99 -screen 0 1024x768x24 &

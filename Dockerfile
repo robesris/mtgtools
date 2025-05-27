@@ -29,21 +29,8 @@ RUN bundle install --jobs 4 --retry 3
 # Copy the application files
 COPY . .
 
-# Run the scraper script with Xvfb for headless display
-RUN echo "Starting Xvfb..." && \
-    Xvfb :99 -screen 0 1024x768x24 & \
-    echo "Waiting for Xvfb..." && \
-    sleep 3 && \
-    echo "Running scraper script..." && \
-    bundle exec ruby scrape_commander_cards.rb || (echo "Scraper failed with exit code $?" && exit 1)
-
-# Verify static files are present
-RUN ls -la commander_cards/ && \
-    test -f commander_cards/commander_cards.html && \
-    test -f commander_cards/card_prices.js && \
-    test -d commander_cards/card_images && \
-    ls -la commander_cards/card_images/ && \
-    test -f commander_cards/card_images/479531.jpg
+# Make start script executable
+RUN chmod +x start.sh
 
 # Set environment variables
 ENV RACK_ENV=production \
@@ -59,5 +46,5 @@ EXPOSE 10000
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:10000/ || exit 1
 
-# Start the application
-CMD ["bundle", "exec", "rackup", "config.ru", "-o", "0.0.0.0", "-p", "10000"] 
+# Start the application using our script
+CMD ["./start.sh"] 

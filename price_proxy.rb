@@ -26,8 +26,8 @@ require_relative 'lib/request_handler'
 ServerConfig.setup
 
 # Configure Sinatra settings
-set :port, Config.settings[:port]
-set :bind, Config.settings[:bind]
+set :port, ENV['PORT'] || Config.settings[:port]
+set :bind, '0.0.0.0'  # Always bind to all interfaces in production
 set :public_folder, Config.settings[:public_folder]
 
 # Configure CORS
@@ -117,5 +117,5 @@ get '/card_prices.js' do
   send_file File.join(settings.public_folder, 'card_prices.js')
 end
 
-puts "Price proxy server starting on http://localhost:4568"
+puts "Price proxy server starting on http://localhost:#{settings.port}"
 puts "Note: You need to install Chrome/Chromium for Puppeteer to work" 

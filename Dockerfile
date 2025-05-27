@@ -3,6 +3,7 @@ FROM ruby:3.4.3-slim
 # Install system dependencies
 RUN apt-get update && \
     apt-get -qq -y install tesseract-ocr && \
+    apt-get -qq -y install tesseract-ocr-eng && \
     apt-get -qq -y install libtesseract-dev && \
     apt-get -qq -y install \
     chromium \

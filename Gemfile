@@ -1,6 +1,7 @@
 source 'https://rubygems.org'
 
 ruby '3.4.3'  # Upgraded for Render deployment (latest supported)
+gem 'bigdecimal', '~> 3.1.4'  # (Added for Ruby 3.4.0+; multi_xml (used by httparty) requires it)
 
 gem 'nokogiri', '~> 1.15'
 gem 'httparty', '~> 0.21.0'

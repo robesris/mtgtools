@@ -30,8 +30,11 @@ RUN bundle install --jobs 4 --retry 3
 COPY . .
 
 # Run the scraper script with Xvfb for headless display
-RUN Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 & \
+RUN echo "Starting Xvfb..." && \
+    Xvfb :99 -screen 0 1024x768x24 & \
+    echo "Waiting for Xvfb..." && \
     sleep 3 && \
+    echo "Running scraper script..." && \
     bundle exec ruby scrape_commander_cards.rb || (echo "Scraper failed with exit code $?" && exit 1)
 
 # Verify static files are present

@@ -59,6 +59,13 @@ echo "  DISPLAY=$DISPLAY"
 echo "  TESSDATA_PREFIX=$TESSDATA_PREFIX"
 echo "  PATH=$PATH"
 
+# Clean up any stale Xvfb files
+echo "Cleaning up stale Xvfb files..."
+rm -f /tmp/.X*-lock /tmp/.X11-unix/* 2>/dev/null || true
+echo "Checking for running Xvfb processes..."
+pkill Xvfb 2>/dev/null || true
+sleep 1
+
 echo "Starting Xvfb..."
 Xvfb :99 -screen 0 1024x768x24 &
 XVFB_PID=$!
@@ -67,7 +74,14 @@ echo "Waiting for Xvfb..."
 sleep 3
 
 echo "Checking if Xvfb is running..."
-ps -p $XVFB_PID > /dev/null || (echo "Xvfb failed to start" && exit 1)
+if ! ps -p $XVFB_PID > /dev/null; then
+    echo "Xvfb failed to start"
+    echo "Checking Xvfb status:"
+    ps aux | grep Xvfb || true
+    echo "Checking for Xvfb lock files:"
+    ls -l /tmp/.X*-lock /tmp/.X11-unix/ 2>/dev/null || true
+    exit 1
+fi
 
 echo "Running scraper script..."
 # Run the scraper with error handling and logging

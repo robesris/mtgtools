@@ -132,9 +132,10 @@ RSpec.describe 'Price Proxy Integration' do
 
   it 'fetches card prices from TCGPlayer' do
     # Make a request to the card_info endpoint
-    response = HTTParty.get(
+    response = HTTParty.post(
       'http://localhost:4568/card_info',
-      query: { card: 'Mox Diamond' }
+      body: { card: 'Mox Diamond' }.to_json,
+      headers: { 'Content-Type' => 'application/json' }
     )
 
     expect(response.code).to eq(200)
@@ -162,9 +163,10 @@ RSpec.describe 'Price Proxy Integration' do
   end
 
   it 'fetches DRANNITH MAGISTRATE prices including shipping' do
-    response = HTTParty.get(
+    response = HTTParty.post(
       'http://localhost:4568/card_info',
-      query: { card: 'DRANNITH MAGISTRATE' }
+      body: { card: 'DRANNITH MAGISTRATE' }.to_json,
+      headers: { 'Content-Type' => 'application/json' }
     )
 
     expect(response.code).to eq(200)
@@ -193,9 +195,10 @@ RSpec.describe 'Price Proxy Integration' do
 
   xit 'handles invalid card names gracefully' do
     # Make a request with an invalid card name
-    response = HTTParty.get(
+    response = HTTParty.post(
       'http://localhost:4568/card_info',
-      query: { card: 'Not A Real Card Name 123' }
+      body: { card: 'Not A Real Card Name 123' }.to_json,
+      headers: { 'Content-Type' => 'application/json' }
     )
 
     expect(response.code).to eq(200)

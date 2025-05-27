@@ -22,13 +22,23 @@ module RequestHandler
     private
 
     def validate_request(card_name, request_id)
-      return unless card_name.nil? || card_name.empty?
-      
-      ErrorHandler.handle_puppeteer_error(ArgumentError.new("No card name provided"), request_id, "Validation")
-      raise ArgumentError, "No card name provided"
+      if card_name.nil? || card_name.empty?
+        ErrorHandler.handle_puppeteer_error(ArgumentError.new("No card name provided"), request_id, "Validation")
+        raise ArgumentError, "No card name provided"
+      end
+
+      # Validate card name format
+      unless card_name.is_a?(String) && card_name.length.between?(1, 200)
+        ErrorHandler.handle_puppeteer_error(ArgumentError.new("Invalid card name format"), request_id, "Validation")
+        raise ArgumentError, "Invalid card name format"
+      end
     end
 
     def process_card_request(card_name, request_id)
+      # Clean and normalize the card name
+      card_name = card_name.strip
+      $file_logger.info("Request #{request_id}: Processing request for card: '#{card_name}'")
+      
       legality = LegalityChecker.check_legality(card_name, request_id)
       browser = BrowserManager.get_browser
       context = BrowserManager.create_browser_context(request_id)

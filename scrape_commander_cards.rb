@@ -205,15 +205,15 @@ class CommanderCardScraper
     
     puts "Processed image dimensions: #{img.columns}x#{img.rows} pixels"
     
-    processed_path = File.join(@output_dir, 'processed_debug.jpg')
-    puts "Saving processed image to #{processed_path}"
-    img.write(processed_path)
-    puts "Processed image saved, size: #{File.size(processed_path)} bytes"
+    # Save the processed image for debugging
+    debug_path = File.join(@output_dir, 'processed_debug.jpg')
+    img.write(debug_path)
+    puts "Saving processed image to #{debug_path}"
+    puts "Processed image saved, size: #{File.size(debug_path)} bytes"
     
-    # Get bounding box data from OCR
     puts "\nRunning OCR..."
-    puts "Tesseract version: #{RTesseract.version}"
-    ocr = RTesseract.new(processed_path, lang: 'eng')
+    # Get bounding box data from OCR
+    ocr = RTesseract.new(debug_path, lang: 'eng')
     boxes = ocr.to_box
     
     # Debug: Show raw OCR box data for first few boxes
@@ -1198,7 +1198,13 @@ class CommanderCardScraper
                 priceInfo.innerHTML = '<span class="loading">Fetching prices</span>';
                 const ellipsisInterval = animateEllipsis(priceInfo.querySelector('.loading'), 'Fetching prices');
                 
-                const response = await fetch(`http://localhost:4567/card_info?card=${encodeURIComponent(cardName)}`);
+                const response = await fetch('http://localhost:4567/card_info', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({ card: cardName })
+                });
                 clearInterval(ellipsisInterval);
                 
                 if (!response.ok) {

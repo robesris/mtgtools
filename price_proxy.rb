@@ -27,6 +27,10 @@ ServerConfig.setup
 
 # Define our Sinatra application
 class PriceProxyApp < Sinatra::Base
+  # Set the root directory
+  set :root, File.dirname(__FILE__)
+  set :public_folder, File.join(File.dirname(__FILE__), 'commander_cards')
+
   # Configure CORS
   configure do
     enable :cross_origin
@@ -44,17 +48,40 @@ class PriceProxyApp < Sinatra::Base
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
   end
 
+  # Handle OPTIONS requests for CORS preflight
+  options '/card_info' do
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Max-Age"] = "1728000"
+    200
+  end
+
   # Get both card legality and prices in a single request
-  get '/card_info' do
+  post '/card_info' do
     content_type :json
-    card_name = params['card']
+    
+    # Parse JSON request body
+    begin
+      request_payload = JSON.parse(request.body.read)
+      card_name = request_payload['card']
+    rescue JSON::ParserError => e
+      $file_logger.error("Invalid JSON payload: #{e.message}")
+      status 400
+      return { error: "Invalid JSON payload" }.to_json
+    end
+
     request_id = SecureRandom.uuid
     $file_logger.info("Starting card info request #{request_id} for: #{card_name}")
 
     begin
       RequestHandler.handle_card_info_request(card_name, request_id)
     rescue ArgumentError => e
+      status 400
       { error: e.message }.to_json
+    rescue => e
+      status 500
+      { error: "Internal server error" }.to_json
     end
   end
 
@@ -135,3 +162,11 @@ end
 
 puts "Price proxy server starting on http://localhost:#{ENV['PORT'] || 4567}"
 puts "Note: You need to install Chrome/Chromium for Puppeteer to work" 
+
+# Run the app with correct host/port for local and Render
+if __FILE__ == $0
+  PriceProxyApp.run!({
+    host: '0.0.0.0',
+    port: ENV.fetch('PORT', 4567)
+  })
+end 

@@ -7,6 +7,9 @@ RUN apt-get update && \
     chromium-driver \
     build-essential \
     curl \
+    tesseract-ocr \
+    libmagickwand-dev \
+    imagemagick \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -21,10 +24,15 @@ RUN bundle install --jobs 4 --retry 3
 # Copy the application files
 COPY . .
 
+# Run the scraper script to download card images
+RUN bundle exec ruby scrape_commander_cards.rb
+
 # Verify static files are present
 RUN ls -la commander_cards/ && \
     test -f commander_cards/commander_cards.html && \
-    test -f commander_cards/card_prices.js
+    test -f commander_cards/card_prices.js && \
+    test -d commander_cards/card_images && \
+    test -f commander_cards/card_images/479531.jpg
 
 # Set environment variables
 ENV RACK_ENV=production \

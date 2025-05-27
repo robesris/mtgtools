@@ -16,7 +16,7 @@ services:
     - key: DISPLAY
       value: ":99"
     - key: TESSDATA_PREFIX
-      value: "/usr/share/tesseract-ocr/4.00/tessdata"
+      value: "/usr/local/share/tessdata"
   plan: free
   healthCheckPath: /
   numInstances: 1 

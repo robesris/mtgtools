@@ -46,7 +46,7 @@ tesseract --version || (echo "Tesseract version check failed" && exit 1)
 
 # Set up environment variables
 export DISPLAY=:99
-export TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata
+export TESSDATA_PREFIX=/usr/local/share/tessdata
 
 echo "Environment after setup:"
 echo "  DISPLAY=$DISPLAY"

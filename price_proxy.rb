@@ -1,3 +1,5 @@
+require_relative 'lib/price_proxy'
+
 require 'sinatra'
 require 'sinatra/cross_origin'
 require 'puppeteer-ruby'

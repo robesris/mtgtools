@@ -13,6 +13,7 @@ set :bind, '0.0.0.0'
 set :public_folder, PUBLIC_FOLDER
 set :static, true
 set :static_cache_control, [:public, :max_age => 300]
+set :root, __dir__  # Set the root directory to the current directory
 
 # Run our Sinatra application
 run PriceProxyApp 

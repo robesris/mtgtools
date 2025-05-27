@@ -60,7 +60,7 @@ class PriceProxyApp < Sinatra::Base
 
   get '/' do
     content_type 'text/html'
-    html_path = File.join(settings.public_folder, 'commander_cards.html')
+    html_path = File.join(settings.root, 'commander_cards', 'commander_cards.html')
     $file_logger.info("Attempting to serve HTML file from: #{html_path}")
     $file_logger.info("File exists? #{File.exist?(html_path)}")
     if File.exist?(html_path)
@@ -74,13 +74,15 @@ class PriceProxyApp < Sinatra::Base
 
   # Serve card images
   get '/card_images/:filename' do
-    send_file File.join(settings.public_folder, 'card_images', params[:filename])
+    image_path = File.join(settings.root, 'commander_cards', 'card_images', params[:filename])
+    send_file image_path
   end
 
   # Serve JavaScript file
   get '/card_prices.js' do
     content_type 'application/javascript'
-    send_file File.join(settings.public_folder, 'card_prices.js')
+    js_path = File.join(settings.root, 'commander_cards', 'card_prices.js')
+    send_file js_path
   end
 end
 

@@ -1,4 +1,3 @@
-require_relative 'lib/price_proxy'
 require_relative 'lib/price_extractor'
 require_relative 'lib/price_processor'
 

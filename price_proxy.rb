@@ -60,7 +60,16 @@ class PriceProxyApp < Sinatra::Base
 
   get '/' do
     content_type 'text/html'
-    send_file File.join(settings.public_folder, 'commander_cards.html'), type: 'text/html'
+    html_path = File.join(settings.public_folder, 'commander_cards.html')
+    $file_logger.info("Attempting to serve HTML file from: #{html_path}")
+    $file_logger.info("File exists? #{File.exist?(html_path)}")
+    if File.exist?(html_path)
+      send_file html_path, type: 'text/html'
+    else
+      $file_logger.error("HTML file not found at: #{html_path}")
+      status 404
+      "File not found: #{html_path}"
+    end
   end
 
   # Serve card images

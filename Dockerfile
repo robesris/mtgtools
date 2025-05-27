@@ -18,8 +18,13 @@ COPY Gemfile Gemfile.lock ./
 # Install Ruby dependencies
 RUN bundle install --jobs 4 --retry 3
 
-# Copy the rest of the application
+# Copy the application files
 COPY . .
+
+# Verify static files are present
+RUN ls -la commander_cards/ && \
+    test -f commander_cards/commander_cards.html && \
+    test -f commander_cards/card_prices.js
 
 # Set environment variables
 ENV RACK_ENV=production \

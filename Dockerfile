@@ -16,12 +16,15 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/* && \
     # Verify Tesseract installation and language data
     tesseract --version && \
+    echo "Tesseract language data location:" && \
     find /usr/share/tesseract-ocr -name "eng.traineddata" && \
-    TESSDATA_PREFIX=$(find /usr/share/tesseract-ocr -name "eng.traineddata" -printf "%h\n" | head -n 1)
+    echo "Setting TESSDATA_PREFIX to:" && \
+    echo $(dirname $(find /usr/share/tesseract-ocr -name "eng.traineddata" | head -n 1))
 
 # Set up display for headless environment
 ENV DISPLAY=:99
-ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/tessdata
+# Set TESSDATA_PREFIX based on actual installation path
+ENV TESSDATA_PREFIX=$(dirname $(find /usr/share/tesseract-ocr -name "eng.traineddata" | head -n 1))
 
 # Set working directory
 WORKDIR /app

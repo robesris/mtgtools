@@ -1,1 +1,0 @@
-web: bundle exec rackup -s puma config.ru -o 0.0.0.0 -p $PORT 

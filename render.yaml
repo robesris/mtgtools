@@ -1,16 +1,13 @@
 services:
 - type: web
   name: mtglist-price-proxy
-  env: ruby
-  buildCommand: |
-    apt-get update && apt-get install -y chromium chromium-driver
-    bundle install
-  startCommand: bundle exec rackup config.ru -o 0.0.0.0 -p $PORT
+  env: docker
+  dockerfilePath: ./Dockerfile
   envVars:
     - key: RACK_ENV
       value: production
     - key: DEBUG_MODE
       value: "false"
-    - key: RUBY_VERSION
-      value: "3.4.3"
+    - key: PORT
+      value: "10000"
   plan: free 

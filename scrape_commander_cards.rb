@@ -19,14 +19,25 @@ class CommanderCardScraper
   IMAGE_CACHE_DIR = 'commander_card_images'
   
   def initialize
+    puts "Initializing CommanderCardScraper..."
+    puts "Current directory: #{Dir.pwd}"
+    puts "Environment:"
+    puts "  DISPLAY=#{ENV['DISPLAY']}"
+    puts "  TESSDATA_PREFIX=#{ENV['TESSDATA_PREFIX']}"
+    
     @base_url = 'https://magic.wizards.com/en/news/announcements/commander-brackets-beta-update-april-22-2025'
     @image_url = 'https://media.wizards.com/2025/images/daily/g_hItgfH3LjU.jpg'
     @output_dir = 'commander_cards'
     @image_path = File.join(@output_dir, 'commander_cards.jpg')
     @card_cache = load_cache
     @price_cache = load_price_cache
+    
+    puts "Creating directories..."
+    puts "  Output directory: #{@output_dir}"
+    puts "  Image path: #{@image_path}"
     FileUtils.mkdir_p(@output_dir)
     FileUtils.mkdir_p(File.join(@output_dir, 'card_images'))
+    puts "Directories created successfully"
     
     # Hardcoded color mappings for known cards
     @card_colors = {
@@ -109,7 +120,7 @@ class CommanderCardScraper
   end
 
   def run
-    puts "Starting Commander Card Scraper..."
+    puts "\n=== Starting Commander Card Scraper ==="
     puts "Downloading image..."
     download_image
     puts "Processing image with OCR..."
@@ -118,6 +129,7 @@ class CommanderCardScraper
     puts "Generating HTML..."
     generate_html(card_names)
     puts "Done! Check #{@output_dir}/commander_cards.html"
+    puts "=== Scraper completed ===\n"
   end
 
   private
@@ -154,27 +166,36 @@ class CommanderCardScraper
 
   def download_image
     if File.exist?(@image_path)
-      puts "Using existing image file..."
+      puts "Using existing image file at #{@image_path}"
+      puts "Image file size: #{File.size(@image_path)} bytes"
       return
     end
 
-    puts "Downloading image..."
+    puts "Downloading image from #{@image_url}..."
     begin
       tempfile = Down.download(@image_url)
+      puts "Downloaded #{tempfile.size} bytes"
       FileUtils.cp(tempfile.path, @image_path)
       tempfile.close!
-      puts "Image downloaded successfully."
+      puts "Image saved to #{@image_path}"
+      puts "Image file size: #{File.size(@image_path)} bytes"
     rescue => e
       puts "Error downloading image: #{e.message}"
+      puts "Error backtrace:"
+      puts e.backtrace
       raise "Failed to download image: #{e.message}"
     end
   end
 
   def process_image
+    puts "\n=== Processing Image ==="
     # Process image with ImageMagick to improve OCR
+    puts "Reading image with ImageMagick..."
     image = Magick::Image.read(@image_path).first
     puts "Source image dimensions: #{image.columns}x#{image.rows} pixels"
+    puts "Source image format: #{image.format}"
     
+    puts "Processing image for OCR..."
     img = image.quantize(256, Magick::GRAYColorspace)
               .normalize
               .contrast(true)
@@ -185,9 +206,13 @@ class CommanderCardScraper
     puts "Processed image dimensions: #{img.columns}x#{img.rows} pixels"
     
     processed_path = File.join(@output_dir, 'processed_debug.jpg')
+    puts "Saving processed image to #{processed_path}"
     img.write(processed_path)
+    puts "Processed image saved, size: #{File.size(processed_path)} bytes"
     
     # Get bounding box data from OCR
+    puts "\nRunning OCR..."
+    puts "Tesseract version: #{RTesseract.version}"
     ocr = RTesseract.new(processed_path, lang: 'eng')
     boxes = ocr.to_box
     
@@ -1588,6 +1613,20 @@ class CommanderCardScraper
   end
 end
 
-# Run the scraper
-scraper = CommanderCardScraper.new
-scraper.run 
+# Add debugging output when script is run directly
+if __FILE__ == $PROGRAM_NAME
+  puts "=== Starting scraper script ==="
+  puts "Ruby version: #{RUBY_VERSION}"
+  puts "Current directory: #{Dir.pwd}"
+  puts "Environment:"
+  puts "  DISPLAY=#{ENV['DISPLAY']}"
+  puts "  TESSDATA_PREFIX=#{ENV['TESSDATA_PREFIX']}"
+  puts "  PATH=#{ENV['PATH']}"
+  puts "Checking Tesseract installation:"
+  system('which tesseract')
+  system('tesseract --version')
+  puts "=== Starting scraper ==="
+  
+  scraper = CommanderCardScraper.new
+  scraper.run
+end 

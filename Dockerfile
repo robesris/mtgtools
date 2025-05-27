@@ -10,7 +10,12 @@ RUN apt-get update && \
     tesseract-ocr \
     libmagickwand-dev \
     imagemagick \
+    xvfb \
     && rm -rf /var/lib/apt/lists/*
+
+# Set up display for headless environment
+ENV DISPLAY=:99
+ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata
 
 # Set working directory
 WORKDIR /app
@@ -24,14 +29,17 @@ RUN bundle install --jobs 4 --retry 3
 # Copy the application files
 COPY . .
 
-# Run the scraper script to download card images
-RUN bundle exec ruby scrape_commander_cards.rb
+# Run the scraper script with Xvfb for headless display
+RUN Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 & \
+    sleep 3 && \
+    bundle exec ruby scrape_commander_cards.rb || (echo "Scraper failed with exit code $?" && exit 1)
 
 # Verify static files are present
 RUN ls -la commander_cards/ && \
     test -f commander_cards/commander_cards.html && \
     test -f commander_cards/card_prices.js && \
     test -d commander_cards/card_images && \
+    ls -la commander_cards/card_images/ && \
     test -f commander_cards/card_images/479531.jpg
 
 # Set environment variables

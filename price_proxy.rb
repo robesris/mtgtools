@@ -59,7 +59,8 @@ class PriceProxyApp < Sinatra::Base
   end
 
   get '/' do
-    send_file File.join(settings.public_folder, 'commander_cards.html')
+    content_type 'text/html'
+    send_file File.join(settings.public_folder, 'commander_cards.html'), type: 'text/html'
   end
 
   # Serve card images

@@ -1,1 +1,1 @@
-web: bundle exec rackup config.ru -o 0.0.0.0 -p $PORT 
+web: bundle exec ruby price_proxy.rb -p $PORT 

@@ -74,8 +74,19 @@ class PriceProxyApp < Sinatra::Base
 
   # Serve card images
   get '/card_images/:filename' do
-    image_path = File.join(settings.root, 'commander_cards', 'card_images', params[:filename])
-    send_file image_path
+    # Use the public folder path from settings
+    image_path = File.join(settings.public_folder, 'card_images', params[:filename])
+    $file_logger.info("Attempting to serve image from: #{image_path}")
+    $file_logger.info("Image exists? #{File.exist?(image_path)}")
+    $file_logger.info("Public folder: #{settings.public_folder}")
+    if File.exist?(image_path)
+      content_type 'image/jpeg'
+      send_file image_path
+    else
+      $file_logger.error("Image not found at: #{image_path}")
+      status 404
+      "Image not found: #{params[:filename]}"
+    end
   end
 
   # Serve JavaScript file

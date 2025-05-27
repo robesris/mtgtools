@@ -2,10 +2,10 @@ FROM ruby:3.4.3-slim
 
 # Install system dependencies
 RUN apt-get update && \
-    apt-get -qq -y install tesseract-ocr && \
-    apt-get -qq -y install tesseract-ocr-eng && \
-    apt-get -qq -y install libtesseract-dev && \
     apt-get -qq -y install \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    libtesseract-dev \
     chromium \
     chromium-driver \
     build-essential \
@@ -14,8 +14,9 @@ RUN apt-get update && \
     imagemagick \
     xvfb \
     && rm -rf /var/lib/apt/lists/* && \
-    # Verify Tesseract installation
-    tesseract --version
+    # Verify Tesseract installation and language data
+    tesseract --version && \
+    ls -l /usr/share/tesseract-ocr/4.00/tessdata/eng.traineddata
 
 # Set up display for headless environment
 ENV DISPLAY=:99
@@ -32,9 +33,7 @@ RUN gem update --system && \
     gem install bundler && \
     bundle config set --local path '/usr/local/bundle' && \
     bundle config set --local without 'development:test' && \
-    bundle install --jobs 4 --retry 3 && \
-    # Clean up any stale Xvfb lock files
-    rm -f /tmp/.X*-lock /tmp/.X11-unix/*
+    bundle install --jobs 4 --retry 3
 
 # Copy the application files
 COPY . .
@@ -57,5 +56,5 @@ EXPOSE 10000
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:10000/ || exit 1
 
-# Start the application using our script
-CMD ["./start.sh"] 
+# Start Xvfb and the application
+CMD Xvfb :99 -screen 0 1024x768x24 -ac & sleep 3 && ./start.sh 

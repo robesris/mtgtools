@@ -489,6 +489,27 @@ class CommanderCardScraper
       puts "Found TERGRID, GOD OF FRIGHT by multiverseid!"
       return local_image_path
     end
+
+    # Special case: hardcode multiverseid for THE ONE RING
+    if card_name == "THE ONE RING"
+      multiverseid = 597129  # Universes Beyond: The Lord of the Rings: Tales of Middle-earth version
+      local_image_path = File.join(@output_dir, 'card_images', "#{multiverseid}.jpg")
+      unless File.exist?(local_image_path)
+        image_url = "https://gatherer.wizards.com/Handlers/Image.ashx?multiverseid=#{multiverseid}&type=card"
+        begin
+          puts "Downloading image for THE ONE RING by multiverseid..."
+          response = HTTParty.get(image_url)
+          File.binwrite(local_image_path, response.body)
+        rescue => e
+          puts "Error downloading image: #{e.message}"
+          return nil
+        end
+      end
+      @card_cache[card_name] = multiverseid
+      save_cache
+      puts "Found THE ONE RING by multiverseid!"
+      return local_image_path
+    end
     
     # Special case handling for problematic cards
     case card_name

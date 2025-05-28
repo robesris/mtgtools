@@ -440,9 +440,9 @@
   <div class="price-info">Click to load prices</div>
 </div>
 <div class="card" data-colors="blue">
-  <div class="card-name">FIERCE</div>
+  <div class="card-name">FIERCE GUARDIANSHIP</div>
   <div class="card-image-container">
-    <div class="not-found">Image not found</div>
+    <img src="card_images/626344.jpg" alt="FIERCE GUARDIANSHIP">
   </div>
   <div class="price-info">Click to load prices</div>
 </div>
@@ -533,7 +533,7 @@
 <div class="card" data-colors="black">
   <div class="card-name">DEMONIC TUTOR</div>
   <div class="card-image-container">
-    <img src="card_images/622758.jpg" alt="DEMONIC TUTOR">
+    <img src="card_images/624778.jpg" alt="DEMONIC TUTOR">
   </div>
   <div class="price-info">Click to load prices</div>
 </div>
@@ -554,7 +554,7 @@
 <div class="card" data-colors="black">
   <div class="card-name">OPPOSITION AGENT</div>
   <div class="card-image-container">
-    <img src="card_images/502324.jpg" alt="OPPOSITION AGENT">
+    <img src="card_images/497661.jpg" alt="OPPOSITION AGENT">
   </div>
   <div class="price-info">Click to load prices</div>
 </div>
@@ -575,7 +575,7 @@
 <div class="card" data-colors="black">
   <div class="card-name">VAMPIRIC TUTOR</div>
   <div class="card-image-container">
-    <img src="card_images/600981.jpg" alt="VAMPIRIC TUTOR">
+    <img src="card_images/598982.jpg" alt="VAMPIRIC TUTOR">
   </div>
   <div class="price-info">Click to load prices</div>
 </div>
@@ -659,7 +659,7 @@
 <div class="card" data-colors="green">
   <div class="card-name">WORLDLY TUTOR</div>
   <div class="card-image-container">
-    <img src="card_images/600993.jpg" alt="WORLDLY TUTOR">
+    <img src="card_images/601422.jpg" alt="WORLDLY TUTOR">
   </div>
   <div class="price-info">Click to load prices</div>
 </div>
@@ -687,7 +687,7 @@
 <div class="card" data-colors="multicolor,white,blue">
   <div class="card-name">GRAND ARBITER AUGUSTIN IV</div>
   <div class="card-image-container">
-    <img src="card_images/573041.jpg" alt="GRAND ARBITER AUGUSTIN IV">
+    <img src="card_images/573469.jpg" alt="GRAND ARBITER AUGUSTIN IV">
   </div>
   <div class="price-info">Click to load prices</div>
 </div>
@@ -708,7 +708,7 @@
 <div class="card" data-colors="multicolor,blue,black">
   <div class="card-name">YURIKO, THE TIGER'S SHADOW</div>
   <div class="card-image-container">
-    <img src="card_images/627828.jpg" alt="YURIKO, THE TIGER'S SHADOW">
+    <img src="card_images/629332.jpg" alt="YURIKO, THE TIGER'S SHADOW">
   </div>
   <div class="price-info">Click to load prices</div>
 </div>
@@ -757,7 +757,7 @@
 <div class="card" data-colors="colorless">
   <div class="card-name">MANA VAULT</div>
   <div class="card-image-container">
-    <img src="card_images/573056.jpg" alt="MANA VAULT">
+    <img src="card_images/571641.jpg" alt="MANA VAULT">
   </div>
   <div class="price-info">Click to load prices</div>
 </div>
@@ -785,7 +785,7 @@
 <div class="card" data-colors="colorless">
   <div class="card-name">THE ONE RING</div>
   <div class="card-image-container">
-    <img src="card_images/636294.jpg" alt="THE ONE RING">
+    <img src="card_images/636332.jpg" alt="THE ONE RING">
   </div>
   <div class="price-info">Click to load prices</div>
 </div>
@@ -825,7 +825,8 @@
       }
 
       // Function to fetch prices for a single card
-      async function fetchCardPrices(cardElement) {
+      async function fetchCardPrices(cardElement, retryCount = 0) {
+        const maxRetries = 3;
         const cardName = cardElement.querySelector('.card-name').textContent;
         const priceInfo = cardElement.querySelector('.price-info');
         
@@ -833,7 +834,7 @@
           priceInfo.innerHTML = '<span class="loading">Fetching prices</span>';
           const ellipsisInterval = animateEllipsis(priceInfo.querySelector('.loading'), 'Fetching prices');
           
-          const response = await fetch('http://localhost:4567/card_info', {
+          const response = await fetch('/card_info', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -849,17 +850,22 @@
           
           if (data && data.prices) {
             // Cache the prices immediately after successful fetch
-            await fetch('http://localhost:4567/cache_prices', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                card: cardName,
-                prices: data.prices,
-                timestamp: data.timestamp || Math.floor(Date.now() / 1000)
-              })
-            });
+            try {
+              await fetch('/cache_prices', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  card: cardName,
+                  prices: data.prices,
+                  timestamp: data.timestamp || Math.floor(Date.now() / 1000)
+                })
+              });
+            } catch (cacheError) {
+              console.warn('Failed to cache prices for', cardName, ':', cacheError);
+              // Continue even if caching fails
+            }
 
             let html = [];
             if (data.prices['Near Mint']) {
@@ -886,6 +892,17 @@
           }
         } catch (error) {
           console.error('Error fetching prices for', cardName, ':', error);
+          clearInterval(ellipsisInterval);
+          
+          // Retry logic for session closure errors
+          if (error.message.includes('Session closed') && retryCount < maxRetries) {
+            console.log(`Retrying ${cardName} (attempt ${retryCount + 1}/${maxRetries})...`);
+            priceInfo.innerHTML = '<span class="loading">Retrying...</span>';
+            // Wait before retrying (exponential backoff)
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+            return fetchCardPrices(cardElement, retryCount + 1);
+          }
+          
           priceInfo.innerHTML = 'Click to load prices';
         }
       }
@@ -902,25 +919,53 @@
         const cardElements = Array.from(cards);
         let completed = 0;
         let failed = 0;
+        let retried = 0;
         
-        // Process cards one at a time
-        for (const card of cardElements) {
-          try {
-            await fetchCardPrices(card);
-            completed++;
-          } catch (error) {
-            console.error('Error fetching prices for card:', error);
-            failed++;
-          }
+        // Process cards in smaller batches to avoid overwhelming the server
+        const batchSize = 5;
+        for (let i = 0; i < cardElements.length; i += batchSize) {
+          const batch = cardElements.slice(i, i + batchSize);
+          const batchPromises = batch.map(async (card) => {
+            try {
+              await fetchCardPrices(card);
+              completed++;
+            } catch (error) {
+              console.error('Error fetching prices for card:', error);
+              if (error.message.includes('Session closed')) {
+                retried++;
+              } else {
+                failed++;
+              }
+            }
+          });
+          
+          // Wait for current batch to complete
+          await Promise.all(batchPromises);
+          
+          // Update status
           clearInterval(ellipsisInterval);
-          fetchStatus.textContent = `Fetched ${completed} cards${failed > 0 ? `, ${failed} failed` : ''}...`;
-          ellipsisInterval = animateEllipsis(fetchStatus, `Fetched ${completed} cards${failed > 0 ? `, ${failed} failed` : ''}`);
-          // Add a small delay between cards to avoid rate limiting
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          const status = [
+            `Fetched ${completed} cards`,
+            failed > 0 ? `${failed} failed` : null,
+            retried > 0 ? `${retried} retried` : null
+          ].filter(Boolean).join(', ');
+          fetchStatus.textContent = status + '...';
+          ellipsisInterval = animateEllipsis(fetchStatus, status);
+          
+          // Add a delay between batches
+          await new Promise(resolve => setTimeout(resolve, 2000));
         }
+        
         clearInterval(ellipsisInterval);
-        fetchStatus.textContent = `Completed: ${completed} cards fetched${failed > 0 ? `, ${failed} failed` : ''}`;
+        const finalStatus = [
+          `Completed: ${completed} cards fetched`,
+          failed > 0 ? `${failed} failed` : null,
+          retried > 0 ? `${retried} retried` : null
+        ].filter(Boolean).join(', ');
+        fetchStatus.textContent = finalStatus;
+        
         fetchAllButton.disabled = false;
+        fetchAllButton.style.backgroundColor = '#4CAF50';
       }
       
       // Add click handler for the fetch all button

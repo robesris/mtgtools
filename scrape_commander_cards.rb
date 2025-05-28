@@ -1235,7 +1235,8 @@ class CommanderCardScraper
             }
 
             // Function to fetch prices for a single card
-            async function fetchCardPrices(cardElement) {
+            async function fetchCardPrices(cardElement, retryCount = 0) {
+              const maxRetries = 3;
               const cardName = cardElement.querySelector('.card-name').textContent;
               const priceInfo = cardElement.querySelector('.price-info');
               
@@ -1259,17 +1260,22 @@ class CommanderCardScraper
                 
                 if (data && data.prices) {
                   // Cache the prices immediately after successful fetch
-                  await fetch('http://localhost:4567/cache_prices', {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                      card: cardName,
-                      prices: data.prices,
-                      timestamp: data.timestamp || Math.floor(Date.now() / 1000)
-                    })
-                  });
+                  try {
+                    await fetch('http://localhost:4567/cache_prices', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify({
+                        card: cardName,
+                        prices: data.prices,
+                        timestamp: data.timestamp || Math.floor(Date.now() / 1000)
+                      })
+                    });
+                  } catch (cacheError) {
+                    console.warn('Failed to cache prices for', cardName, ':', cacheError);
+                    // Continue even if caching fails
+                  }
 
                   let html = [];
                   if (data.prices['Near Mint']) {
@@ -1296,6 +1302,17 @@ class CommanderCardScraper
                 }
               } catch (error) {
                 console.error('Error fetching prices for', cardName, ':', error);
+                clearInterval(ellipsisInterval);
+                
+                // Retry logic for session closure errors
+                if (error.message.includes('Session closed') && retryCount < maxRetries) {
+                  console.log(`Retrying ${cardName} (attempt ${retryCount + 1}/${maxRetries})...`);
+                  priceInfo.innerHTML = '<span class="loading">Retrying...</span>';
+                  // Wait before retrying (exponential backoff)
+                  await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+                  return fetchCardPrices(cardElement, retryCount + 1);
+                }
+                
                 priceInfo.innerHTML = 'Click to load prices';
               }
             }
@@ -1312,25 +1329,53 @@ class CommanderCardScraper
               const cardElements = Array.from(cards);
               let completed = 0;
               let failed = 0;
+              let retried = 0;
               
-              // Process cards one at a time
-              for (const card of cardElements) {
-                try {
-                  await fetchCardPrices(card);
-                  completed++;
-                } catch (error) {
-                  console.error('Error fetching prices for card:', error);
-                  failed++;
-                }
+              // Process cards in smaller batches to avoid overwhelming the server
+              const batchSize = 5;
+              for (let i = 0; i < cardElements.length; i += batchSize) {
+                const batch = cardElements.slice(i, i + batchSize);
+                const batchPromises = batch.map(async (card) => {
+                  try {
+                    await fetchCardPrices(card);
+                    completed++;
+                  } catch (error) {
+                    console.error('Error fetching prices for card:', error);
+                    if (error.message.includes('Session closed')) {
+                      retried++;
+                    } else {
+                      failed++;
+                    }
+                  }
+                });
+                
+                // Wait for current batch to complete
+                await Promise.all(batchPromises);
+                
+                // Update status
                 clearInterval(ellipsisInterval);
-                fetchStatus.textContent = `Fetched ${completed} cards${failed > 0 ? `, ${failed} failed` : ''}...`;
-                ellipsisInterval = animateEllipsis(fetchStatus, `Fetched ${completed} cards${failed > 0 ? `, ${failed} failed` : ''}`);
-                // Add a small delay between cards to avoid rate limiting
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                const status = [
+                  `Fetched ${completed} cards`,
+                  failed > 0 ? `${failed} failed` : null,
+                  retried > 0 ? `${retried} retried` : null
+                ].filter(Boolean).join(', ');
+                fetchStatus.textContent = status + '...';
+                ellipsisInterval = animateEllipsis(fetchStatus, status);
+                
+                // Add a delay between batches
+                await new Promise(resolve => setTimeout(resolve, 2000));
               }
+              
               clearInterval(ellipsisInterval);
-              fetchStatus.textContent = `Completed: ${completed} cards fetched${failed > 0 ? `, ${failed} failed` : ''}`;
+              const finalStatus = [
+                `Completed: ${completed} cards fetched`,
+                failed > 0 ? `${failed} failed` : null,
+                retried > 0 ? `${retried} retried` : null
+              ].filter(Boolean).join(', ');
+              fetchStatus.textContent = finalStatus;
+              
               fetchAllButton.disabled = false;
+              fetchAllButton.style.backgroundColor = '#4CAF50';
             }
             
             // Add click handler for the fetch all button

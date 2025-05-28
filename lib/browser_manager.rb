@@ -16,68 +16,73 @@ module BrowserManager
   class << self
     attr_reader :browser_contexts
 
-    # Get or initialize browser
+    # Get or initialize browser without mutex lock
+    def get_browser_internal
+      if @browser.nil? || !@browser.connected? || should_restart_browser?
+        cleanup_browser_internal if @browser
+        $file_logger.info("Initializing new browser instance")
+        @browser = Puppeteer.launch(
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--disable-gpu',
+            '--window-size=1920,1080',
+            '--disable-web-security',
+            '--disable-features=IsolateOrigins,site-per-process',
+            '--disable-features=site-per-process',
+            '--disable-features=IsolateOrigins',
+            '--disable-features=CrossSiteDocumentBlocking',
+            '--disable-features=CrossSiteDocumentBlockingAlways',
+            '--disable-blink-features=AutomationControlled',
+            '--disable-automation',
+            '--disable-infobars',
+            '--lang=en-US,en',
+            '--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+          ],
+          ignore_default_args: ['--enable-automation'],
+          timeout: 60000  # Increased timeout for browser launch
+        )
+        
+        # Reset request count on new browser
+        @request_count = 0
+        
+        # Set up global browser settings
+        setup_browser_event_handlers
+        
+        # Create a test page to resize the browser
+        test_page = @browser.new_page
+        begin
+          PageManager.configure_page(test_page)
+          
+          # Verify the viewport size
+          actual_viewport = test_page.evaluate(<<~JS)
+            function() {
+              return {
+                windowWidth: window.innerWidth,
+                windowHeight: window.innerHeight,
+                devicePixelRatio: window.devicePixelRatio,
+                screenWidth: window.screen.width,
+                screenHeight: window.screen.height,
+                viewportWidth: document.documentElement.clientWidth,
+                viewportHeight: document.documentElement.clientHeight
+              };
+            }
+          JS
+          $file_logger.info("Browser viewport after resize: #{actual_viewport.inspect}")
+        ensure
+          test_page.close
+        end
+      end
+      @browser
+    end
+
+    # Get or initialize browser with mutex lock
     def get_browser
       @browser_mutex.synchronize do
-        if @browser.nil? || !@browser.connected? || should_restart_browser?
-          cleanup_browser_internal if @browser
-          $file_logger.info("Initializing new browser instance")
-          @browser = Puppeteer.launch(
-            headless: true,
-            args: [
-              '--no-sandbox',
-              '--disable-setuid-sandbox',
-              '--disable-dev-shm-usage',
-              '--disable-accelerated-2d-canvas',
-              '--disable-gpu',
-              '--window-size=1920,1080',
-              '--disable-web-security',
-              '--disable-features=IsolateOrigins,site-per-process',
-              '--disable-features=site-per-process',
-              '--disable-features=IsolateOrigins',
-              '--disable-features=CrossSiteDocumentBlocking',
-              '--disable-features=CrossSiteDocumentBlockingAlways',
-              '--disable-blink-features=AutomationControlled',
-              '--disable-automation',
-              '--disable-infobars',
-              '--lang=en-US,en',
-              '--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
-            ],
-            ignore_default_args: ['--enable-automation'],
-            timeout: 60000  # Increased timeout for browser launch
-          )
-          
-          # Reset request count on new browser
-          @request_count = 0
-          
-          # Set up global browser settings
-          setup_browser_event_handlers
-          
-          # Create a test page to resize the browser
-          test_page = @browser.new_page
-          begin
-            PageManager.configure_page(test_page)
-            
-            # Verify the viewport size
-            actual_viewport = test_page.evaluate(<<~JS)
-              function() {
-                return {
-                  windowWidth: window.innerWidth,
-                  windowHeight: window.innerHeight,
-                  devicePixelRatio: window.devicePixelRatio,
-                  screenWidth: window.screen.width,
-                  screenHeight: window.screen.height,
-                  viewportWidth: document.documentElement.clientWidth,
-                  viewportHeight: document.documentElement.clientHeight
-                };
-              }
-            JS
-            $file_logger.info("Browser viewport after resize: #{actual_viewport.inspect}")
-          ensure
-            test_page.close
-          end
-        end
-        @browser
+        get_browser_internal
       end
     end
 
@@ -92,7 +97,7 @@ module BrowserManager
     # Add a method to create a new context with proper tracking
     def create_browser_context(request_id)
       @browser_mutex.synchronize do
-        browser = get_browser
+        browser = get_browser_internal  # Use internal version to avoid recursive lock
         context = browser.create_incognito_browser_context
         
         # Increment request count

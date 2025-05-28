@@ -79,7 +79,10 @@ class CommanderCardScraper
       'BETA',
       'RED',
       'GREEN',
-      'MULTICOLOR'
+      'MULTICOLOR',
+      'S WHITE',
+      'O BLUE',
+      'LARAJ COMMANDER'
     ]
     
     # Common card name corrections for OCR issues
@@ -103,7 +106,8 @@ class CommanderCardScraper
       'YURIKO, THE TIGERS SHADOW' => "YURIKO, THE TIGER'S SHADOW",
       'BOLASS CITADEL' => "BOLAS'S CITADEL",
       'BOLAS S CITADEL' => "BOLAS'S CITADEL",
-      'BOWMASTERS' => "ORCISH BOWMASTERS"  # OCR misread correction for ORCISH BOWMASTERS
+      'BOWMASTERS' => "ORCISH BOWMASTERS",  # OCR misread correction for ORCISH BOWMASTERS
+      'FIERCE' => "FIERCE GUARDIANSHIP"  # Fix for truncated card name
     }
     @must_have_cards = [
       "SERRA'S SANCTUM",
@@ -214,6 +218,9 @@ class CommanderCardScraper
     puts "\nRunning OCR..."
     # Get bounding box data from OCR
     ocr = RTesseract.new(debug_path, lang: 'eng')
+
+    puts "\nCreated RTesseract object. Running ocr.to_box..."
+
     boxes = ocr.to_box
     
     # Debug: Show raw OCR box data for first few boxes

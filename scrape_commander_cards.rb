@@ -1244,7 +1244,7 @@ class CommanderCardScraper
                 priceInfo.innerHTML = '<span class="loading">Fetching prices</span>';
                 const ellipsisInterval = animateEllipsis(priceInfo.querySelector('.loading'), 'Fetching prices');
                 
-                const response = await fetch('http://localhost:4567/card_info', {
+                const response = await fetch('/card_info', {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',
@@ -1261,7 +1261,7 @@ class CommanderCardScraper
                 if (data && data.prices) {
                   // Cache the prices immediately after successful fetch
                   try {
-                    await fetch('http://localhost:4567/cache_prices', {
+                    await fetch('/cache_prices', {
                       method: 'POST',
                       headers: {
                         'Content-Type': 'application/json',

@@ -335,7 +335,14 @@ function cardClickHandler(e) {
   const cardName = this.querySelector('.card-name')?.textContent;
   console.log(`Clicked card name: ${cardName}`);
   if (cardName) {
-    updateCardPrices(this);
+    // Always fetch new prices when card is clicked
+    const priceInfo = this.querySelector('.price-info');
+    if (priceInfo) {
+      // Clear any existing cache for this card
+      localStorage.removeItem(`price_${cardName}`);
+      // Fetch new prices
+      updateCardPrices(this);
+    }
   } else {
     console.log('No card name found for clicked element');
   }

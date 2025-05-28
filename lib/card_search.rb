@@ -95,11 +95,16 @@ class CardSearch
         $logger.info("Request #{request_id}: Search URL: #{search_url}")
         
         begin
-          response = search_page.goto(search_url, wait_until: 'networkidle0')
+          response = search_page.goto(search_url, 
+            wait_until: 'networkidle0',
+            timeout: ENV['RACK_ENV'] == 'production' ? 120000 : 30000  # 2 minutes in production, 30 seconds locally
+          )
           $logger.info("Request #{request_id}: Search page response status: #{response.status}")
           
           # (Optional) log the page's HTML (for debugging) and take a debug screenshot
-          search_page.wait_for_selector('.search-result, .product-card, [class*="product"], [class*="listing"]', timeout: 20000)
+          search_page.wait_for_selector('.search-result, .product-card, [class*="product"], [class*="listing"]', 
+            timeout: ENV['RACK_ENV'] == 'production' ? 120000 : 20000  # 2 minutes in production, 20 seconds locally
+          )
           sleep(2) # extra delay to let the page settle after selector appears
           html = search_page.content
           $logger.info("Request #{request_id}: (Debug) Page HTML (truncated): #{html[0..500]}…")
@@ -208,7 +213,7 @@ class CardSearch
           # Navigate to the page with redirect prevention
           response = page.goto(filtered_url, 
             wait_until: 'domcontentloaded',
-            timeout: 30000
+            timeout: ENV['RACK_ENV'] == 'production' ? 120000 : 30000  # 2 minutes in production, 30 seconds locally
           )
           
           # Check for rate limiting after navigation
@@ -217,7 +222,7 @@ class CardSearch
             sleep(rand(5..10))
             response = page.goto(filtered_url, 
               wait_until: 'domcontentloaded',
-              timeout: 30000
+              timeout: ENV['RACK_ENV'] == 'production' ? 120000 : 30000  # 2 minutes in production, 30 seconds locally
             )
           end
 

@@ -43,7 +43,7 @@ module BrowserManager
             '--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
           ],
           ignore_default_args: ['--enable-automation'],
-          timeout: 60000  # Increased timeout for browser launch
+          timeout: ENV['RACK_ENV'] == 'production' ? 120000 : 60000  # 2 minutes in production, 1 minute locally
         )
         
         # Reset request count on new browser

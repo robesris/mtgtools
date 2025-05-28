@@ -27,6 +27,10 @@ module RequestHandler
       in_production? ? seconds * 4 : seconds
     end
 
+    def get_navigation_timeout
+      in_production? ? 120000 : 30000  # 2 minutes in production, 30 seconds locally
+    end
+
     private
 
     def validate_request(card_name, request_id)
@@ -71,7 +75,10 @@ module RequestHandler
         
         # First try a more lenient navigation
         begin
-          search_page.goto(search_url, wait_until: 'domcontentloaded')
+          search_page.goto(search_url, 
+            wait_until: 'domcontentloaded',
+            timeout: get_navigation_timeout
+          )
           $file_logger.info("Request #{request_id}: Initial page load complete")
           
           # Log the page state

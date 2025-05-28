@@ -123,7 +123,7 @@ async function updateCardPrices(cardElement) {
   const ellipsisInterval = animateEllipsis(loadingElement, 'Loading prices');
 
   try {
-    const response = await fetch('http://localhost:4567/card_info', {
+    const response = await fetch('/card_info', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -237,8 +237,12 @@ function loadCachedPrices() {
         const data = JSON.parse(cachedData);
         console.log(`Parsed cache data for ${cardName}:`, data);
         
-        if (Date.now() - data.timestamp < 86400000) {
-          console.log(`Using cached data for ${cardName}`);
+        // Check if cache is older than 24 hours
+        const cacheAge = Date.now() - data.timestamp;
+        const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+        
+        if (cacheAge < CACHE_DURATION) {
+          console.log(`Using cached data for ${cardName} (age: ${Math.round(cacheAge / (60 * 1000))} minutes)`);
           const prices = data.prices;
           let html = '';
           
@@ -282,7 +286,7 @@ function loadCachedPrices() {
             console.log('No .price-info element found for this card');
           }
         } else {
-          console.log(`Cache expired for ${cardName}`);
+          console.log(`Cache expired for ${cardName} (age: ${Math.round(cacheAge / (60 * 1000))} minutes)`);
           const priceInfo = card.querySelector('.price-info');
           if (priceInfo) {
             priceInfo.innerHTML = 'Click to load prices';

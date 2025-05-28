@@ -107,12 +107,10 @@ module PriceExtractor
           return false;
         }
         
-        // Normalize both strings - combine both approaches for better matching
+        // Normalize both strings - only remove extra spaces and convert to lowercase
         const normalizeString = (str) => {
           return String(str).toLowerCase().trim()
-            .replace(/\s+/g, ' ')  // Replace multiple spaces with single space
-            .replace(/[^a-z0-9\s\-]/g, '')  // Keep alphanumeric, spaces, and hyphens
-            .replace(/\b(the|a|an)\b/g, '');  // Remove common articles
+            .replace(/\s+/g, ' ');  // Replace multiple spaces with single space
         };
         
         const normalizedTitle = normalizeString(title);
@@ -125,15 +123,7 @@ module PriceExtractor
           normalizedCardName,
           titleLength: normalizedTitle.length,
           cardNameLength: normalizedCardName.length,
-          exactMatch: normalizedTitle === normalizedCardName,
-          containsMatch: normalizedTitle.includes(normalizedCardName),
-          cardNameInTitle: normalizedTitle.indexOf(normalizedCardName) !== -1,
-          // Add more comparison details
-          titleWords: normalizedTitle.split(/\s+/),
-          cardNameWords: normalizedCardName.split(/\s+/),
-          commonWords: normalizedTitle.split(/\s+/).filter(word => 
-            normalizedCardName.split(/\s+/).includes(word)
-          )
+          exactMatch: normalizedTitle === normalizedCardName
         });
         
         // First try exact match
@@ -142,31 +132,10 @@ module PriceExtractor
           return true;
         }
         
-        // Then try contains match
-        if (normalizedTitle.includes(normalizedCardName)) {
-          console.log('Found contains match');
-          return true;
-        }
-        
-        // Then try word-by-word match (more lenient)
-        const titleWords = normalizedTitle.split(/\s+/);
-        const cardNameWords = normalizedCardName.split(/\s+/);
-        const commonWords = titleWords.filter(word => cardNameWords.includes(word));
-        
-        // If we have at least 2 common words or all words match, consider it a match
-        if (commonWords.length >= 2 || commonWords.length === cardNameWords.length) {
-          console.log('Found word match:', {
-            commonWords,
-            titleWords,
-            cardNameWords,
-            matchType: commonWords.length >= 2 ? 'partial' : 'full'
-          });
-          return true;
-        }
-        
-        // Then try match with punctuation delimiters (most lenient)
+        // Then try match with word boundaries
+        // This ensures we match the full card name as a distinct entity
         const regex = new RegExp(
-          `(^|\\s|[^a-zA-Z0-9])${normalizedCardName.split(/\s+/).join('[^a-zA-Z0-9]+')}(\\s|[^a-zA-Z0-9]|$)`,
+          `(^|\\s|[^a-zA-Z0-9])${normalizedCardName}(\\s|[^a-zA-Z0-9]|$)`,
           'i'
         );
         
@@ -175,8 +144,7 @@ module PriceExtractor
           isMatch,
           matchIndex: normalizedTitle.search(regex),
           title: normalizedTitle,
-          regexPattern: regex.toString(),
-          fullMatch: normalizedTitle.match(regex)
+          regexPattern: regex.toString()
         });
         
         return isMatch;

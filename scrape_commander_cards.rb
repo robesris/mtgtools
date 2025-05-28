@@ -490,25 +490,36 @@ class CommanderCardScraper
       return local_image_path
     end
 
-    # Special case: hardcode multiverseid for THE ONE RING
+    # Special case for THE ONE RING: use bracketed search (e.g. [THE ONE RING]) to ensure an exact match (in English) and not a Spanish variant.
     if card_name == "THE ONE RING"
-      multiverseid = 597129  # Universes Beyond: The Lord of the Rings: Tales of Middle-earth version
-      local_image_path = File.join(@output_dir, 'card_images', "#{multiverseid}.jpg")
-      unless File.exist?(local_image_path)
-        image_url = "https://gatherer.wizards.com/Handlers/Image.ashx?multiverseid=#{multiverseid}&type=card"
-        begin
-          puts "Downloading image for THE ONE RING by multiverseid..."
-          response = HTTParty.get(image_url)
-          File.binwrite(local_image_path, response.body)
-        rescue => e
-          puts "Error downloading image: #{e.message}"
-          return nil
-        end
+      bracketed_name = "[THE ONE RING]"
+      encoded_bracketed = URI.encode_www_form_component(bracketed_name)
+      url = "#{BASE_URL}?name=+#{encoded_bracketed}"
+      puts "Trying bracketed search for THE ONE RING: #{bracketed_name}"
+      puts "URL: #{url}"
+      response = HTTParty.get(url)
+      doc = Nokogiri::HTML(response.body)
+      card_image = doc.at_css('.cardImage img')
+      if card_image && card_image['src'] =~ /multiverseid=(\d+)/
+         multiverseid = $1
+         @card_cache[card_name] = multiverseid
+         save_cache
+         image_url = "https://gatherer.wizards.com/Handlers/Image.ashx?multiverseid=#{multiverseid}&type=card"
+         local_image_path = File.join(@output_dir, 'card_images', "#{multiverseid}.jpg")
+         unless File.exist?(local_image_path)
+           begin
+             puts "Downloading image for THE ONE RING (bracketed search) ..."
+             response = HTTParty.get(image_url)
+             File.binwrite(local_image_path, response.body)
+           rescue => e
+             puts "Error downloading image: #{e.message}"
+             return nil
+           end
+         end
+         puts "Found THE ONE RING (bracketed search)!"
+         return local_image_path
       end
-      @card_cache[card_name] = multiverseid
-      save_cache
-      puts "Found THE ONE RING by multiverseid!"
-      return local_image_path
+      puts "Not found: THE ONE RING (bracketed search) (no exact match)"
     end
     
     # Special case handling for problematic cards

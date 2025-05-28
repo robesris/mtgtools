@@ -31,7 +31,7 @@ module PageManager
         )
 
         # Set default navigation timeout
-        default_timeout = ENV['RACK_ENV'] == 'production' ? 120000 : 30000  # 2 minutes in production, 30 seconds locally
+        default_timeout = ENV['RACK_ENV'] == 'production' ? 300000 : 30000  # 5 minutes in production, 30 seconds locally
         page.default_navigation_timeout = default_timeout
         page.default_timeout = default_timeout
         $file_logger.info("Request #{request_id}: Set default navigation timeout to #{default_timeout}ms")

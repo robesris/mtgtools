@@ -95,7 +95,7 @@ RSpec.describe 'Price Proxy Integration' do
 
     # Start the server in a separate process
     puts "Starting server..."
-    $server_pid = Process.spawn('ruby price_proxy.rb -p 4568')
+    $server_pid = Process.spawn({'PORT' => '4568'}, 'ruby price_proxy.rb')
     puts "Server started with PID: #{$server_pid}"
     
     # Wait for server to start

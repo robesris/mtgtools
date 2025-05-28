@@ -107,6 +107,14 @@ module PriceExtractor
           return false;
         }
         
+        // Special case for "The One Ring"
+        if (cardName.toLowerCase() === 'the one ring') {
+          const normalizedTitle = title.toLowerCase().trim();
+          // Match either "The One Ring" or "The One Ring - Universes Beyond: The Lord of the Rings: Tales of Middle-earth"
+          return normalizedTitle === 'the one ring' || 
+                 normalizedTitle.startsWith('the one ring - universes beyond: the lord of the rings: tales of middle-earth');
+        }
+        
         // Normalize both strings - only remove extra spaces and convert to lowercase
         const normalizeString = (str) => {
           return String(str).toLowerCase().trim()

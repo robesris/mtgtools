@@ -472,16 +472,7 @@ async function fetchAllPrices() {
 document.addEventListener('DOMContentLoaded', () => {
   console.log('DOM fully loaded, initializing...');
   
-  // Clear all cached prices from localStorage
-  console.log('Clearing cached prices from localStorage...');
-  Object.keys(localStorage).forEach(key => {
-    if (key.startsWith('price_')) {
-      localStorage.removeItem(key);
-      console.log(`Removed cached price for: ${key.replace('price_', '')}`);
-    }
-  });
-  
-  // Load cached prices (will be empty now)
+  // Load cached prices
   loadCachedPrices();
   
   // Attach click handlers

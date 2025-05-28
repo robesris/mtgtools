@@ -19,6 +19,14 @@ module RequestHandler
       process_card_request(card_name, request_id)
     end
 
+    def in_production?
+      ENV['RACK_ENV'] == 'production'
+    end
+
+    def get_timeout(seconds)
+      in_production? ? seconds * 4 : seconds
+    end
+
     private
 
     def validate_request(card_name, request_id)
@@ -82,8 +90,9 @@ module RequestHandler
           $file_logger.info("Request #{request_id}: Initial page state: #{page_state.inspect}")
           
           # Wait longer for dynamic content to load
-          $file_logger.info("Request #{request_id}: Waiting 5 seconds for dynamic content to load...")
-          sleep(5)
+          wait_time = get_timeout(5)
+          $file_logger.info("Request #{request_id}: Waiting #{wait_time} seconds for dynamic content to load...")
+          sleep(wait_time)
           $file_logger.info("Request #{request_id}: Finished waiting for dynamic content")
           
           # Additional check for page state after sleep
@@ -102,7 +111,7 @@ module RequestHandler
           # Wait for the search results to appear with increased timeout
           begin
             $file_logger.info("Request #{request_id}: Waiting for search results container...")
-            search_page.wait_for_selector('.search-results', timeout: 45000)
+            search_page.wait_for_selector('.search-results', timeout: get_timeout(45000))
             $file_logger.info("Request #{request_id}: Search results container found")
           rescue => e
             $file_logger.error("Request #{request_id}: Error waiting for search results: #{e.message}")
@@ -112,7 +121,7 @@ module RequestHandler
           # Wait for the product card to appear with increased timeout
           begin
             $file_logger.info("Request #{request_id}: Waiting for product cards...")
-            search_page.wait_for_selector('.product-card__product', timeout: 45000)
+            search_page.wait_for_selector('.product-card__product', timeout: get_timeout(45000))
             $file_logger.info("Request #{request_id}: Product card(s) found")
             
             # Additional check for actual product cards
@@ -287,6 +296,12 @@ module RequestHandler
     def setup_search_page(context, request_id)
       search_page = context.new_page
       PageManager.configure_page(search_page, request_id)
+      
+      # Inject environment variable into JavaScript context
+      search_page.evaluate(<<~JS)
+        window.RUBY_ENV = '#{ENV['RACK_ENV']}';
+      JS
+      
       BrowserManager.add_page(request_id, search_page)
       search_page
     end

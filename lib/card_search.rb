@@ -114,7 +114,9 @@ class CardSearch
           
           # Wait for the search results to load
           begin
-            search_page.wait_for_selector('.search-result, .product-card, [class*="product"], [class*="listing"]', timeout: 10000)
+            search_page.wait_for_selector('.search-result, .product-card, [class*="product"], [class*="listing"]', 
+              timeout: ENV['RACK_ENV'] == 'production' ? 120000 : 10000  # 2 minutes in production, 10 seconds locally
+            )
             $logger.info("Request #{request_id}: Search results found")
             
             # (Optional) log the page's HTML (for debugging) and take a debug screenshot (after waiting for results)

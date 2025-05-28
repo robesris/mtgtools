@@ -237,60 +237,49 @@ function loadCachedPrices() {
         const data = JSON.parse(cachedData);
         console.log(`Parsed cache data for ${cardName}:`, data);
         
-        // Check if cache is older than 24 hours
-        const cacheAge = Date.now() - data.timestamp;
-        const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+        // Always use cached data if it exists, regardless of age
+        console.log(`Using cached data for ${cardName}`);
+        const prices = data.prices;
+        let html = '';
         
-        if (cacheAge < CACHE_DURATION) {
-          console.log(`Using cached data for ${cardName} (age: ${Math.round(cacheAge / (60 * 1000))} minutes)`);
-          const prices = data.prices;
-          let html = '';
-          
-          const addPrice = (condition, price) => {
-            console.log(`Adding cached price for ${condition}:`, price);
-            if (html) { html += ' | '; }
-            const displayCondition = condition
-              .replace('near mint', 'Near Mint')
-              .replace('lightly played', 'Lightly Played')
-              .replace(' foil', ' Foil');
-            html += `${displayCondition}: <a href="${price.url}" target="_blank" class="price-link">${price.price}</a>`;
-          };
-          
-          const conditionOrder = ['lightly played', 'near mint'];
-          conditionOrder.forEach(condition => {
-            if (prices[condition]) {
-              addPrice(condition, prices[condition]);
-            }
-          });
-          
-          Object.entries(prices).forEach(([condition, price]) => {
-            if (!conditionOrder.includes(condition)) {
-              addPrice(condition, price);
-            }
-          });
-          
-          console.log(`Final cached HTML for ${cardName}:`, html);
-          const priceInfo = card.querySelector('.price-info');
-          if (priceInfo) {
-            // Store the timestamp element if it exists
-            const existingTimestamp = priceInfo.querySelector('.price-timestamp');
-            // Update the price HTML
-            priceInfo.innerHTML = html || 'Click to load prices';
-            // Add the timestamp back if it existed, or create a new one if we have prices
-            if (existingTimestamp) {
-              priceInfo.appendChild(existingTimestamp);
-            } else if (html) {
-              addTimestampToPriceInfo(priceInfo, data.timestamp);
-            }
-          } else {
-            console.log('No .price-info element found for this card');
+        const addPrice = (condition, price) => {
+          console.log(`Adding cached price for ${condition}:`, price);
+          if (html) { html += ' | '; }
+          const displayCondition = condition
+            .replace('near mint', 'Near Mint')
+            .replace('lightly played', 'Lightly Played')
+            .replace(' foil', ' Foil');
+          html += `${displayCondition}: <a href="${price.url}" target="_blank" class="price-link">${price.price}</a>`;
+        };
+        
+        const conditionOrder = ['lightly played', 'near mint'];
+        conditionOrder.forEach(condition => {
+          if (prices[condition]) {
+            addPrice(condition, prices[condition]);
+          }
+        });
+        
+        Object.entries(prices).forEach(([condition, price]) => {
+          if (!conditionOrder.includes(condition)) {
+            addPrice(condition, price);
+          }
+        });
+        
+        console.log(`Final cached HTML for ${cardName}:`, html);
+        const priceInfo = card.querySelector('.price-info');
+        if (priceInfo) {
+          // Store the timestamp element if it exists
+          const existingTimestamp = priceInfo.querySelector('.price-timestamp');
+          // Update the price HTML
+          priceInfo.innerHTML = html || 'Click to load prices';
+          // Add the timestamp back if it existed, or create a new one if we have prices
+          if (existingTimestamp) {
+            priceInfo.appendChild(existingTimestamp);
+          } else if (html) {
+            addTimestampToPriceInfo(priceInfo, data.timestamp);
           }
         } else {
-          console.log(`Cache expired for ${cardName} (age: ${Math.round(cacheAge / (60 * 1000))} minutes)`);
-          const priceInfo = card.querySelector('.price-info');
-          if (priceInfo) {
-            priceInfo.innerHTML = 'Click to load prices';
-          }
+          console.log('No .price-info element found for this card');
         }
       } catch (e) {
         console.error(`Error parsing cache data for ${cardName}:`, e);

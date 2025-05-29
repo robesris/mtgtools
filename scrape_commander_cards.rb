@@ -1084,17 +1084,14 @@ class CommanderCardScraper
             width: 100%;
             text-align: left;
             padding: 0 5px;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
           }
           .price-info .price-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
+            display: block;
+            width: 100%;
           }
           .price-info .price-content {
-            flex: 1;
+            display: block;
+            width: 100%;
           }
           .price-info .reload-icon {
             opacity: 0.6;
@@ -1108,7 +1105,6 @@ class CommanderCardScraper
             opacity: 1;
             transform: rotate(180deg);
           }
-          /* Make timestamp styling more specific and forceful */
           .price-info .price-timestamp {
             display: block;
             font-size: 0.65em !important;

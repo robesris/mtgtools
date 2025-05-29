@@ -319,7 +319,8 @@ module PriceExtractor
               url,
               linkHTML,
               setVariant,
-              setVariantHTML: setVariantElement ? setVariantElement.outerHTML : 'No set variant element found'
+              setVariantHTML: setVariantElement ? setVariantElement.outerHTML : 'No set variant element found',
+              cardHTML: card.outerHTML
             };
           }
 
@@ -518,6 +519,9 @@ module PriceExtractor
         
         $file_logger.info("Request #{request_id}: Found lowest priced product: #{lowest_priced_product['title']} at $#{lowest_priced_product['price']}")
         $file_logger.info("Request #{request_id}: Chosen Card:\nName: #{lowest_priced_product['title']}\nName Element: #{lowest_priced_product['titleHTML']}\nPrice: $#{lowest_priced_product['price']}\nPrice Element: #{lowest_priced_product['priceHTML']}\nURL: #{lowest_priced_product['url']}\nURL Element: #{lowest_priced_product['linkHTML']}\nSet Variant: #{lowest_priced_product['setVariant']}\nSet Variant Element: #{lowest_priced_product['setVariantHTML']}")
+        if ENV['RACK_ENV'] == 'development'
+          $file_logger.debug("Request #{request_id}: SEARCH RESULT ELEMENT: #{lowest_priced_product['cardHTML']}")
+        end
         lowest_priced_product
       rescue => e
         $file_logger.error("Request #{request_id}: Error extracting lowest priced product: #{e.message}")

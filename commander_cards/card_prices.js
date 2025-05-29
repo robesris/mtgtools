@@ -321,13 +321,14 @@ function attachClickHandlers() {
     // Create a new handler function with a unique name
     const handlerName = `cardClickHandler_${index}`;
     window[handlerName] = (e) => {
-      // If the click was on a price link or card image, don't do anything
+      // If the click was on a price link or card image link, let the default behavior happen
       if (e.target.closest('.price-link') || e.target.closest('.card-image-link')) {
-        console.log('Click was on price link or card image, ignoring card click handler');
-        return;
+        console.log('Click was on price link or card image link, allowing default behavior');
+        return true;  // Allow the default link behavior
       }
       // Only trigger price loading if clicking the price info area
       if (e.target.closest('.price-info')) {
+        e.preventDefault();  // Prevent default only for price info clicks
         cardClickHandler.call(card, e);
       }
     };
@@ -348,9 +349,7 @@ function attachClickHandlers() {
       // Create a new handler function with a unique name
       const linkHandlerName = `priceLinkClickHandler_${index}_${Math.random().toString(36).substr(2, 9)}`;
       window[linkHandlerName] = (e) => {
-        console.log('Price link clicked, preventing event propagation');
-        e.preventDefault();
-        e.stopPropagation();
+        console.log('Price link clicked, allowing default behavior');
         // Let the default link behavior happen (opening in new tab)
         return true;
       };

@@ -118,6 +118,12 @@ async function updateCardPrices(cardElement) {
   const cardName = cardElement.querySelector('.card-name').textContent;
   const priceInfo = cardElement.querySelector('.price-info');
   
+  // Clear any existing error message
+  const existingError = priceInfo.querySelector('.error-message');
+  if (existingError) {
+    existingError.remove();
+  }
+  
   priceInfo.innerHTML = '<span class="loading">Loading prices</span>';
   const loadingElement = priceInfo.querySelector('.loading');
   const ellipsisInterval = animateEllipsis(loadingElement, 'Loading prices');
@@ -204,11 +210,12 @@ async function updateCardPrices(cardElement) {
   } catch (error) {
     clearInterval(ellipsisInterval);
     console.error('Error updating prices:', error);
-    // Show the error message for 5 seconds, then revert to "Click to load prices"
-    priceInfo.innerHTML = `<span class="error-message">${error.message || 'Error loading prices'}</span>`;
-    setTimeout(() => {
-      priceInfo.textContent = 'Click to load prices';
-    }, 5000);
+    // Show the error message and keep it visible
+    const errorMessage = document.createElement('span');
+    errorMessage.className = 'error-message';
+    errorMessage.textContent = error.message || 'Error loading prices';
+    priceInfo.innerHTML = '';
+    priceInfo.appendChild(errorMessage);
   }
 }
 
@@ -684,6 +691,11 @@ style.textContent = `
   .error-message {
     color: #e74c3c;
     font-style: italic;
+    display: block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background-color: rgba(231, 76, 60, 0.1);
+    border: 1px solid rgba(231, 76, 60, 0.2);
   }
 `;
 document.head.appendChild(style);

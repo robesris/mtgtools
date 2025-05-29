@@ -84,6 +84,7 @@ module RequestHandler
     def process_with_browser(card_name, request_id, context, legality, condition)
       search_page = nil
       begin
+        $file_logger.info("Request #{request_id}: Starting browser process for #{card_name} (#{condition})")
         search_page = setup_search_page(context, request_id)
         return format_error_response('Failed to create search page', legality) unless search_page && !search_page.closed?
 
@@ -94,11 +95,14 @@ module RequestHandler
         
         # First try a more lenient navigation
         begin
+          $file_logger.info("Request #{request_id}: Starting page navigation with timeout #{search_page.default_navigation_timeout}ms")
+          start_time = Time.now
           search_page.goto(search_url, 
             wait_until: 'domcontentloaded',
-            timeout: get_navigation_timeout
+            timeout: search_page.default_navigation_timeout
           )
-          $file_logger.info("Request #{request_id}: Initial page load complete")
+          navigation_time = Time.now - start_time
+          $file_logger.info("Request #{request_id}: Initial page load complete in #{navigation_time.round(2)}s")
           
           # Log the page state
           page_state = search_page.evaluate(<<~JS)
@@ -136,19 +140,24 @@ module RequestHandler
           
           # Wait for the search results to appear with increased timeout
           begin
-            $file_logger.info("Request #{request_id}: Waiting for search results container...")
+            $file_logger.info("Request #{request_id}: Starting wait for search results container with timeout #{get_timeout(45000)}ms")
+            start_time = Time.now
             search_page.wait_for_selector('.search-results', timeout: get_timeout(45000))
-            $file_logger.info("Request #{request_id}: Search results container found")
+            wait_time = Time.now - start_time
+            $file_logger.info("Request #{request_id}: Search results container found after #{wait_time.round(2)}s")
           rescue => e
             $file_logger.error("Request #{request_id}: Error waiting for search results: #{e.message}")
+            $file_logger.error("Request #{request_id}: Search results error details: #{e.backtrace.join("\n")}")
             raise
           end
 
           # Wait for the product card to appear with increased timeout
           begin
-            $file_logger.info("Request #{request_id}: Waiting for product cards...")
+            $file_logger.info("Request #{request_id}: Starting wait for product cards with timeout #{get_timeout(45000)}ms")
+            start_time = Time.now
             search_page.wait_for_selector('.product-card__product', timeout: get_timeout(45000))
-            $file_logger.info("Request #{request_id}: Product card(s) found")
+            wait_time = Time.now - start_time
+            $file_logger.info("Request #{request_id}: Product card(s) found after #{wait_time.round(2)}s")
             
             # Additional check for actual product cards
             product_count = search_page.evaluate(<<~JS)
@@ -157,79 +166,23 @@ module RequestHandler
             $file_logger.info("Request #{request_id}: Found #{product_count} product cards")
             
             # Get detailed information about the found card(s)
+            $file_logger.info("Request #{request_id}: Starting card details extraction")
+            start_time = Time.now
             card_details = search_page.evaluate(<<~JS)
               () => {
                 const cards = Array.from(document.querySelectorAll('.product-card__product'));
-                return cards
-                  .filter(card => {
-                    const title = card.querySelector('.product-card__title')?.textContent?.trim() || '';
-                    // Filter out World Championship Deck cards
-                    return !title.toLowerCase().includes('world championship decks');
-                  })
-                  .map(card => {
-                    // Try multiple possible selectors for price, including the inventory price
-                    const priceSelectors = [
-                      '.inventory__price-with-shipping',
-                      '.product-card__price',
-                      '.price-point__price',
-                      '[data-testid="product-price"]',
-                      '.product-card__price-point',
-                      '.price-point'
-                    ];
-                    
-                    // Try multiple possible selectors for set
-                    const setSelectors = [
-                      '.product-card__set',
-                      '.product-card__set-name',
-                      '[data-testid="product-set"]',
-                      '.set-name'
-                    ];
-                    
-                    // Log all possible price elements found with their full context
-                    const priceElements = priceSelectors.map(selector => {
-                      const element = card.querySelector(selector);
-                      return {
-                        selector,
-                        found: !!element,
-                        text: element?.textContent?.trim() || 'not found',
-                        html: element?.outerHTML || 'not found',
-                        parentHtml: element?.parentElement?.outerHTML || 'not found',
-                        // Get all price-related elements in the card for context
-                        allPriceElements: Array.from(card.querySelectorAll('[class*="price"]')).map(el => ({
-                          class: el.className,
-                          text: el.textContent.trim(),
-                          html: el.outerHTML
-                        }))
-                      };
-                    });
-                    
-                    // Log all possible set elements found
-                    const setElements = setSelectors.map(selector => ({
-                      selector,
-                      found: !!card.querySelector(selector),
-                      text: card.querySelector(selector)?.textContent?.trim() || 'not found',
-                      html: card.querySelector(selector)?.outerHTML || 'not found'
-                    }));
-                    
-                    // Get the first found price and set
-                    const price = priceElements.find(e => e.found)?.text || 'No price found';
-                    const set = setElements.find(e => e.found)?.text || 'No set found';
-                    
-                    return {
-                      title: card.querySelector('.product-card__title')?.textContent?.trim() || 'No title found',
-                      price,
-                      set,
-                      priceElements,
-                      setElements,
-                      // Log the entire card HTML for debugging
-                      fullCardHtml: card.outerHTML
-                    };
-                  });
+                return cards.map(card => {
+                  const title = card.querySelector('.product-card__title')?.textContent?.trim() || 'No title found';
+                  const price = card.querySelector('.inventory__price-with-shipping, .product-card__price, .price-point__price, [data-testid="product-price"]')?.textContent?.trim() || 'No price found';
+                  const set = card.querySelector('.product-card__set, .product-card__set-name, [data-testid="product-set"]')?.textContent?.trim() || 'No set found';
+                  return { title, price, set };
+                });
               }
             JS
-            $file_logger.info("Request #{request_id}: Searching for card: '#{card_name}'")
+            extraction_time = Time.now - start_time
+            $file_logger.info("Request #{request_id}: Card details extraction completed in #{extraction_time.round(2)}s")
             if ENV['RACK_ENV'] == 'development'
-              $file_logger.debug("Request #{request_id}: Found card details: #{JSON.pretty_generate(card_details)}")
+              $file_logger.debug("Request #{request_id}: Card details: #{JSON.pretty_generate(card_details)}")
             end
             
             # If we found a card but no price, wait a bit longer and try again

@@ -45,6 +45,57 @@ module PriceExtractor
         console.log('No search input found');
       }
 
+      // Helper function to check if a title matches the card name
+      function isExactCardMatch(title, cardName) {
+        if (!title || !cardName) {
+          console.log('Missing title or cardName:', { title, cardName });
+          return false;
+        }
+        
+        // Normalize both strings - only remove extra spaces and convert to lowercase
+        const normalizeString = (str) => {
+          return String(str).toLowerCase().trim()
+            .replace(/\s+/g, ' ');  // Replace multiple spaces with single space
+        };
+        
+        const normalizedTitle = normalizeString(title);
+        const normalizedCardName = normalizeString(cardName);
+        
+        console.log('Detailed card name comparison:', {
+          originalTitle: title,
+          originalCardName: cardName,
+          normalizedTitle,
+          normalizedCardName,
+          titleLength: normalizedTitle.length,
+          cardNameLength: normalizedCardName.length,
+          exactMatch: normalizedTitle === normalizedCardName
+        });
+        
+        // First try exact match
+        if (normalizedTitle === normalizedCardName) {
+          console.log('Found exact match');
+          return true;
+        }
+        
+        // Then try match with strict word boundaries
+        // This ensures we match the full card name as a distinct entity
+        // and only at the start of the title or after a space/hyphen
+        const regex = new RegExp(
+          `(^|\\s|-)${normalizedCardName}(\\s|$|\\s*[-(])`,
+          'i'
+        );
+        
+        const isMatch = regex.test(normalizedTitle);
+        console.log('Regex match details:', { 
+          isMatch,
+          matchIndex: normalizedTitle.search(regex),
+          title: normalizedTitle,
+          regexPattern: regex.toString()
+        });
+        
+        return isMatch;
+      }
+
       function extractNumericPrice(priceText) {
         if (!priceText) {
           console.log('No price text provided');
@@ -99,55 +150,6 @@ module PriceExtractor
         }
         
         return result;
-      }
-
-      function isExactCardMatch(title, cardName) {
-        if (!title || !cardName) {
-          console.log('Missing title or cardName:', { title, cardName });
-          return false;
-        }
-        
-        // Normalize both strings - only remove extra spaces and convert to lowercase
-        const normalizeString = (str) => {
-          return String(str).toLowerCase().trim()
-            .replace(/\s+/g, ' ');  // Replace multiple spaces with single space
-        };
-        
-        const normalizedTitle = normalizeString(title);
-        const normalizedCardName = normalizeString(cardName);
-        
-        console.log('Detailed card name comparison:', {
-          originalTitle: title,
-          originalCardName: cardName,
-          normalizedTitle,
-          normalizedCardName,
-          titleLength: normalizedTitle.length,
-          cardNameLength: normalizedCardName.length,
-          exactMatch: normalizedTitle === normalizedCardName
-        });
-        
-        // First try exact match
-        if (normalizedTitle === normalizedCardName) {
-          console.log('Found exact match');
-          return true;
-        }
-        
-        // Then try match with word boundaries
-        // This ensures we match the full card name as a distinct entity
-        const regex = new RegExp(
-          `(^|\\s|[^a-zA-Z0-9])${normalizedCardName}(\\s|[^a-zA-Z0-9]|$)`,
-          'i'
-        );
-        
-        const isMatch = regex.test(normalizedTitle);
-        console.log('Regex match details:', { 
-          isMatch,
-          matchIndex: normalizedTitle.search(regex),
-          title: normalizedTitle,
-          regexPattern: regex.toString()
-        });
-        
-        return isMatch;
       }
 
       // Wait for elements to be fully loaded
@@ -252,6 +254,7 @@ module PriceExtractor
           
           const linkElement = card.querySelector('a[href*="/product"]');
           const setVariantElement = card.querySelector('.product-card__set-name__variant');
+          const rarityElement = card.querySelector('.product-card__rarity__variant');
 
           // Log the card structure
           console.log('Card structure:', {
@@ -260,12 +263,16 @@ module PriceExtractor
             hasTitle: !!titleElement,
             hasPrice: !!priceElement,
             hasLink: !!linkElement,
+            hasSetVariant: !!setVariantElement,
+            hasRarity: !!rarityElement,
             titleText: titleElement?.textContent?.trim(),
             priceText: priceElement?.textContent?.trim(),
             linkHref: linkElement?.href,
-            titleHTML: titleElement?.outerHTML,
-            priceHTML: priceElement?.outerHTML,
-            linkHTML: linkElement?.outerHTML,
+            setVariant: setVariantElement?.textContent?.trim(),
+            rarity: rarityElement?.textContent?.trim(),
+            titleHTML: titleElement?.outerHTML || null,
+            priceHTML: priceElement?.outerHTML || null,
+            linkHTML: linkElement?.outerHTML || null,
             html: card.outerHTML.slice(0, 500)
           });
 
@@ -274,18 +281,21 @@ module PriceExtractor
             return null;
           }
 
-          // Get the text content and HTML
+          // Get the text content and HTML - only after we know elements exist
           const title = titleElement.textContent.trim();
           const priceText = priceElement.textContent.trim();
           const titleHTML = titleElement.outerHTML;
           const priceHTML = priceElement.outerHTML;
           const linkHTML = linkElement.outerHTML;
           const url = linkElement.href;
-          const setVariant = setVariantElement ? setVariantElement.textContent.trim() : 'No set variant found';
+          const setVariant = setVariantElement ? setVariantElement.textContent.trim() : '';
+          const rarity = rarityElement ? rarityElement.textContent.trim() : '';
           
           console.log('Extracted content:', {
             title,
             priceText,
+            setVariant,
+            rarity,
             titleLength: title.length,
             priceTextLength: priceText.length
           });
@@ -295,14 +305,17 @@ module PriceExtractor
             return null;
           }
 
-          // Skip art cards, proxies, and World Championship Decks
+          // Skip art cards, proxies, tokens, and World Championship Decks
           if (title.toLowerCase().includes('art card') || 
               title.toLowerCase().includes('proxy') ||
               title.toLowerCase().includes('playtest') ||
               title.toLowerCase().includes('world championship decks') ||
-              setVariant.toLowerCase().includes('world championship decks') ||
-              title.includes('(ALL)')) {
-            console.log('Skipping non-playable card:', title, setVariant ? `(Set: ${setVariant})` : '');
+              (setVariant && setVariant.toLowerCase().includes('world championship decks')) ||
+              title.includes('(ALL)') ||
+              (rarity && rarity.toLowerCase().includes('token'))) {
+            console.log('Skipping non-playable card:', title, 
+              setVariant ? `(Set: ${setVariant})` : '',
+              rarity ? `(Rarity: ${rarity})` : '');
             return null;
           }
 
@@ -310,7 +323,17 @@ module PriceExtractor
           const priceMatch = priceText.match(/\$([\d,]+\.\d{2})/);
           const price = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, '')) : null;
           
-          if (price !== null && price > 0) {
+          // Check if the card name matches
+          const isMatch = isExactCardMatch(title, cardName);
+          console.log('Card match result:', {
+            title,
+            cardName,
+            isMatch,
+            price,
+            hasValidPrice: price !== null && price > 0
+          });
+          
+          if (price !== null && price > 0 && isMatch) {
             return {
               title,
               titleHTML,

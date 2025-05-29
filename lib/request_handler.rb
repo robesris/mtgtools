@@ -345,12 +345,63 @@ module RequestHandler
         # Use the exact URL from the search result
         product_url = lowest_priced_product['url']
         $file_logger.info("Request #{request_id}: Navigating to product page: #{product_url}")
-        condition_page.goto(product_url, wait_until: 'networkidle0')
+        
+        # Use a more lenient wait condition and add error handling
+        begin
+          condition_page.goto(product_url, 
+            wait_until: 'domcontentloaded',  # Changed from networkidle0 to be more lenient
+            timeout: get_navigation_timeout
+          )
+          
+          # Log the page state after navigation
+          page_state = condition_page.evaluate(<<~JS)
+            function() {
+              return {
+                url: window.location.href,
+                title: document.title,
+                readyState: document.readyState,
+                hasListings: !!document.querySelector('.listing-item'),
+                hasPrice: !!document.querySelector('.listing-item__listing-data__info__price'),
+                hasShipping: !!document.querySelector('.shipping-messages__price'),
+                bodyContent: document.body.textContent.slice(0, 500) + '...'
+              };
+            }
+          JS
+          $file_logger.info("Request #{request_id}: Product page state: #{page_state.inspect}")
+          
+          # Wait a bit for dynamic content
+          wait_time = get_timeout(5)
+          $file_logger.info("Request #{request_id}: Waiting #{wait_time} seconds for dynamic content...")
+          sleep(wait_time)
+          
+        rescue => e
+          $file_logger.error("Request #{request_id}: Error navigating to product page: #{e.message}")
+          $file_logger.error("Request #{request_id}: Navigation error details: #{e.backtrace.join("\n")}")
+          return nil
+        end
         
         PriceExtractor.add_redirect_prevention(condition_page, request_id)
         
-        result = PriceExtractor.extract_listing_prices(condition_page, request_id)
-        $file_logger.info("Request #{request_id}: Condition result: #{result.inspect}")
+        # Try to extract prices with retries
+        max_retries = 3
+        retry_count = 0
+        result = nil
+        
+        while retry_count < max_retries
+          result = PriceExtractor.extract_listing_prices(condition_page, request_id)
+          $file_logger.info("Request #{request_id}: Condition result (attempt #{retry_count + 1}): #{result.inspect}")
+          
+          if result && result.is_a?(Hash) && result['success']
+            break
+          end
+          
+          retry_count += 1
+          if retry_count < max_retries
+            wait_time = get_timeout(2)
+            $file_logger.info("Request #{request_id}: Retrying in #{wait_time} seconds...")
+            sleep(wait_time)
+          end
+        end
         
         return nil unless result && result.is_a?(Hash) && result['success']
         
@@ -364,7 +415,11 @@ module RequestHandler
           'url' => result['url']
         }
       ensure
-        condition_page.close
+        begin
+          condition_page.close
+        rescue => e
+          $file_logger.debug("Request #{request_id}: Error closing condition page: #{e.message}")
+        end
       end
     end
 

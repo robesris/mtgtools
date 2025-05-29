@@ -483,49 +483,73 @@ module PriceExtractor
   # JavaScript code for preventing redirects to error pages
   REDIRECT_PREVENTION_JS = <<~'JS'
     function() {
-      // Store original navigation methods
-      const originalPushState = history.pushState;
-      const originalReplaceState = history.replaceState;
+      // Only prevent navigation to actual error pages
+      const errorUrls = [
+        '/uhoh',
+        '/error',
+        '/500',
+        '/404',
+        '/maintenance',
+        '/access-denied'
+      ];
       
-      // Override history methods to prevent redirects to error page
-      history.pushState = function(state, title, url) {
-        if (typeof url === 'string' && url.includes('uhoh')) {
-          console.log('Prevented history push to error page');
-          return;
-        }
-        return originalPushState.apply(this, arguments);
-      };
-
-      history.replaceState = function(state, title, url) {
-        if (typeof url === 'string' && url.includes('uhoh')) {
-          console.log('Prevented history replace to error page');
-          return;
-        }
-        return originalReplaceState.apply(this, arguments);
-      };
-
-      // Add navigation listener
-      window.addEventListener('beforeunload', (event) => {
-        if (window.location.href.includes('uhoh')) {
-          console.log('Prevented navigation to error page');
-          event.preventDefault();
-          event.stopPropagation();
-          return false;
-        }
-      });
-
-      // Add click interceptor for links that might redirect
-      document.addEventListener('click', (event) => {
-        const link = event.target.closest('a');
-        if (link && link.href && link.href.includes('uhoh')) {
-          console.log('Prevented click navigation to error page');
+      // Helper to check if URL is an error page
+      function isErrorUrl(url) {
+        if (!url) return false;
+        return errorUrls.some(errorPath => url.toLowerCase().includes(errorPath));
+      }
+      
+      // Prevent navigation to error pages
+      window.addEventListener('beforeunload', function(event) {
+        const url = event.target.location?.href;
+        if (isErrorUrl(url)) {
+          console.log('Preventing navigation to error page:', url);
           event.preventDefault();
           event.stopPropagation();
           return false;
         }
       }, true);
-
-      console.log('Redirect prevention initialized');
+      
+      // Prevent clicks on price links from triggering searches
+      document.addEventListener('click', function(event) {
+        const link = event.target.closest('a');
+        if (!link) return;
+        
+        // If it's an error page URL, prevent navigation
+        if (isErrorUrl(link.href)) {
+          console.log('Preventing click navigation to error page:', link.href);
+          event.preventDefault();
+          event.stopPropagation();
+          return false;
+        }
+        
+        // If it's a product link (contains /product/), allow it
+        if (link.href.includes('/product/')) {
+          console.log('Allowing navigation to product page:', link.href);
+          return true;
+        }
+        
+        // If it's a search link or any other link, prevent it
+        if (link.href.includes('/search/') || link.href.includes('?q=')) {
+          console.log('Preventing search navigation:', link.href);
+          event.preventDefault();
+          event.stopPropagation();
+          return false;
+        }
+      }, true);
+      
+      // Also prevent form submissions that might trigger searches
+      document.addEventListener('submit', function(event) {
+        const form = event.target;
+        if (form.action && (form.action.includes('/search/') || form.action.includes('?q='))) {
+          console.log('Preventing search form submission:', form.action);
+          event.preventDefault();
+          event.stopPropagation();
+          return false;
+        }
+      }, true);
+      
+      console.log('Added navigation prevention for searches and error pages');
     }
   JS
 
@@ -593,14 +617,8 @@ module PriceExtractor
 
     # Add redirect prevention to a page
     def add_redirect_prevention(page, request_id)
-      begin
-        page.evaluate(REDIRECT_PREVENTION_JS)
-        $file_logger.info("Request #{request_id}: Added redirect prevention")
-        true
-      rescue => e
-        $file_logger.error("Request #{request_id}: Error adding redirect prevention: #{e.message}")
-        false
-      end
+      page.evaluate(REDIRECT_PREVENTION_JS)
+      $file_logger.info("Request #{request_id}: Added redirect prevention")
     end
   end
 end 

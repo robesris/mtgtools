@@ -248,13 +248,10 @@ module PriceExtractor
                              card.querySelector('[class*="product-card__title"]') ||
                              card.querySelector('[class*="product-card__name"]');
           
-          const priceElement = card.querySelector('.inventory__price-with-shipping') || 
-                             card.querySelector('.product-card__price') ||
-                             card.querySelector('[class*="inventory__price"]') ||
-                             card.querySelector('[class*="product-card__price"]');
+          const priceElement = card.querySelector('.inventory__price-with-shipping, .product-card__price, .price-point__price, [data-testid="product-price"]');
           
-          const linkElement = card.querySelector('a[href*="/product/"]') || 
-                            card.closest('a[href*="/product/"]');
+          const linkElement = card.querySelector('a[href*="/product"]');
+          const setVariantElement = card.querySelector('.product-card__set-name__variant');
 
           // Log the card structure
           console.log('Card structure:', {
@@ -272,12 +269,8 @@ module PriceExtractor
             html: card.outerHTML.slice(0, 500)
           });
 
-          if (!titleElement || !priceElement) {
-            console.log('Missing required elements:', {
-              hasTitle: !!titleElement,
-              hasPrice: !!priceElement,
-              hasLink: !!linkElement
-            });
+          if (!titleElement || !priceElement || !linkElement) {
+            console.log('Missing required elements in search result');
             return null;
           }
 
@@ -286,7 +279,9 @@ module PriceExtractor
           const priceText = priceElement.textContent.trim();
           const titleHTML = titleElement.outerHTML;
           const priceHTML = priceElement.outerHTML;
-          const linkHTML = linkElement?.outerHTML;
+          const linkHTML = linkElement.outerHTML;
+          const url = linkElement.href;
+          const setVariant = setVariantElement ? setVariantElement.textContent.trim() : 'No set variant found';
           
           console.log('Extracted content:', {
             title,
@@ -296,97 +291,39 @@ module PriceExtractor
           });
 
           if (!title || !priceText) {
-            console.log('Empty text content:', {
-              titleEmpty: !title,
-              priceTextEmpty: !priceText
-            });
+            console.log('Empty title or price text');
             return null;
           }
 
-          const price = extractNumericPrice(priceText);
-          const url = linkElement ? linkElement.href : null;
-
-          // Skip art cards and proxies
+          // Skip art cards, proxies, and World Championship Decks
           if (title.toLowerCase().includes('art card') || 
               title.toLowerCase().includes('proxy') ||
-              title.toLowerCase().includes('playtest')) {
-            console.log('Skipping non-playable card:', title);
+              title.toLowerCase().includes('playtest') ||
+              title.toLowerCase().includes('world championship decks') ||
+              setVariant.toLowerCase().includes('world championship decks') ||
+              title.includes('(ALL)')) {
+            console.log('Skipping non-playable card:', title, setVariant ? `(Set: ${setVariant})` : '');
             return null;
           }
 
-          const isMatch = isExactCardMatch(title, cardName);
-          const hasValidPrice = price !== null && !isNaN(price) && isFinite(price) && price > 0;
+          // Extract numeric price
+          const priceMatch = priceText.match(/\$([\d,]+\.\d{2})/);
+          const price = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, '')) : null;
           
-          console.log('Match details:', {
-            title,
-            price,
-            isMatch,
-            hasValidPrice,
-            matchReason: isMatch ? 'title matches' : 'title does not match',
-            priceReason: hasValidPrice ? 'valid price' : 'invalid price',
-            priceValidation: {
-              isNull: price === null,
-              isNaN: isNaN(price),
-              isFinite: isFinite(price),
-              priceValue: price,
-              greaterThanZero: price > 0,
-              originalPriceText: priceText
-            }
-          });
-
-          // Modified validation logic to be more lenient while maintaining accuracy
-          if (isMatch && hasValidPrice) {
-            console.log('Found valid product:', { 
-              title, 
-              price, 
-              url,
-              titleHTML,
-              priceHTML,
-              linkHTML,
-              validationDetails: {
-                titleMatch: isMatch,
-                priceValid: hasValidPrice,
-                priceValue: price,
-                priceText: priceText,
-                priceValidation: {
-                  isNull: price === null,
-                  isNaN: isNaN(price),
-                  isFinite: isFinite(price),
-                  priceValue: price,
-                  greaterThanZero: price > 0
-                }
-              }
-            });
-            return { 
-              title, 
-              price, 
-              url,
-              titleHTML,
-              priceHTML,
-              linkHTML
-            };
-          } else {
-            // Log detailed rejection reason
-            const rejectionReason = !isMatch ? 'title does not match' : 'invalid price';
-            console.log('Product rejected:', {
+          if (price !== null && price > 0) {
+            return {
               title,
+              titleHTML,
               price,
-              isMatch,
-              hasValidPrice,
-              rejectionReason,
-              validationDetails: {
-                titleMatch: isMatch,
-                priceValid: hasValidPrice,
-                priceValue: price,
-                priceText: priceText,
-                priceNull: price === null,
-                priceNaN: isNaN(price),
-                priceFinite: isFinite(price),
-                priceGreaterThanZero: price > 0
-              }
-            });
-            return null;
+              priceHTML,
+              url,
+              linkHTML,
+              setVariant,
+              setVariantHTML: setVariantElement ? setVariantElement.outerHTML : 'No set variant element found'
+            };
           }
+
+          return null;
         }).filter(Boolean);
 
         console.log(`Found ${validProducts.length} valid products after filtering`);
@@ -580,7 +517,7 @@ module PriceExtractor
         end
         
         $file_logger.info("Request #{request_id}: Found lowest priced product: #{lowest_priced_product['title']} at $#{lowest_priced_product['price']}")
-        $file_logger.info("Request #{request_id}: Chosen Card:\nName: #{lowest_priced_product['title']}\nName Element: #{lowest_priced_product['titleHTML']}\nPrice: $#{lowest_priced_product['price']}\nPrice Element: #{lowest_priced_product['priceHTML']}\nURL: #{lowest_priced_product['url']}\nURL Element: #{lowest_priced_product['linkHTML']}")
+        $file_logger.info("Request #{request_id}: Chosen Card:\nName: #{lowest_priced_product['title']}\nName Element: #{lowest_priced_product['titleHTML']}\nPrice: $#{lowest_priced_product['price']}\nPrice Element: #{lowest_priced_product['priceHTML']}\nURL: #{lowest_priced_product['url']}\nURL Element: #{lowest_priced_product['linkHTML']}\nSet Variant: #{lowest_priced_product['setVariant']}\nSet Variant Element: #{lowest_priced_product['setVariantHTML']}")
         lowest_priced_product
       rescue => e
         $file_logger.error("Request #{request_id}: Error extracting lowest priced product: #{e.message}")

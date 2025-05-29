@@ -160,65 +160,71 @@ module RequestHandler
             card_details = search_page.evaluate(<<~JS)
               () => {
                 const cards = Array.from(document.querySelectorAll('.product-card__product'));
-                return cards.map(card => {
-                  // Try multiple possible selectors for price, including the inventory price
-                  const priceSelectors = [
-                    '.inventory__price-with-shipping',
-                    '.product-card__price',
-                    '.price-point__price',
-                    '[data-testid="product-price"]',
-                    '.product-card__price-point',
-                    '.price-point'
-                  ];
-                  
-                  // Try multiple possible selectors for set
-                  const setSelectors = [
-                    '.product-card__set',
-                    '.product-card__set-name',
-                    '[data-testid="product-set"]',
-                    '.set-name'
-                  ];
-                  
-                  // Log all possible price elements found with their full context
-                  const priceElements = priceSelectors.map(selector => {
-                    const element = card.querySelector(selector);
-                    return {
+                return cards
+                  .filter(card => {
+                    const title = card.querySelector('.product-card__title')?.textContent?.trim() || '';
+                    // Filter out World Championship Deck cards
+                    return !title.toLowerCase().includes('world championship decks');
+                  })
+                  .map(card => {
+                    // Try multiple possible selectors for price, including the inventory price
+                    const priceSelectors = [
+                      '.inventory__price-with-shipping',
+                      '.product-card__price',
+                      '.price-point__price',
+                      '[data-testid="product-price"]',
+                      '.product-card__price-point',
+                      '.price-point'
+                    ];
+                    
+                    // Try multiple possible selectors for set
+                    const setSelectors = [
+                      '.product-card__set',
+                      '.product-card__set-name',
+                      '[data-testid="product-set"]',
+                      '.set-name'
+                    ];
+                    
+                    // Log all possible price elements found with their full context
+                    const priceElements = priceSelectors.map(selector => {
+                      const element = card.querySelector(selector);
+                      return {
+                        selector,
+                        found: !!element,
+                        text: element?.textContent?.trim() || 'not found',
+                        html: element?.outerHTML || 'not found',
+                        parentHtml: element?.parentElement?.outerHTML || 'not found',
+                        // Get all price-related elements in the card for context
+                        allPriceElements: Array.from(card.querySelectorAll('[class*="price"]')).map(el => ({
+                          class: el.className,
+                          text: el.textContent.trim(),
+                          html: el.outerHTML
+                        }))
+                      };
+                    });
+                    
+                    // Log all possible set elements found
+                    const setElements = setSelectors.map(selector => ({
                       selector,
-                      found: !!element,
-                      text: element?.textContent?.trim() || 'not found',
-                      html: element?.outerHTML || 'not found',
-                      parentHtml: element?.parentElement?.outerHTML || 'not found',
-                      // Get all price-related elements in the card for context
-                      allPriceElements: Array.from(card.querySelectorAll('[class*="price"]')).map(el => ({
-                        class: el.className,
-                        text: el.textContent.trim(),
-                        html: el.outerHTML
-                      }))
+                      found: !!card.querySelector(selector),
+                      text: card.querySelector(selector)?.textContent?.trim() || 'not found',
+                      html: card.querySelector(selector)?.outerHTML || 'not found'
+                    }));
+                    
+                    // Get the first found price and set
+                    const price = priceElements.find(e => e.found)?.text || 'No price found';
+                    const set = setElements.find(e => e.found)?.text || 'No set found';
+                    
+                    return {
+                      title: card.querySelector('.product-card__title')?.textContent?.trim() || 'No title found',
+                      price,
+                      set,
+                      priceElements,
+                      setElements,
+                      // Log the entire card HTML for debugging
+                      fullCardHtml: card.outerHTML
                     };
                   });
-                  
-                  // Log all possible set elements found
-                  const setElements = setSelectors.map(selector => ({
-                    selector,
-                    found: !!card.querySelector(selector),
-                    text: card.querySelector(selector)?.textContent?.trim() || 'not found',
-                    html: card.querySelector(selector)?.outerHTML || 'not found'
-                  }));
-                  
-                  // Get the first found price and set
-                  const price = priceElements.find(e => e.found)?.text || 'No price found';
-                  const set = setElements.find(e => e.found)?.text || 'No set found';
-                  
-                  return {
-                    title: card.querySelector('.product-card__title')?.textContent?.trim() || 'No title found',
-                    price,
-                    set,
-                    priceElements,
-                    setElements,
-                    // Log the entire card HTML for debugging
-                    fullCardHtml: card.outerHTML
-                  };
-                });
               }
             JS
             $file_logger.info("Request #{request_id}: Searching for card: '#{card_name}'")
@@ -308,7 +314,23 @@ module RequestHandler
         lowest_priced_product = PriceExtractor.extract_lowest_priced_product(search_page, card_name, request_id)
         return format_error_response('No valid product found', legality) unless lowest_priced_product
         
+        # Get set variant information for the chosen card
+        set_variant_info = search_page.evaluate(<<~JS)
+          function() {
+            const card = document.querySelector('.product-card__product');
+            if (!card) return null;
+            
+            const setVariantElement = card.querySelector('.product-card__set-name__variant');
+            return {
+              text: setVariantElement ? setVariantElement.textContent.trim() : 'No set variant found',
+              html: setVariantElement ? setVariantElement.outerHTML : 'No set variant element found'
+            };
+          }
+        JS
+
         $file_logger.info("Request #{request_id}: Found lowest priced product: #{lowest_priced_product['title']} at $#{lowest_priced_product['price']}")
+        $file_logger.info("Request #{request_id}: Set Variant: #{set_variant_info['text']}")
+        $file_logger.info("Request #{request_id}: Set Variant Element: #{set_variant_info['html']}")
         
         # Process just this condition since we're already on the right page
         price = process_single_condition(condition, lowest_priced_product, context, request_id)

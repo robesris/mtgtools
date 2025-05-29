@@ -50,10 +50,11 @@ module PageManager
         default_timeout = ENV['RACK_ENV'] == 'production' ? 300000 : 30000  # 5 minutes in production, 30 seconds locally
         page.default_navigation_timeout = default_timeout
         page.default_timeout = default_timeout
+        
+        # Set up request handling with proper timeout
+        setup_request_handling(page, request_id, default_timeout)
+        
         $file_logger.info("Request #{request_id}: Set default navigation timeout to #{default_timeout}ms")
-
-        # Set up request handling with less restrictions
-        setup_request_handling(page, request_id)
 
         # Add error handling
         setup_error_handling(page, request_id)
@@ -70,7 +71,7 @@ module PageManager
 
     private
 
-    def setup_request_handling(page, request_id)
+    def setup_request_handling(page, request_id, default_timeout)
       page.request_interception = true
       
       page.on('request') do |request|
@@ -90,11 +91,11 @@ module PageManager
             request.abort
           else
             $file_logger.info("Request #{request_id}: Allowing redirect to: #{request.url}")
-            request.continue(headers: headers)
+            request.continue(headers: headers, timeout: default_timeout * 2)  # Double the timeout for requests
           end
         else
-          # Allow all other requests
-          request.continue(headers: headers)
+          # Allow all other requests with increased timeout
+          request.continue(headers: headers, timeout: default_timeout * 2)  # Double the timeout for requests
         end
       end
     end

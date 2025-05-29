@@ -95,11 +95,11 @@ module RequestHandler
         
         # First try a more lenient navigation
         begin
-          $file_logger.info("Request #{request_id}: Starting page navigation with timeout #{search_page.default_navigation_timeout}ms")
+          $file_logger.info("Request #{request_id}: Starting page navigation with timeout #{search_page.defaultNavigationTimeout}ms")
           start_time = Time.now
           search_page.goto(search_url, 
             wait_until: 'domcontentloaded',
-            timeout: search_page.default_navigation_timeout
+            timeout: search_page.defaultNavigationTimeout
           )
           navigation_time = Time.now - start_time
           $file_logger.info("Request #{request_id}: Initial page load complete in #{navigation_time.round(2)}s")

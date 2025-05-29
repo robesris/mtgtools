@@ -1161,6 +1161,31 @@ class CommanderCardScraper
               font-size: 1em;
             }
           }
+          .card-image-link {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+          }
+          .card-image-link:hover img {
+            transform: scale(1.05);
+            transition: transform 0.2s ease;
+          }
+          .card-image-container {
+            width: 100%;
+            position: relative;
+            padding-top: 139.7%; /* Magic card aspect ratio (3.5:2.5) */
+            overflow: hidden;
+          }
+          .card img {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            transition: transform 0.2s ease;
+          }
         </style>
         <script src="card_prices.js"></script>
       </head>
@@ -1215,13 +1240,18 @@ class CommanderCardScraper
       if image_path
         image_filename = File.basename(image_path)
         relative_path = "card_images/#{image_filename}"
+        # Extract multiverseid from the image path
+        multiverseid = image_filename.split('.').first
+        gatherer_url = "https://gatherer.wizards.com/Pages/Card/Details.aspx?multiverseid=#{multiverseid}"
         html += <<~HTML
           <div class="card" data-colors="#{data_colors}">
             <div class="card-name">#{name}</div>
             <div class="card-image-container">
-              <img src="#{relative_path}" alt="#{name}">
+              <a href="#{gatherer_url}" target="_blank" class="card-image-link">
+                <img src="#{relative_path}" alt="#{name}">
+              </a>
             </div>
-            <div class="price-info">#{price_html}</div>
+            <div class="price-info">#{price_html || 'Click here to load prices'}</div>
           </div>
         HTML
       else
@@ -1231,7 +1261,7 @@ class CommanderCardScraper
             <div class="card-image-container">
               <div class="not-found">Image not found</div>
             </div>
-            <div class="price-info">#{price_html}</div>
+            <div class="price-info">#{price_html || 'Click here to load prices'}</div>
           </div>
         HTML
       end

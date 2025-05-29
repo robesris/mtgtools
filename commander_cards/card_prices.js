@@ -278,7 +278,7 @@ function loadCachedPrices() {
           // Store the timestamp element if it exists
           const existingTimestamp = priceInfo.querySelector('.price-timestamp');
           // Update the price HTML
-          priceInfo.innerHTML = html || 'Click to load prices';
+          priceInfo.innerHTML = html || 'Click here to load prices';
           // Add the timestamp back if it existed, or create a new one if we have prices
           if (existingTimestamp) {
             priceInfo.appendChild(existingTimestamp);
@@ -295,7 +295,7 @@ function loadCachedPrices() {
       console.log(`No cache found for ${cardName}`);
       const priceInfo = card.querySelector('.price-info');
       if (priceInfo) {
-        priceInfo.innerHTML = 'Click to load prices';
+        priceInfo.innerHTML = 'Click here to load prices';
       }
     }
   });
@@ -321,12 +321,15 @@ function attachClickHandlers() {
     // Create a new handler function with a unique name
     const handlerName = `cardClickHandler_${index}`;
     window[handlerName] = (e) => {
-      // If the click was on a price link, don't do anything
-      if (e.target.closest('.price-link')) {
-        console.log('Click was on price link, ignoring card click handler');
+      // If the click was on a price link or card image, don't do anything
+      if (e.target.closest('.price-link') || e.target.closest('.card-image-link')) {
+        console.log('Click was on price link or card image, ignoring card click handler');
         return;
       }
-      cardClickHandler.call(card, e);
+      // Only trigger price loading if clicking the price info area
+      if (e.target.closest('.price-info')) {
+        cardClickHandler.call(card, e);
+      }
     };
     
     // Store the handler name and attach it

@@ -1100,6 +1100,7 @@ class CommanderCardScraper
             font-size: 1.1em;
             user-select: none;
             margin-left: 4px;
+            display: inline-block;
           }
           .price-info .reload-icon:hover {
             opacity: 1;
@@ -1255,11 +1256,11 @@ class CommanderCardScraper
           else
             'recent'
           end
-          "<span class=\"price-timestamp #{timestamp_class}\">Updated #{hours_ago} hours ago<span class=\"reload-icon\" title=\"Reload prices\">🔄</span></span>"
+          "<span class=\"price-timestamp #{timestamp_class}\">Updated #{hours_ago} hours ago <span class=\"reload-icon\" title=\"Reload prices\">🔄</span></span>"
         end
         "<div class=\"price-row\"><div class=\"price-content\">#{price_content.join(' | ') || 'No prices found'}</div></div>#{timestamp}"
       else
-        "<div class=\"price-row\"><div class=\"price-content\">Click here to load prices<span class=\"reload-icon\" title=\"Load prices\">🔄</span></div></div>"
+        "<div class=\"price-row\"><div class=\"price-content\">Click here to load prices <span class=\"reload-icon\" title=\"Load prices\">🔄</span></div></div>"
       end
       
       # Get the colors for this card from our mapping
@@ -1332,7 +1333,7 @@ class CommanderCardScraper
               const priceInfo = cardElement.querySelector('.price-info');
               
               try {
-                priceInfo.innerHTML = '<div class="price-row"><div class="price-content"><span class="loading">Fetching prices</span><span class="reload-icon" title="Loading...">🔄</span></div></div>';
+                priceInfo.innerHTML = '<div class="price-row"><div class="price-content"><span class="loading">Fetching prices</span> <span class="reload-icon" title="Loading...">🔄</span></div></div>';
                 const ellipsisInterval = animateEllipsis(priceInfo.querySelector('.loading'), 'Fetching prices');
                 
                 const response = await fetch('/card_info', {
@@ -1386,11 +1387,11 @@ class CommanderCardScraper
                     if (hoursAgo > 24) {
                       timestampClass = hoursAgo > 48 ? 'very-old' : 'old';
                     }
-                    timestamp = `<span class="price-timestamp ${timestampClass}">Updated ${hoursAgo} hours ago<span class="reload-icon" title="Reload prices">🔄</span></span>`;
+                    timestamp = `<span class="price-timestamp ${timestampClass}">Updated ${hoursAgo} hours ago <span class="reload-icon" title="Reload prices">🔄</span></span>`;
                   }
                   priceInfo.innerHTML = `<div class="price-row"><div class="price-content">${price_content.join(' | ') || 'No prices found'}</div></div>${timestamp}`;
                 } else {
-                  priceInfo.innerHTML = '<div class="price-row"><div class="price-content">No prices found<span class="reload-icon" title="Reload prices">🔄</span></div></div>';
+                  priceInfo.innerHTML = '<div class="price-row"><div class="price-content">No prices found <span class="reload-icon" title="Reload prices">🔄</span></div></div>';
                 }
               } catch (error) {
                 console.error('Error fetching prices for', cardName, ':', error);
@@ -1405,7 +1406,7 @@ class CommanderCardScraper
                   return fetchCardPrices(cardElement, retryCount + 1);
                 }
                 
-                priceInfo.innerHTML = '<div class="price-row"><div class="price-content">Click to load prices<span class="reload-icon" title="Load prices">🔄</span></div></div>';
+                priceInfo.innerHTML = '<div class="price-row"><div class="price-content">Click to load prices <span class="reload-icon" title="Load prices">🔄</span></div></div>';
               }
             }
             

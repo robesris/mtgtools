@@ -296,7 +296,7 @@ function loadCachedPrices() {
   console.log('Finished loading cached prices');
 }
 
-/* Attach click handlers to cards (and re–attach if DOM is updated) */
+// Attach click handlers to cards (and re–attach if DOM is updated)
 function attachClickHandlers() {
   console.log('Attaching click handlers...');
   const cards = document.querySelectorAll('.card');
@@ -304,15 +304,50 @@ function attachClickHandlers() {
   
   cards.forEach((card, index) => {
     console.log(`Attaching click handler to card ${index + 1}`);
-    card.removeEventListener('click', (e) => cardClickHandler.call(card, e));
-    card.addEventListener('click', (e) => cardClickHandler.call(card, e));
     
-    // Add click handlers to price links to stop event propagation
+    // Remove any existing click handlers
+    const oldHandler = card.getAttribute('data-click-handler');
+    if (oldHandler) {
+      card.removeEventListener('click', window[oldHandler]);
+    }
+    
+    // Create a new handler function with a unique name
+    const handlerName = `cardClickHandler_${index}`;
+    window[handlerName] = (e) => {
+      // If the click was on a price link, don't do anything
+      if (e.target.closest('.price-link')) {
+        console.log('Click was on price link, ignoring card click handler');
+        return;
+      }
+      cardClickHandler.call(card, e);
+    };
+    
+    // Store the handler name and attach it
+    card.setAttribute('data-click-handler', handlerName);
+    card.addEventListener('click', window[handlerName]);
+    
+    // Add click handlers to price links
     const priceLinks = card.querySelectorAll('.price-link');
     priceLinks.forEach(link => {
-      link.addEventListener('click', (e) => {
-        e.stopPropagation();  // Prevent the click from bubbling up to the card
-      });
+      // Remove any existing click handlers
+      const oldLinkHandler = link.getAttribute('data-click-handler');
+      if (oldLinkHandler) {
+        link.removeEventListener('click', window[oldLinkHandler]);
+      }
+      
+      // Create a new handler function with a unique name
+      const linkHandlerName = `priceLinkClickHandler_${index}_${Math.random().toString(36).substr(2, 9)}`;
+      window[linkHandlerName] = (e) => {
+        console.log('Price link clicked, preventing event propagation');
+        e.preventDefault();
+        e.stopPropagation();
+        // Let the default link behavior happen (opening in new tab)
+        return true;
+      };
+      
+      // Store the handler name and attach it
+      link.setAttribute('data-click-handler', linkHandlerName);
+      link.addEventListener('click', window[linkHandlerName], true);  // Use capture phase
     });
   });
   

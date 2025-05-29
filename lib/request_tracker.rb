@@ -48,17 +48,21 @@ module RequestTracker
     private
 
     def handle_cached_request(cached_request, card_name)
-      case cached_request[:status]
-      when 'complete'
-        $file_logger.info("Returning cached response for #{card_name}")
-        { cached: true, data: cached_request[:data] }
-      when 'error'
-        $file_logger.info("Returning cached error for #{card_name}")
-        { cached: true, data: cached_request[:data] }
-      else
-        # If status is neither complete nor error, treat as in progress
-        { cached: false }
+      cached = cache.get(card_name)
+      if cached
+         # If the cached status is 'error' (or if the cache is stale (older than 10 minutes)), do not return a cached error.
+         # (In our case, we assume that if the cached value is a JSON string starting with '{"error":' then it is an error.)
+         if cached.start_with?('{"error":') || (cache.ttl(card_name) && cache.ttl(card_name) < 600)
+            $file_logger.info("Request #{request_id}: Ignoring cached error (or stale cache) for #{card_name} (TTL: #{cache.ttl(card_name)})")
+            cache.delete(card_name)
+            cache.set(card_name, nil, expires_in: 600) # (10 minutes) (or use a shorter TTL if desired)
+            return { cached: false }
+         end
+         $file_logger.info("Request #{request_id}: Returning cached (non-error) data for #{card_name}")
+         return { cached: true, data: cached }
       end
+      cache.set(card_name, nil, expires_in: 600) # (10 minutes) (or use a shorter TTL if desired)
+      { cached: false }
     end
 
     def mark_request_in_progress(card_name, request_id)

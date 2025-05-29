@@ -1084,6 +1084,23 @@ class CommanderCardScraper
             width: 100%;
             text-align: left;
             padding: 0 5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+          .price-info .price-content {
+            flex: 1;
+          }
+          .price-info .reload-icon {
+            opacity: 0.6;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.2s;
+            font-size: 1.1em;
+            user-select: none;
+          }
+          .price-info .reload-icon:hover {
+            opacity: 1;
+            transform: rotate(180deg);
           }
           .price-info a {
             color: #0066cc;
@@ -1222,6 +1239,7 @@ class CommanderCardScraper
       image_path = get_card_image(name)
       prices = @price_cache[name]&.dig('prices')
       
+      # Generate price HTML with reload icon
       price_html = if prices
         html = []
         if prices['near mint']
@@ -1232,9 +1250,9 @@ class CommanderCardScraper
           lp = prices['lightly played']
           html << "Lightly Played: <a href=\"#{lp['url']}\" target=\"_blank\">$${lp['total']}</a>"
         end
-        html.join(' | ') || 'No prices found'
+        "<div class=\"price-content\">#{html.join(' | ') || 'No prices found'}</div><span class=\"reload-icon\" title=\"Reload prices\">🔄</span>"
       else
-        'Click to load prices'
+        "<div class=\"price-content\">Click here to load prices</div><span class=\"reload-icon\" title=\"Load prices\">🔄</span>"
       end
       
       # Get the colors for this card from our mapping
@@ -1255,7 +1273,7 @@ class CommanderCardScraper
                 <img src="#{relative_path}" alt="#{name}">
               </div>
             </a>
-            <div class="price-info">#{price_html || 'Click here to load prices'}</div>
+            <div class="price-info">#{price_html}</div>
           </div>
         HTML
       else
@@ -1265,7 +1283,7 @@ class CommanderCardScraper
             <div class="card-image-container">
               <div class="not-found">Image not found</div>
             </div>
-            <div class="price-info">#{price_html || 'Click here to load prices'}</div>
+            <div class="price-info">#{price_html}</div>
           </div>
         HTML
       end
@@ -1307,7 +1325,7 @@ class CommanderCardScraper
               const priceInfo = cardElement.querySelector('.price-info');
               
               try {
-                priceInfo.innerHTML = '<span class="loading">Fetching prices</span>';
+                priceInfo.innerHTML = '<div class="price-content"><span class="loading">Fetching prices</span></div><span class="reload-icon" title="Loading...">🔄</span>';
                 const ellipsisInterval = animateEllipsis(priceInfo.querySelector('.loading'), 'Fetching prices');
                 
                 const response = await fetch('/card_info', {
@@ -1362,9 +1380,9 @@ class CommanderCardScraper
                     }
                     html.push(`<span class="price-timestamp ${timestampClass}">Updated ${hoursAgo} hours ago</span>`);
                   }
-                  priceInfo.innerHTML = html.join(' | ') || 'No prices found';
+                  priceInfo.innerHTML = `<div class="price-content">${html.join(' | ') || 'No prices found'}</div><span class="reload-icon" title="Reload prices">🔄</span>`;
                 } else {
-                  priceInfo.innerHTML = 'No prices found';
+                  priceInfo.innerHTML = '<div class="price-content">No prices found</div><span class="reload-icon" title="Reload prices">🔄</span>';
                 }
               } catch (error) {
                 console.error('Error fetching prices for', cardName, ':', error);
@@ -1373,13 +1391,13 @@ class CommanderCardScraper
                 // Retry logic for session closure errors
                 if (error.message.includes('Session closed') && retryCount < maxRetries) {
                   console.log(`Retrying ${cardName} (attempt ${retryCount + 1}/${maxRetries})...`);
-                  priceInfo.innerHTML = '<span class="loading">Retrying...</span>';
+                  priceInfo.innerHTML = '<div class="price-content"><span class="loading">Retrying...</span></div><span class="reload-icon" title="Retrying...">🔄</span>';
                   // Wait before retrying (exponential backoff)
                   await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
                   return fetchCardPrices(cardElement, retryCount + 1);
                 }
                 
-                priceInfo.innerHTML = 'Click to load prices';
+                priceInfo.innerHTML = '<div class="price-content">Click to load prices</div><span class="reload-icon" title="Load prices">🔄</span>';
               }
             }
             
@@ -1536,6 +1554,15 @@ class CommanderCardScraper
             
             // Initial visibility update
             updateCardVisibility();
+
+            // Add click handler for reload icons
+            document.querySelectorAll('.reload-icon').forEach(icon => {
+              icon.addEventListener('click', function(e) {
+                e.stopPropagation(); // Prevent card click
+                const cardElement = this.closest('.card');
+                fetchCardPrices(cardElement);
+              });
+            });
           });
         </script>
       </body>

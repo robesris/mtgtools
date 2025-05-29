@@ -267,6 +267,23 @@
       width: 100%;
       text-align: left;
       padding: 0 5px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .price-info .price-content {
+      flex: 1;
+    }
+    .price-info .reload-icon {
+      opacity: 0.6;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.2s;
+      font-size: 1.1em;
+      user-select: none;
+    }
+    .price-info .reload-icon:hover {
+      opacity: 1;
+      transform: rotate(180deg);
     }
     .price-info a {
       color: #0066cc;
@@ -405,7 +422,7 @@
       <img src="card_images/479531.jpg" alt="DRANNITH MAGISTRATE">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="white">
   <div class="card-name">ENLIGHTENED TUTOR</div>
@@ -414,7 +431,7 @@
       <img src="card_images/598880.jpg" alt="ENLIGHTENED TUTOR">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="white">
   <div class="card-name">HUMILITY</div>
@@ -423,7 +440,7 @@
       <img src="card_images/397614.jpg" alt="HUMILITY">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="colorless">
   <div class="card-name">SERRA'S SANCTUM</div>
@@ -432,7 +449,7 @@
       <img src="card_images/9674.jpg" alt="SERRA'S SANCTUM">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="white">
   <div class="card-name">SMOTHERING TITHE</div>
@@ -441,7 +458,7 @@
       <img src="card_images/632392.jpg" alt="SMOTHERING TITHE">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="white">
   <div class="card-name">TEFERI'S PROTECTION</div>
@@ -450,7 +467,7 @@
       <img src="card_images/571365.jpg" alt="TEFERI'S PROTECTION">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="blue">
   <div class="card-name">CYCLONIC RIFT</div>
@@ -459,7 +476,7 @@
       <img src="card_images/645410.jpg" alt="CYCLONIC RIFT">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="blue">
   <div class="card-name">CONSECRATED SPHINX</div>
@@ -468,7 +485,7 @@
       <img src="card_images/573395.jpg" alt="CONSECRATED SPHINX">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="blue">
   <div class="card-name">EXPROPRIATE</div>
@@ -477,7 +494,7 @@
       <img src="card_images/677358.jpg" alt="EXPROPRIATE">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="blue">
   <div class="card-name">FORCE OF WILL</div>
@@ -486,7 +503,7 @@
       <img src="card_images/601353.jpg" alt="FORCE OF WILL">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="blue">
   <div class="card-name">FIERCE GUARDIANSHIP</div>
@@ -495,7 +512,7 @@
       <img src="card_images/626344.jpg" alt="FIERCE GUARDIANSHIP">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="blue">
   <div class="card-name">GIFTS UNGIVEN</div>
@@ -504,7 +521,7 @@
       <img src="card_images/571384.jpg" alt="GIFTS UNGIVEN">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="blue">
   <div class="card-name">INTUITION</div>
@@ -513,7 +530,7 @@
       <img src="card_images/397633.jpg" alt="INTUITION">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="blue">
   <div class="card-name">JIN-GITAXIAS, CORE AUGUR</div>
@@ -522,7 +539,7 @@
       <img src="card_images/611316.jpg" alt="JIN-GITAXIAS, CORE AUGUR">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="blue">
   <div class="card-name">MYSTICAL TUTOR</div>
@@ -531,7 +548,7 @@
       <img src="card_images/600972.jpg" alt="MYSTICAL TUTOR">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="blue">
   <div class="card-name">NARSET, PARTER OF VEILS</div>
@@ -540,7 +557,7 @@
       <img src="card_images/677708.jpg" alt="NARSET, PARTER OF VEILS">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="blue">
   <div class="card-name">RHYSTIC STUDY</div>
@@ -549,7 +566,7 @@
       <img src="card_images/632453.jpg" alt="RHYSTIC STUDY">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="blue">
   <div class="card-name">SWAY OF THE STARS</div>
@@ -558,7 +575,7 @@
       <img src="card_images/74034.jpg" alt="SWAY OF THE STARS">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="blue">
   <div class="card-name">THASSA'S ORACLE</div>
@@ -567,7 +584,7 @@
       <img src="card_images/677452.jpg" alt="THASSA'S ORACLE">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="blue">
   <div class="card-name">URZA, LORD HIGH ARTIFICER</div>
@@ -576,7 +593,7 @@
       <img src="card_images/677521.jpg" alt="URZA, LORD HIGH ARTIFICER">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="black">
   <div class="card-name">AD NAUSEAM</div>
@@ -585,7 +602,7 @@
       <img src="card_images/489749.jpg" alt="AD NAUSEAM">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="black">
   <div class="card-name">BRAIDS, CABAL MINION</div>
@@ -594,7 +611,7 @@
       <img src="card_images/526244.jpg" alt="BRAIDS, CABAL MINION">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="black">
   <div class="card-name">BOLAS'S CITADEL</div>
@@ -603,7 +620,7 @@
       <img src="card_images/677715.jpg" alt="BOLAS'S CITADEL">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="black">
   <div class="card-name">DEMONIC TUTOR</div>
@@ -612,7 +629,7 @@
       <img src="card_images/624778.jpg" alt="DEMONIC TUTOR">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="black">
   <div class="card-name">IMPERIAL SEAL</div>
@@ -621,7 +638,7 @@
       <img src="card_images/571412.jpg" alt="IMPERIAL SEAL">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="black">
   <div class="card-name">NECROPOTENCE</div>
@@ -630,7 +647,7 @@
       <img src="card_images/632459.jpg" alt="NECROPOTENCE">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="black">
   <div class="card-name">OPPOSITION AGENT</div>
@@ -639,7 +656,7 @@
       <img src="card_images/497661.jpg" alt="OPPOSITION AGENT">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="black">
   <div class="card-name">ORCISH BOWMASTERS</div>
@@ -648,7 +665,7 @@
       <img src="card_images/616933.jpg" alt="ORCISH BOWMASTERS">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="black">
   <div class="card-name">TERGRID, GOD OF FRIGHT</div>
@@ -657,7 +674,7 @@
       <img src="card_images/507654.jpg" alt="TERGRID, GOD OF FRIGHT">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="black">
   <div class="card-name">VAMPIRIC TUTOR</div>
@@ -666,7 +683,7 @@
       <img src="card_images/598982.jpg" alt="VAMPIRIC TUTOR">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="red">
   <div class="card-name">DEFLECTING SWAT</div>
@@ -675,7 +692,7 @@
       <img src="card_images/626387.jpg" alt="DEFLECTING SWAT">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="red">
   <div class="card-name">GAMBLE</div>
@@ -684,7 +701,7 @@
       <img src="card_images/651682.jpg" alt="GAMBLE">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="red">
   <div class="card-name">JESKA'S WILL</div>
@@ -693,7 +710,7 @@
       <img src="card_images/650250.jpg" alt="JESKA'S WILL">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="red">
   <div class="card-name">UNDERWORLD BREACH</div>
@@ -702,7 +719,7 @@
       <img src="card_images/677477.jpg" alt="UNDERWORLD BREACH">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="green">
   <div class="card-name">CROP ROTATION</div>
@@ -711,7 +728,7 @@
       <img src="card_images/599028.jpg" alt="CROP ROTATION">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="green">
   <div class="card-name">FOOD CHAIN</div>
@@ -720,7 +737,7 @@
       <img src="card_images/571480.jpg" alt="FOOD CHAIN">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="colorless">
   <div class="card-name">GAEA'S CRADLE</div>
@@ -729,7 +746,7 @@
       <img src="card_images/10422.jpg" alt="GAEA'S CRADLE">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="green">
   <div class="card-name">NATURAL ORDER</div>
@@ -738,7 +755,7 @@
       <img src="card_images/677487.jpg" alt="NATURAL ORDER">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="green">
   <div class="card-name">SEEDBORN MUSE</div>
@@ -747,7 +764,7 @@
       <img src="card_images/696424.jpg" alt="SEEDBORN MUSE">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="green">
   <div class="card-name">SURVIVAL OF THE FITTEST</div>
@@ -756,7 +773,7 @@
       <img src="card_images/397535.jpg" alt="SURVIVAL OF THE FITTEST">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="green">
   <div class="card-name">VORINCLEX, VOICE OF HUNGER</div>
@@ -765,7 +782,7 @@
       <img src="card_images/611334.jpg" alt="VORINCLEX, VOICE OF HUNGER">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="green">
   <div class="card-name">WORLDLY TUTOR</div>
@@ -774,7 +791,7 @@
       <img src="card_images/601422.jpg" alt="WORLDLY TUTOR">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="multicolor,green,white">
   <div class="card-name">AURA SHARDS</div>
@@ -783,7 +800,7 @@
       <img src="card_images/247184.jpg" alt="AURA SHARDS">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="multicolor,green,white,red,blue,black">
   <div class="card-name">COALITION VICTORY</div>
@@ -792,7 +809,7 @@
       <img src="card_images/109718.jpg" alt="COALITION VICTORY">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="multicolor,blue,green">
   <div class="card-name">KINNAN, BONDER PRODIGY</div>
@@ -801,7 +818,7 @@
       <img src="card_images/479712.jpg" alt="KINNAN, BONDER PRODIGY">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="multicolor,white,blue">
   <div class="card-name">GRAND ARBITER AUGUSTIN IV</div>
@@ -810,7 +827,7 @@
       <img src="card_images/573469.jpg" alt="GRAND ARBITER AUGUSTIN IV">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="multicolor,blue,black">
   <div class="card-name">NOTION THIEF</div>
@@ -819,7 +836,7 @@
       <img src="card_images/660844.jpg" alt="NOTION THIEF">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="multicolor,red,white">
   <div class="card-name">WINOTA, JOINER OF FORCES</div>
@@ -828,7 +845,7 @@
       <img src="card_images/479736.jpg" alt="WINOTA, JOINER OF FORCES">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="multicolor,blue,black">
   <div class="card-name">YURIKO, THE TIGER'S SHADOW</div>
@@ -837,7 +854,7 @@
       <img src="card_images/629332.jpg" alt="YURIKO, THE TIGER'S SHADOW">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="colorless">
   <div class="card-name">ANCIENT TOMB</div>
@@ -846,7 +863,7 @@
       <img src="card_images/622589.jpg" alt="ANCIENT TOMB">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="colorless">
   <div class="card-name">CHROME MOX</div>
@@ -855,7 +872,7 @@
       <img src="card_images/693158.jpg" alt="CHROME MOX">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="colorless">
   <div class="card-name">FIELD OF THE DEAD</div>
@@ -864,7 +881,7 @@
       <img src="card_images/651686.jpg" alt="FIELD OF THE DEAD">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="colorless">
   <div class="card-name">GLACIAL CHASM</div>
@@ -873,7 +890,7 @@
       <img src="card_images/288996.jpg" alt="GLACIAL CHASM">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="colorless">
   <div class="card-name">GRIM MONOLITH</div>
@@ -882,7 +899,7 @@
       <img src="card_images/12626.jpg" alt="GRIM MONOLITH">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="colorless">
   <div class="card-name">LION'S EYE DIAMOND</div>
@@ -891,7 +908,7 @@
       <img src="card_images/383000.jpg" alt="LION'S EYE DIAMOND">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="colorless">
   <div class="card-name">MANA VAULT</div>
@@ -900,7 +917,7 @@
       <img src="card_images/571641.jpg" alt="MANA VAULT">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="colorless">
   <div class="card-name">MOX DIAMOND</div>
@@ -909,7 +926,7 @@
       <img src="card_images/397482.jpg" alt="MOX DIAMOND">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="colorless">
   <div class="card-name">MISHRA'S WORKSHOP</div>
@@ -918,7 +935,7 @@
       <img src="card_images/383015.jpg" alt="MISHRA'S WORKSHOP">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="colorless">
   <div class="card-name">PANOPTIC MIRROR</div>
@@ -927,7 +944,7 @@
       <img src="card_images/47930.jpg" alt="PANOPTIC MIRROR">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="colorless">
   <div class="card-name">THE ONE RING</div>
@@ -936,7 +953,7 @@
       <img src="card_images/636332.jpg" alt="THE ONE RING">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
 <div class="card" data-colors="colorless">
   <div class="card-name">THE TABERNACLE AT PENDRELL VALE</div>
@@ -945,7 +962,7 @@
       <img src="card_images/201236.jpg" alt="THE TABERNACLE AT PENDRELL VALE">
     </div>
   </a>
-  <div class="price-info">Click to load prices</div>
+  <div class="price-info"><div class="price-content">Click here to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>
 </div>
       </div>
       <div class="source">
@@ -982,7 +999,7 @@
         const priceInfo = cardElement.querySelector('.price-info');
         
         try {
-          priceInfo.innerHTML = '<span class="loading">Fetching prices</span>';
+          priceInfo.innerHTML = '<div class="price-content"><span class="loading">Fetching prices</span></div><span class="reload-icon" title="Loading...">🔄</span>';
           const ellipsisInterval = animateEllipsis(priceInfo.querySelector('.loading'), 'Fetching prices');
           
           const response = await fetch('/card_info', {
@@ -1037,9 +1054,9 @@
               }
               html.push(`<span class="price-timestamp ${timestampClass}">Updated ${hoursAgo} hours ago</span>`);
             }
-            priceInfo.innerHTML = html.join(' | ') || 'No prices found';
+            priceInfo.innerHTML = `<div class="price-content">${html.join(' | ') || 'No prices found'}</div><span class="reload-icon" title="Reload prices">🔄</span>`;
           } else {
-            priceInfo.innerHTML = 'No prices found';
+            priceInfo.innerHTML = '<div class="price-content">No prices found</div><span class="reload-icon" title="Reload prices">🔄</span>';
           }
         } catch (error) {
           console.error('Error fetching prices for', cardName, ':', error);
@@ -1048,13 +1065,13 @@
           // Retry logic for session closure errors
           if (error.message.includes('Session closed') && retryCount < maxRetries) {
             console.log(`Retrying ${cardName} (attempt ${retryCount + 1}/${maxRetries})...`);
-            priceInfo.innerHTML = '<span class="loading">Retrying...</span>';
+            priceInfo.innerHTML = '<div class="price-content"><span class="loading">Retrying...</span></div><span class="reload-icon" title="Retrying...">🔄</span>';
             // Wait before retrying (exponential backoff)
             await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
             return fetchCardPrices(cardElement, retryCount + 1);
           }
           
-          priceInfo.innerHTML = 'Click to load prices';
+          priceInfo.innerHTML = '<div class="price-content">Click to load prices</div><span class="reload-icon" title="Load prices">🔄</span>';
         }
       }
       
@@ -1211,6 +1228,15 @@
       
       // Initial visibility update
       updateCardVisibility();
+
+      // Add click handler for reload icons
+      document.querySelectorAll('.reload-icon').forEach(icon => {
+        icon.addEventListener('click', function(e) {
+          e.stopPropagation(); // Prevent card click
+          const cardElement = this.closest('.card');
+          fetchCardPrices(cardElement);
+        });
+      });
     });
   </script>
 </body>

@@ -97,13 +97,6 @@ module PageManager
           request.continue(headers: headers)
         end
       end
-
-      # Add response logging
-      page.on('response') do |response|
-        if response.url.include?('tcgplayer.com')
-          $file_logger.info("Request #{request_id}: Response from #{response.url}: #{response.status}")
-        end
-      end
     end
 
     def setup_error_handling(page, request_id)

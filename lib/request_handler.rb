@@ -222,7 +222,9 @@ module RequestHandler
               }
             JS
             $file_logger.info("Request #{request_id}: Searching for card: '#{card_name}'")
-            $file_logger.info("Request #{request_id}: Found card details: #{JSON.pretty_generate(card_details)}")
+            if ENV['RACK_ENV'] == 'development'
+              $file_logger.debug("Request #{request_id}: Found card details: #{JSON.pretty_generate(card_details)}")
+            end
             
             # If we found a card but no price, wait a bit longer and try again
             if card_details.any? { |card| card['price'] == 'No price found' }
@@ -256,7 +258,9 @@ module RequestHandler
                   });
                 }
               JS
-              $file_logger.info("Request #{request_id}: Card details after additional wait: #{JSON.pretty_generate(card_details)}")
+              if ENV['RACK_ENV'] == 'development'
+                $file_logger.debug("Request #{request_id}: Card details after additional wait: #{JSON.pretty_generate(card_details)}")
+              end
             end
             
             # Additional check for any potential redirects or search refinements
@@ -268,7 +272,9 @@ module RequestHandler
                 searchResultsCount: document.querySelector('.search-results__count')?.textContent.trim()
               })
             JS
-            $file_logger.info("Request #{request_id}: Page information: #{JSON.pretty_generate(page_info)}")
+            if ENV['RACK_ENV'] == 'development'
+              $file_logger.debug("Request #{request_id}: Page information: #{JSON.pretty_generate(page_info)}")
+            end
           rescue => e
             $file_logger.error("Request #{request_id}: Error waiting for product card(s): #{e.message}")
             raise

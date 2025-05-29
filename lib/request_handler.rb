@@ -52,6 +52,7 @@ module RequestHandler
       $file_logger.info("Request #{request_id}: Processing request for card: '#{card_name}'")
       
       legality = LegalityChecker.check_legality(card_name, request_id)
+      # Spin up a fresh headless browser (and context) for each search
       browser = BrowserManager.get_browser
       context = BrowserManager.create_browser_context(request_id)
       
@@ -77,8 +78,12 @@ module RequestHandler
       prices.empty? ? format_error_response('No valid prices found', legality) : format_success_response(prices, legality, card_name, request_id)
     rescue => e
       handle_request_error(e, request_id, legality, card_name)
+      # On error, also close the headless browser so that a fresh one is used next time
+      BrowserManager.cleanup_browser
     ensure
+      # Always close the headless browser (and its context) after each search
       BrowserManager.cleanup_context(request_id)
+      BrowserManager.cleanup_browser
     end
 
     def process_with_browser(card_name, request_id, context, legality, condition)

@@ -1164,7 +1164,7 @@ class CommanderCardScraper
           .card-image-link {
             display: block;
             width: 100%;
-            height: 100%;
+            text-decoration: none;
             cursor: pointer;
           }
           .card-image-link:hover img {
@@ -1246,11 +1246,11 @@ class CommanderCardScraper
         html += <<~HTML
           <div class="card" data-colors="#{data_colors}">
             <div class="card-name">#{name}</div>
-            <div class="card-image-container">
-              <a href="#{gatherer_url}" target="_blank" class="card-image-link">
+            <a href="#{gatherer_url}" target="_blank" class="card-image-link">
+              <div class="card-image-container">
                 <img src="#{relative_path}" alt="#{name}">
-              </a>
-            </div>
+              </div>
+            </a>
             <div class="price-info">#{price_html || 'Click here to load prices'}</div>
           </div>
         HTML

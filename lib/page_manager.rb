@@ -50,7 +50,7 @@ module PageManager
         default_timeout = ENV['RACK_ENV'] == 'production' ? 300000 : 30000  # 5 minutes in production, 30 seconds locally
         page.default_navigation_timeout = default_timeout
         page.default_timeout = default_timeout * 2  # Double the timeout for requests
-        
+
         # Set up request handling
         setup_request_handling(page, request_id)
         

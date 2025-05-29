@@ -301,7 +301,8 @@ module RequestHandler
           begin
             search_page.close
           rescue => e
-            $file_logger.error("Request #{request_id}: Error closing search page: #{e.message}")
+            # If the page is already closed (or an error occurs), log a debug message instead of an error.
+            $file_logger.debug("Request #{request_id}: Skipping close (page already closed or error: #{e.message})")
           end
         end
       end

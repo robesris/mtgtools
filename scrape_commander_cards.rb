@@ -1207,7 +1207,8 @@ class CommanderCardScraper
           <div>
             <h1>Commander Game Changers List</h1>
             <div style="text-align: center; margin: -20px 0 20px; color: #666; font-size: 0.9em; max-width: 800px; margin-left: auto; margin-right: auto; line-height: 1.4;">
-              Click a card to go to its Gatherer page. Click the space underneath a card to load prices. Note that this process can take a minute or more.
+              Click a card to go to its Gatherer page.<br>
+              Click the space underneath a card to load prices. Note that this process can take a minute or more.
             </div>
             <div style="text-align: center; margin-bottom: 20px;">
               <button id="fetch-all-prices" style="padding: 10px 20px; font-size: 16px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; transition: background-color 0.2s;">Fetch All Prices</button>

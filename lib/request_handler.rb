@@ -51,38 +51,61 @@ module RequestHandler
       card_name = card_name.strip
       $file_logger.info("Request #{request_id}: Processing request for card: '#{card_name}'")
       legality = LegalityChecker.check_legality(card_name, request_id)
+      
       # Spin up a fresh headless browser (and context) for each search
       browser = BrowserManager.get_browser
       context = BrowserManager.create_browser_context(request_id)
-      prices = {}
-      conditions = ['Near Mint', 'Lightly Played']
-      conditions.each do |condition|
-        break if prices.size >= 2
-        result = process_with_browser(card_name, request_id, context, legality, condition)
-        if result && result != format_error_response('No valid product found', legality)
-          begin
-            parsed_result = JSON.parse(result)
-            if parsed_result.is_a?(Hash) && parsed_result[condition]
-              prices[condition] = parsed_result[condition]
+      
+      begin
+        prices = {}
+        conditions = ['Near Mint', 'Lightly Played']
+        
+        # Process both conditions to get all prices
+        conditions.each do |condition|
+          result = process_with_browser(card_name, request_id, context, legality, condition)
+          if result && result != format_error_response('No valid product found', legality)
+            begin
+              parsed_result = JSON.parse(result)
+              if parsed_result.is_a?(Hash) && parsed_result[condition]
+                prices[condition] = parsed_result[condition]
+              end
+            rescue JSON::ParserError => e
+              $file_logger.error("Request #{request_id}: Error parsing result for #{condition}: #{e.message}")
             end
-          rescue JSON::ParserError => e
-            $file_logger.error("Request #{request_id}: Error parsing result for #{condition}: #{e.message}")
+          end
+        end
+        
+        # Return response with all prices we found
+        result = prices.empty? ? format_error_response('No valid prices found', legality) : format_success_response(prices, legality, card_name, request_id)
+        
+        # Start cleanup in a separate thread after we have all prices
+        Thread.new do
+          begin
+            BrowserManager.cleanup_context(request_id)
+            BrowserManager.cleanup_browser
+          rescue => e
+            $file_logger.error("Request #{request_id}: Error during cleanup: #{e.message}")
+          end
+        end
+        
+        result
+      rescue => e
+        handle_request_error(e, request_id, legality, card_name)
+        # Start cleanup in a separate thread
+        Thread.new do
+          begin
+            BrowserManager.cleanup_context(request_id)
+            BrowserManager.cleanup_browser
+          rescue => e
+            $file_logger.error("Request #{request_id}: Error during cleanup: #{e.message}")
           end
         end
       end
-      result = prices.empty? ? format_error_response('No valid prices found', legality) : format_success_response(prices, legality, card_name, request_id)
-      # Only clean up after result is ready
-      BrowserManager.cleanup_context(request_id)
-      BrowserManager.cleanup_browser
-      result
-    rescue => e
-      handle_request_error(e, request_id, legality, card_name)
-      BrowserManager.cleanup_context(request_id)
-      BrowserManager.cleanup_browser
     end
 
     def process_with_browser(card_name, request_id, context, legality, condition)
       search_page = nil
+      condition_page = nil
       begin
         $file_logger.info("Request #{request_id}: Starting browser process for #{card_name} (#{condition})")
         search_page = setup_search_page(context, request_id)
@@ -265,41 +288,41 @@ module RequestHandler
         
         PriceExtractor.add_redirect_prevention(search_page, request_id)
         
+        # Get the product URL from search results
         lowest_priced_product = PriceExtractor.extract_lowest_priced_product(search_page, card_name, request_id)
         return format_error_response('No valid product found', legality) unless lowest_priced_product
-        
-        # Get set variant information for the chosen card
-        set_variant_info = search_page.evaluate(<<~JS)
-          function() {
-            const card = document.querySelector('.product-card__product');
-            if (!card) return null;
-            
-            const setVariantElement = card.querySelector('.product-card__set-name__variant');
-            return {
-              text: setVariantElement ? setVariantElement.textContent.trim() : 'No set variant found',
-              html: setVariantElement ? setVariantElement.outerHTML : 'No set variant element found'
-            };
-          }
-        JS
 
-        $file_logger.info("Request #{request_id}: Found lowest priced product: #{lowest_priced_product['title']} at $#{lowest_priced_product['price']}")
-        $file_logger.info("Request #{request_id}: Set Variant: #{set_variant_info['text']}")
-        $file_logger.info("Request #{request_id}: Set Variant Element: #{set_variant_info['html']}")
-        
-        # Process just this condition since we're already on the right page
+        # Close search page immediately after getting the product URL
+        Thread.new do
+          begin
+            if search_page && !search_page.closed?
+              search_page.close
+            end
+          rescue => e
+            $file_logger.debug("Request #{request_id}: Error closing search page: #{e.message}")
+          end
+        end
+
+        # Process the product page to get actual lowest price
         price = process_single_condition(condition, lowest_priced_product, context, request_id)
         return format_error_response('No valid prices found', legality) unless price
         
         { condition => price }.to_json
-      ensure
-        if search_page && !search_page.closed?
+      rescue => e
+        # Start page cleanup in a separate thread even on error
+        Thread.new do
           begin
-            search_page.close
+            if search_page && !search_page.closed?
+              search_page.close
+            end
+            if condition_page && !condition_page.closed?
+              condition_page.close
+            end
           rescue => e
-            # If the page is already closed (or an error occurs), log a debug message instead of an error.
-            $file_logger.debug("Request #{request_id}: Skipping close (page already closed or error: #{e.message})")
+            $file_logger.debug("Request #{request_id}: Error closing pages: #{e.message}")
           end
         end
+        raise e
       end
     end
 
@@ -341,28 +364,12 @@ module RequestHandler
         product_url = lowest_priced_product['url']
         $file_logger.info("Request #{request_id}: Navigating to product page: #{product_url}")
         
-        # Use a more lenient wait condition and add error handling
+        # Navigate to product page and get price
         begin
           condition_page.goto(product_url, 
-            wait_until: 'domcontentloaded',  # Changed from networkidle0 to be more lenient
+            wait_until: 'domcontentloaded',
             timeout: get_navigation_timeout
           )
-          
-          # Log the page state after navigation
-          page_state = condition_page.evaluate(<<~JS)
-            function() {
-              return {
-                url: window.location.href,
-                title: document.title,
-                readyState: document.readyState,
-                hasListings: !!document.querySelector('.listing-item'),
-                hasPrice: !!document.querySelector('.listing-item__listing-data__info__price'),
-                hasShipping: !!document.querySelector('.shipping-messages__price'),
-                bodyContent: document.body.textContent.slice(0, 500) + '...'
-              };
-            }
-          JS
-          $file_logger.info("Request #{request_id}: Product page state: #{page_state.inspect}")
           
           # Wait a bit for dynamic content
           wait_time = get_timeout(5)
@@ -404,17 +411,34 @@ module RequestHandler
         base_price = result['base_price'].to_s.gsub(/\$/,'')
         shipping_price = result['shipping'].to_s.gsub(/\$/,'')
         
+        # Start page cleanup in a separate thread
+        Thread.new do
+          begin
+            if condition_page && !condition_page.closed?
+              condition_page.close
+            end
+          rescue => e
+            $file_logger.debug("Request #{request_id}: Error closing condition page: #{e.message}")
+          end
+        end
+        
         {
           'price' => base_price,
           'shipping' => shipping_price,
           'url' => result['url']
         }
-      ensure
-        begin
-          condition_page.close
-        rescue => e
-          $file_logger.debug("Request #{request_id}: Error closing condition page: #{e.message}")
+      rescue => e
+        # Start page cleanup in a separate thread even on error
+        Thread.new do
+          begin
+            if condition_page && !condition_page.closed?
+              condition_page.close
+            end
+          rescue => e
+            $file_logger.debug("Request #{request_id}: Error closing condition page: #{e.message}")
+          end
         end
+        raise e
       end
     end
 

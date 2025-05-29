@@ -50,16 +50,12 @@ module RequestHandler
       # Clean and normalize the card name
       card_name = card_name.strip
       $file_logger.info("Request #{request_id}: Processing request for card: '#{card_name}'")
-      
       legality = LegalityChecker.check_legality(card_name, request_id)
       # Spin up a fresh headless browser (and context) for each search
       browser = BrowserManager.get_browser
       context = BrowserManager.create_browser_context(request_id)
-      
-      # Process each condition
       prices = {}
       conditions = ['Near Mint', 'Lightly Played']
-      
       conditions.each do |condition|
         break if prices.size >= 2
         result = process_with_browser(card_name, request_id, context, legality, condition)
@@ -74,14 +70,13 @@ module RequestHandler
           end
         end
       end
-      
-      prices.empty? ? format_error_response('No valid prices found', legality) : format_success_response(prices, legality, card_name, request_id)
+      result = prices.empty? ? format_error_response('No valid prices found', legality) : format_success_response(prices, legality, card_name, request_id)
+      # Only clean up after result is ready
+      BrowserManager.cleanup_context(request_id)
+      BrowserManager.cleanup_browser
+      result
     rescue => e
       handle_request_error(e, request_id, legality, card_name)
-      # On error, also close the headless browser so that a fresh one is used next time
-      BrowserManager.cleanup_browser
-    ensure
-      # Always close the headless browser (and its context) after each search
       BrowserManager.cleanup_context(request_id)
       BrowserManager.cleanup_browser
     end

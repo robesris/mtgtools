@@ -1085,6 +1085,11 @@ class CommanderCardScraper
             text-align: left;
             padding: 0 5px;
             display: flex;
+            flex-direction: column;
+            gap: 4px;
+          }
+          .price-info .price-row {
+            display: flex;
             align-items: center;
             gap: 8px;
           }
@@ -1097,6 +1102,7 @@ class CommanderCardScraper
             transition: opacity 0.2s, transform 0.2s;
             font-size: 1.1em;
             user-select: none;
+            flex-shrink: 0;
           }
           .price-info .reload-icon:hover {
             opacity: 1;
@@ -1242,17 +1248,29 @@ class CommanderCardScraper
       # Generate price HTML with reload icon
       price_html = if prices
         html = []
+        price_content = []
         if prices['near mint']
           nm = prices['near mint']
-          html << "Near Mint: <a href=\"#{nm['url']}\" target=\"_blank\">$${nm['total']}</a>"
+          price_content << "Near Mint: <a href=\"#{nm['url']}\" target=\"_blank\">$${nm['total']}</a>"
         end
         if prices['lightly played']
           lp = prices['lightly played']
-          html << "Lightly Played: <a href=\"#{lp['url']}\" target=\"_blank\">$${lp['total']}</a>"
+          price_content << "Lightly Played: <a href=\"#{lp['url']}\" target=\"_blank\">$${lp['total']}</a>"
         end
-        "<div class=\"price-content\">#{html.join(' | ') || 'No prices found'}</div><span class=\"reload-icon\" title=\"Reload prices\">🔄</span>"
+        timestamp = if prices['timestamp']
+          hours_ago = ((Time.now.to_i - prices['timestamp']) / 3600).to_i
+          timestamp_class = if hours_ago > 48
+            'very-old'
+          elsif hours_ago > 24
+            'old'
+          else
+            'recent'
+          end
+          "<span class=\"price-timestamp #{timestamp_class}\">Updated #{hours_ago} hours ago</span>"
+        end
+        "<div class=\"price-row\"><div class=\"price-content\">#{price_content.join(' | ') || 'No prices found'}</div><span class=\"reload-icon\" title=\"Reload prices\">🔄</span></div>#{timestamp}"
       else
-        "<div class=\"price-content\">Click here to load prices</div><span class=\"reload-icon\" title=\"Load prices\">🔄</span>"
+        "<div class=\"price-row\"><div class=\"price-content\">Click here to load prices</div><span class=\"reload-icon\" title=\"Load prices\">🔄</span></div>"
       end
       
       # Get the colors for this card from our mapping
@@ -1325,7 +1343,7 @@ class CommanderCardScraper
               const priceInfo = cardElement.querySelector('.price-info');
               
               try {
-                priceInfo.innerHTML = '<div class="price-content"><span class="loading">Fetching prices</span></div><span class="reload-icon" title="Loading...">🔄</span>';
+                priceInfo.innerHTML = '<div class="price-row"><div class="price-content"><span class="loading">Fetching prices</span></div><span class="reload-icon" title="Loading...">🔄</span></div>';
                 const ellipsisInterval = animateEllipsis(priceInfo.querySelector('.loading'), 'Fetching prices');
                 
                 const response = await fetch('/card_info', {
@@ -1361,15 +1379,16 @@ class CommanderCardScraper
                     // Continue even if caching fails
                   }
 
-                  let html = [];
+                  let price_content = [];
                   if (data.prices['Near Mint']) {
                     const nm = data.prices['Near Mint'];
-                    html.push(`Near Mint: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(nm).toFixed(2)}</a>`);
+                    price_content.push(`Near Mint: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(nm).toFixed(2)}</a>`);
                   }
                   if (data.prices['Lightly Played']) {
                     const lp = data.prices['Lightly Played'];
-                    html.push(`Lightly Played: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(lp).toFixed(2)}</a>`);
+                    price_content.push(`Lightly Played: <a href="${data.tcgplayer_url}" target="_blank">$${parseFloat(lp).toFixed(2)}</a>`);
                   }
+                  let timestamp = '';
                   if (data.timestamp) {
                     const timestamp = new Date(data.timestamp * 1000);
                     const now = new Date();
@@ -1378,11 +1397,11 @@ class CommanderCardScraper
                     if (hoursAgo > 24) {
                       timestampClass = hoursAgo > 48 ? 'very-old' : 'old';
                     }
-                    html.push(`<span class="price-timestamp ${timestampClass}">Updated ${hoursAgo} hours ago</span>`);
+                    timestamp = `<span class="price-timestamp ${timestampClass}">Updated ${hoursAgo} hours ago</span>`;
                   }
-                  priceInfo.innerHTML = `<div class="price-content">${html.join(' | ') || 'No prices found'}</div><span class="reload-icon" title="Reload prices">🔄</span>`;
+                  priceInfo.innerHTML = `<div class="price-row"><div class="price-content">${price_content.join(' | ') || 'No prices found'}</div><span class="reload-icon" title="Reload prices">🔄</span></div>${timestamp}`;
                 } else {
-                  priceInfo.innerHTML = '<div class="price-content">No prices found</div><span class="reload-icon" title="Reload prices">🔄</span>';
+                  priceInfo.innerHTML = '<div class="price-row"><div class="price-content">No prices found</div><span class="reload-icon" title="Reload prices">🔄</span></div>';
                 }
               } catch (error) {
                 console.error('Error fetching prices for', cardName, ':', error);
@@ -1391,13 +1410,13 @@ class CommanderCardScraper
                 // Retry logic for session closure errors
                 if (error.message.includes('Session closed') && retryCount < maxRetries) {
                   console.log(`Retrying ${cardName} (attempt ${retryCount + 1}/${maxRetries})...`);
-                  priceInfo.innerHTML = '<div class="price-content"><span class="loading">Retrying...</span></div><span class="reload-icon" title="Retrying...">🔄</span>';
+                  priceInfo.innerHTML = '<div class="price-row"><div class="price-content"><span class="loading">Retrying...</span></div><span class="reload-icon" title="Retrying...">🔄</span></div>';
                   // Wait before retrying (exponential backoff)
                   await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
                   return fetchCardPrices(cardElement, retryCount + 1);
                 }
                 
-                priceInfo.innerHTML = '<div class="price-content">Click to load prices</div><span class="reload-icon" title="Load prices">🔄</span>';
+                priceInfo.innerHTML = '<div class="price-row"><div class="price-content">Click to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>';
               }
             }
             

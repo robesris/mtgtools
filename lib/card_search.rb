@@ -11,9 +11,7 @@ class CardSearch
         Dir.glob("search_wait_*.png").each do |file|
           begin
             File.delete(file)
-            $logger.info("Request #{request_id}: Deleted old screenshot: #{file}")
           rescue => e
-            $logger.error("Request #{request_id}: Error deleting old screenshot #{file}: #{e.message}")
           end
         end
         
@@ -21,13 +19,13 @@ class CardSearch
         search_page = BrowserManager.create_page
         
         # Forward browser console logs (and errors) to the Ruby logger
-        search_page.on("console", ->(msg) { $logger.info("Request #{ request_id }: (Browser Console) #{ msg.text }") })
-        search_page.on("pageerror", ->(err) { $logger.error("Request #{ request_id }: (Browser Error) #{ err }") })
+        search_page.on("console", ->(msg) { $file_logger.info("Request #{ request_id }: (Browser Console) #{ msg.text }") })
+        search_page.on("pageerror", ->(err) { $file_logger.error("Request #{ request_id }: (Browser Error) #{ err }") })
         
         # Inject the card search function first
         js_code = File.read('lib/js/card_search.js')
         begin
-          $logger.info("Request #{request_id}: Injecting card search function")
+          $file_logger.info("Request #{request_id}: Injecting card search function")
           
           # Wrap the code in a function that will be immediately executed
           wrapped_js = <<~JS
@@ -70,10 +68,10 @@ class CardSearch
             raise "Failed to verify card search function - check browser console for details"
           end
           
-          $logger.info("Request #{request_id}: Successfully injected and verified card search function")
+          $file_logger.info("Request #{request_id}: Successfully injected and verified card search function")
         rescue => e
-          $logger.error("Request #{request_id}: Error injecting card search function: #{e.message}")
-          $logger.error(e.backtrace.join("\n"))
+          $file_logger.error("Request #{request_id}: Error injecting card search function: #{e.message}")
+          $file_logger.error(e.backtrace.join("\n"))
           raise
         end
         
@@ -82,122 +80,139 @@ class CardSearch
           begin
             filename = "#{prefix}.png"
             search_page.screenshot(path: filename)
-            $logger.info("Request #{request_id}: Took debug screenshot: #{filename}")
-            $logger.info("Request #{ request_id }: (Debug) Screenshot function exposed (puppeteerScreenshot)")
+            $file_logger.info("Request #{request_id}: Took debug screenshot: #{filename}")
+            $file_logger.info("Request #{ request_id }: (Debug) Screenshot function exposed (puppeteerScreenshot)")
           rescue => e
-            $logger.error("Request #{request_id}: Error taking debug screenshot: #{e.message}")
+            $file_logger.error("Request #{request_id}: Error taking debug screenshot: #{e.message}")
           end
         })
         
         # Navigate to TCGPlayer search
-        $logger.info("Request #{request_id}: Navigating to TCGPlayer search for: #{card_name}")
-        search_url = "https://www.tcgplayer.com/search/magic/product?q=#{CGI.escape(card_name)}&view=grid"
-        $logger.info("Request #{request_id}: Search URL: #{search_url}")
+        $file_logger.info("Request #{request_id}: Navigating to TCGPlayer search for: #{card_name}")
+        search_url = "https://www.tcgplayer.com/search/all/product?Condition=#{CGI.escape(condition)}&Language=English&q=#{CGI.escape(card_name)}&view=grid"
+        $file_logger.info("Request #{request_id}: Search URL: #{search_url}")
         
         begin
-          response = search_page.goto(search_url, 
-            wait_until: 'networkidle0',
-            timeout: ENV['RACK_ENV'] == 'production' ? 120000 : 30000  # 2 minutes in production, 30 seconds locally
-          )
-          $logger.info("Request #{request_id}: Search page response status: #{response.status}")
+          search_page.goto(search_url, wait_until: 'domcontentloaded', timeout: get_navigation_timeout)
+          $file_logger.info("Request #{request_id}: Initial page load complete")
           
-          # (Optional) log the page's HTML (for debugging) and take a debug screenshot
-          search_page.wait_for_selector('.search-result, .product-card, [class*="product"], [class*="listing"]', 
-            timeout: ENV['RACK_ENV'] == 'production' ? 120000 : 20000  # 2 minutes in production, 20 seconds locally
-          )
-          sleep(2) # extra delay to let the page settle after selector appears
-          html = search_page.content
-          $logger.info("Request #{request_id}: (Debug) Page HTML (truncated): #{html[0..500]}…")
-          filename = "search_page_loaded.png"
-          search_page.screenshot(path: filename)
-          $logger.info("Request #{ request_id }: Took debug screenshot: #{filename}")
+          # Wait for search results to load
+          wait_time = get_timeout(5)
+          $file_logger.info("Request #{request_id}: Waiting #{wait_time} seconds for dynamic content to load...")
+          sleep(wait_time)
           
-          # Wait for the search results to load
-          begin
-            search_page.wait_for_selector('.search-result, .product-card, [class*="product"], [class*="listing"]', 
-              timeout: ENV['RACK_ENV'] == 'production' ? 120000 : 10000  # 2 minutes in production, 10 seconds locally
-            )
-            $logger.info("Request #{request_id}: Search results found")
-            
-            # (Optional) log the page's HTML (for debugging) and take a debug screenshot (after waiting for results)
-            html = search_page.content
-            $logger.info("Request #{request_id}: (Debug) Page HTML (truncated) after waiting for results: #{html[0..500]}…")
-            filename = "search_results_loaded.png"
-            search_page.screenshot(path: filename)
-            $logger.info("Request #{ request_id }: Took debug screenshot: #{filename}")
-            
-            # Find the lowest priced valid product from the search results
-            card_name = card_name.strip  # Normalize the card name in Ruby first
-            lowest_priced_product = search_page.evaluate(<<~JS, { cardName: card_name }.to_json)
-              function(params) {
-                const { cardName } = JSON.parse(params);
-                console.log('Searching for card:', cardName);
-                // (Optional) log the page's HTML (for debugging)
-                html = document.documentElement.outerHTML;
-                 $logger.info("Request #{request_id}: (Debug) Page HTML (truncated) (after cardSearch): #{html[0..500]}…")
-                // Extract raw product data (title, price, url) from the page (using a simple loop over "document.querySelectorAll('.search-result, .product-card, [class*="product"], [class*="listing"]')") and return an array of hashes (each with "title", "price", and "url").
-                var products = [];
-                var els = document.querySelectorAll('.search-result, .product-card, [class*="product"], [class*="listing"]');
-                for (var i = 0; i < els.length; i++) {
-                  var el = els[i];
-                  var titleEl = el.querySelector('.product__name, .product__title, [class*="product-name"], [class*="product-title"]');
-                  var priceEl = el.querySelector('.product__price, .product__price-value, [class*="price"]');
-                  var urlEl = el.querySelector('a[href*="/product"]');
-                  if (titleEl && priceEl) {
-                    products.push({ title: titleEl.textContent.trim(), price: priceEl.textContent.trim(), url: (urlEl ? urlEl.href : '') });
-                  }
+          # Extract product data with improved selectors and validation
+          lowest_priced_product = search_page.evaluate(<<~JS, { cardName: card_name, condition: condition }.to_json)
+            function(params) {
+              const { cardName, condition } = JSON.parse(params);
+              console.log('Searching for card:', cardName, 'with condition:', condition);
+              
+              // Find all search results
+              const searchResults = Array.from(document.querySelectorAll('.search-result'));
+              console.log('Found search results:', searchResults.length);
+              
+              // Process each search result
+              const validProducts = searchResults.map(result => {
+                const titleElement = result.querySelector('.product-card__title');
+                const priceElement = result.querySelector('.inventory__price-with-shipping');
+                const linkElement = result.querySelector('a[href*="/product"]');
+                
+                if (!titleElement || !priceElement || !linkElement) {
+                  console.log('Missing required elements in search result');
+                  return null;
                 }
-                return products;
+                
+                const title = titleElement.textContent.trim();
+                const priceText = priceElement.textContent.trim();
+                const url = linkElement.href;
+                
+                // Skip if no title or price
+                if (!title || !priceText) {
+                  console.log('Empty title or price text');
+                  return null;
+                }
+                
+                // Skip art cards and proxies
+                if (title.toLowerCase().includes('art card') || 
+                    title.toLowerCase().includes('proxy') ||
+                    title.toLowerCase().includes('playtest')) {
+                  console.log('Skipping non-playable card:', title);
+                  return null;
+                }
+                
+                // Extract numeric price ONLY from inventory__price-with-shipping
+                const priceMatch = priceText.match(/\$([\d,]+\.\d{2})/);
+                const price = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, '')) : null;
+                
+                // Validate exact card match
+                const normalizedTitle = title.toLowerCase().trim().replace(/\s+/g, ' ');
+                const normalizedCardName = cardName.toLowerCase().trim().replace(/\s+/g, ' ');
+                const isMatch = normalizedTitle === normalizedCardName;
+                
+                console.log('Product validation:', {
+                  title,
+                  price,
+                  isMatch,
+                  hasValidPrice: price !== null && price > 0,
+                  url
+                });
+                
+                if (isMatch && price !== null && price > 0) {
+                  return { title, price, url };
+                }
+                return null;
+              }).filter(Boolean);
+              
+              // Find the lowest priced valid product
+              if (validProducts.length > 0) {
+                const lowestPriceProduct = validProducts.reduce((lowest, current) => 
+                  current.price < lowest.price ? current : lowest
+                );
+                console.log('Found lowest priced product:', lowestPriceProduct);
+                return lowestPriceProduct;
               }
-            JS
-            
-            # Ruby-side filtering and price selection
-            products = lowest_priced_product
-            matches = products.select { |p| is_exact_card_match(card_name, p['title']) }
-            matches = matches.map do |p|
-              price = p['price'].gsub(/[^0-9.]/, '').to_f
-              p.merge('numeric_price' => price)
-            end.select { |p| p['numeric_price'] > 0 }
-            lowest = matches.min_by { |p| p['numeric_price'] }
+              
+              console.log('No valid products found');
+              return null;
+            }
+          JS
+          
+          # Ruby-side filtering and price selection
+          products = lowest_priced_product
+          matches = products.select { |p| is_exact_card_match(card_name, p['title']) }
+          matches = matches.map do |p|
+            price = p['price'].gsub(/[^0-9.]/, '').to_f
+            p.merge('numeric_price' => price)
+          end.select { |p| p['numeric_price'] > 0 }
+          lowest = matches.min_by { |p| p['numeric_price'] }
 
-            if !lowest
-              $logger.error("Request #{request_id}: No valid products found for: #{card_name}")
-              return nil
-            end
-
-            $logger.info("Request #{request_id}: Found lowest priced product: #{lowest['title']} at $#{lowest['numeric_price']}")
-            filename = "after_card_search.png"
-            search_page.screenshot(path: filename)
-            $logger.info("Request #{ request_id }: Took debug screenshot: #{filename}")
-            lowest
-            
-          rescue => e
-            $logger.error("Request #{request_id}: Timeout waiting for search results: #{e.message}")
-            # (Optional) log the page's HTML (for debugging) and take a debug screenshot (if wait_for_selector times out)
-            html = search_page.content
-            $logger.info("Request #{request_id}: (Debug) Page HTML (truncated) (timeout): #{html[0..500]}…")
-            filename = "search_results_timeout.png"
-            search_page.screenshot(path: filename)
-            $logger.info("Request #{ request_id }: Took debug screenshot: #{filename}")
-            
-            # Take a screenshot for debugging
-            ScreenshotManager.take_error_screenshot(search_page, card_name, Time.now.to_i, $logger, request_id)
+          if !lowest
+            $file_logger.error("Request #{request_id}: No valid products found for: #{card_name}")
             return nil
           end
+
+          $file_logger.info("Request #{request_id}: Chosen card - Name: #{lowest['title']}, Price: $#{lowest['numeric_price']}, URL: #{lowest['url']}")
+          filename = "after_card_search.png"
+          search_page.screenshot(path: filename)
+          $file_logger.info("Request #{ request_id }: Took debug screenshot: #{filename}")
+          lowest
           
-        ensure
-          search_page.close
+        rescue => e
+          $file_logger.error("Request #{request_id}: Timeout waiting for search results: #{e.message}")
+          # (Optional) log the page's HTML (for debugging) and take a debug screenshot (if wait_for_selector times out)
+          html = search_page.content
+          $file_logger.info("Request #{request_id}: (Debug) Page HTML (truncated) (timeout): #{html[0..500]}…")
+          filename = "search_results_timeout.png"
+          search_page.screenshot(path: filename)
+          $file_logger.info("Request #{ request_id }: Took debug screenshot: #{filename}")
+          
+          # Take a screenshot for debugging
+          ScreenshotManager.take_error_screenshot(search_page, card_name, Time.now.to_i, $file_logger, request_id)
+          return nil
         end
-      rescue => e
-        $logger.error("Request #{request_id}: Error searching card: #{e.message}")
-        $logger.error(e.backtrace.join("\n"))
-        # (Optional) log the page's HTML (for debugging) and take a debug screenshot (if an error occurs in cardSearch)
-        html = search_page.content
-        $logger.info("Request #{request_id}: (Debug) Page HTML (truncated) (error in cardSearch): #{html[0..500]}…")
-        filename = "card_search_error.png"
-        search_page.screenshot(path: filename)
-        $logger.info("Request #{ request_id }: Took debug screenshot: #{filename}")
-        nil
+        
+      ensure
+        search_page.close
       end
     end
 
@@ -209,7 +224,7 @@ class CardSearch
         # Navigate to the product page with condition filter
         condition_param = URI.encode_www_form_component(condition)
         filtered_url = "#{product_url}#{product_url.include?('?') ? '&' : '?'}Condition=#{condition_param}&Language=English"
-        $logger.info("Request #{request_id}: Navigating to filtered URL: #{filtered_url}")
+        $file_logger.info("Request #{request_id}: Navigating to filtered URL: #{filtered_url}")
         
         begin
           # Navigate to the page with redirect prevention
@@ -238,15 +253,15 @@ class CardSearch
           max_screenshots = 3  # Only take 3 screenshots
 
           # Take initial screenshot immediately after page load
-          ScreenshotManager.take_screenshot(page, "loading_sequence_#{condition}", screenshot_count, Time.now.to_i, $logger, request_id)
+          ScreenshotManager.take_screenshot(page, "loading_sequence_#{condition}", screenshot_count, Time.now.to_i, $file_logger, request_id)
           screenshot_count += 1
           last_screenshot_time = Time.now
 
           # Log our current selectors for the product page
-          $logger.info("Request #{request_id}: Current product page selectors:")
-          $logger.info("  Container: .listing-item")
-          $logger.info("  Base Price: .listing-item__listing-data__info__price")
-          $logger.info("  Shipping: .shipping-messages__price")
+          $file_logger.info("Request #{request_id}: Current product page selectors:")
+          $file_logger.info("  Container: .listing-item")
+          $file_logger.info("  Base Price: .listing-item__listing-data__info__price")
+          $file_logger.info("  Shipping: .shipping-messages__price")
 
           # Main loop - continue until we hit max screenshots
           while Time.now - start_time < max_wait_time && screenshot_count < max_screenshots
@@ -255,7 +270,7 @@ class CardSearch
             # Take a screenshot if enough time has passed
             if current_time - last_screenshot_time >= screenshot_interval
               begin
-                ScreenshotManager.take_screenshot(page, "loading_sequence_#{condition}", screenshot_count, Time.now.to_i, $logger, request_id)
+                ScreenshotManager.take_screenshot(page, "loading_sequence_#{condition}", screenshot_count, Time.now.to_i, $file_logger, request_id)
                 screenshot_count += 1
                 last_screenshot_time = current_time
                 
@@ -347,55 +362,55 @@ class CardSearch
 
                 # Log detailed info for the third screenshot
                 if screenshot_count == 3
-                  $logger.info("Request #{request_id}: === DETAILED LISTINGS INFO (3rd screenshot) ===")
+                  $file_logger.info("Request #{request_id}: === DETAILED LISTINGS INFO (3rd screenshot) ===")
                   if listings_html.is_a?(Hash) && listings_html['success']
-                    $logger.info("  Found listings header: #{listings_html['headerText']}")
-                    $logger.info("  === LISTINGS FOUND ===")
+                    $file_logger.info("  Found listings header: #{listings_html['headerText']}")
+                    $file_logger.info("  === LISTINGS FOUND ===")
                     listings_html['listings'].each do |listing|
-                      $logger.info("  Listing #{listing['index'] + 1}:")
-                      $logger.info("    Container Classes: #{listing['containerClasses']}")
+                      $file_logger.info("  Listing #{listing['index'] + 1}:")
+                      $file_logger.info("    Container Classes: #{listing['containerClasses']}")
                       if listing['basePrice']
-                        $logger.info("    Base Price: #{listing['basePrice']['text']}")
-                        $logger.info("    Base Price Classes: #{listing['basePrice']['classes']}")
+                        $file_logger.info("    Base Price: #{listing['basePrice']['text']}")
+                        $file_logger.info("    Base Price Classes: #{listing['basePrice']['classes']}")
                       end
                       if listing['shipping']
-                        $logger.info("    Shipping: #{listing['shipping']['text']}")
-                        $logger.info("    Shipping Classes: #{listing['shipping']['classes']}")
+                        $file_logger.info("    Shipping: #{listing['shipping']['text']}")
+                        $file_logger.info("    Shipping Classes: #{listing['shipping']['classes']}")
                       end
-                      $logger.info("    HTML: #{listing['html']}")
+                      $file_logger.info("    HTML: #{listing['html']}")
                     end
 
                     if listings_html['priceData'] && listings_html['priceData']['success']
-                      $logger.info("  === PRICE DATA ===")
-                      $logger.info("    Total Price: $#{listings_html['priceData']['price']}")
-                      $logger.info("    Base Price: $#{listings_html['priceData']['details']['basePrice']}")
-                      $logger.info("    Shipping: $#{listings_html['priceData']['details']['shippingPrice']}")
-                      $logger.info("    Shipping Text: #{listings_html['priceData']['details']['shippingText']}")
+                      $file_logger.info("  === PRICE DATA ===")
+                      $file_logger.info("    Total Price: $#{listings_html['priceData']['price']}")
+                      $file_logger.info("    Base Price: $#{listings_html['priceData']['details']['basePrice']}")
+                      $file_logger.info("    Shipping: $#{listings_html['priceData']['details']['shippingPrice']}")
+                      $file_logger.info("    Shipping Text: #{listings_html['priceData']['details']['shippingText']}")
                     end
                   else
-                    $logger.error("  Error evaluating listing: #{listings_html['error']}")
-                    $logger.error("  Stack trace: #{listings_html['stack']}")
+                    $file_logger.error("  Error evaluating listing: #{listings_html['error']}")
+                    $file_logger.error("  Stack trace: #{listings_html['stack']}")
                   end
-                  $logger.info("=== END OF LISTINGS INFO ===")
+                  $file_logger.info("=== END OF LISTINGS INFO ===")
                 end
 
                 # If we found a valid price, return it immediately
                 if listings_html.is_a?(Hash) && listings_html['success'] && listings_html['listings'][0]
                   base_price = PriceProcessor.parse_base_price(listings_html['listings'][0]['basePrice']['text'])
                   shipping_price = PriceProcessor.calculate_shipping_price(listings_html['listings'][0])
-                  $logger.info("Request #{request_id}: Found valid price: $#{base_price}")
+                  $file_logger.info("Request #{request_id}: Found valid price: $#{base_price}")
                   
                   result = {
                     'success' => true,
                     'price' => "$#{PriceProcessor.total_price_str(base_price, shipping_price)}",
                     'url' => page.url
                   }
-                  $logger.info("Request #{request_id}: Breaking out of screenshot loop with price: #{result.inspect}")
+                  $file_logger.info("Request #{request_id}: Breaking out of screenshot loop with price: #{result.inspect}")
                   return result
                 end
               rescue => e
-                $logger.error("Request #{request_id}: Error evaluating listings HTML: #{e.message}")
-                $logger.error(e.backtrace.join("\n"))
+                $file_logger.error("Request #{request_id}: Error evaluating listings HTML: #{e.message}")
+                $file_logger.error(e.backtrace.join("\n"))
               end
             end
 
@@ -405,13 +420,13 @@ class CardSearch
 
           nil  # Return nil if no valid price found
         rescue => e
-          $logger.error("Request #{request_id}: Error processing condition: #{e.message}")
-          $logger.error(e.backtrace.join("\n"))
+          $file_logger.error("Request #{request_id}: Error processing condition: #{e.message}")
+          $file_logger.error(e.backtrace.join("\n"))
           nil
         end
       rescue => e
-        $logger.error("Request #{request_id}: Error in process_condition: #{e.message}")
-        $logger.error(e.backtrace.join("\n"))
+        $file_logger.error("Request #{request_id}: Error in process_condition: #{e.message}")
+        $file_logger.error(e.backtrace.join("\n"))
         nil
       end
     end

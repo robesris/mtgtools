@@ -55,22 +55,41 @@ module RequestHandler
       browser = BrowserManager.get_browser
       context = BrowserManager.create_browser_context(request_id)
       
-      process_with_browser(card_name, request_id, context, legality)
+      # Process each condition
+      prices = {}
+      conditions = ['Near Mint', 'Lightly Played']
+      
+      conditions.each do |condition|
+        break if prices.size >= 2
+        result = process_with_browser(card_name, request_id, context, legality, condition)
+        if result && result != format_error_response('No valid product found', legality)
+          begin
+            parsed_result = JSON.parse(result)
+            if parsed_result.is_a?(Hash) && parsed_result[condition]
+              prices[condition] = parsed_result[condition]
+            end
+          rescue JSON::ParserError => e
+            $file_logger.error("Request #{request_id}: Error parsing result for #{condition}: #{e.message}")
+          end
+        end
+      end
+      
+      prices.empty? ? format_error_response('No valid prices found', legality) : format_success_response(prices, legality, card_name, request_id)
     rescue => e
       handle_request_error(e, request_id, legality, card_name)
     ensure
       BrowserManager.cleanup_context(request_id)
     end
 
-    def process_with_browser(card_name, request_id, context, legality)
+    def process_with_browser(card_name, request_id, context, legality, condition)
       search_page = nil
       begin
         search_page = setup_search_page(context, request_id)
         return format_error_response('Failed to create search page', legality) unless search_page && !search_page.closed?
 
-        search_url = "https://www.tcgplayer.com/search/magic/product?q=#{CGI.escape(card_name)}&view=grid"
+        search_url = "https://www.tcgplayer.com/search/magic/product?q=#{CGI.escape(card_name)}&Condition=#{CGI.escape(condition)}&view=grid"
         
-        $file_logger.info("Request #{request_id}: Navigating to TCGPlayer search for: #{card_name}")
+        $file_logger.info("Request #{request_id}: Navigating to TCGPlayer search for: #{card_name} (Condition: #{condition})")
         $file_logger.info("Request #{request_id}: Search URL: #{search_url}")
         
         # First try a more lenient navigation
@@ -285,10 +304,11 @@ module RequestHandler
         
         $file_logger.info("Request #{request_id}: Found lowest priced product: #{lowest_priced_product['title']} at $#{lowest_priced_product['price']}")
         
-        prices = process_conditions(lowest_priced_product, context, request_id)
-        return format_error_response('No valid prices found', legality) if prices.empty?
+        # Process just this condition since we're already on the right page
+        price = process_single_condition(condition, lowest_priced_product, context, request_id)
+        return format_error_response('No valid prices found', legality) unless price
         
-        format_success_response(prices, legality, card_name, request_id)
+        { condition => price }.to_json
       ensure
         if search_page && !search_page.closed?
           begin
@@ -334,11 +354,10 @@ module RequestHandler
       begin
         $file_logger.info("Request #{request_id}: Processing condition: #{condition}")
         
-        # Build the correct filtered URL
-        delimiter = lowest_priced_product['url'].include?('?') ? '&' : '?'
-        condition_param = CGI.escape(condition)
-        condition_url = "#{lowest_priced_product['url']}#{delimiter}Condition=#{condition_param}&Language=English"
-        condition_page.goto(condition_url, wait_until: 'networkidle0')
+        # Use the exact URL from the search result
+        product_url = lowest_priced_product['url']
+        $file_logger.info("Request #{request_id}: Navigating to product page: #{product_url}")
+        condition_page.goto(product_url, wait_until: 'networkidle0')
         
         PriceExtractor.add_redirect_prevention(condition_page, request_id)
         

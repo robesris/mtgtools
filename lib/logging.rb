@@ -9,14 +9,14 @@ module Logging
       if severity == 'WARN' && msg.is_a?(String)
         # List of warning messages we want to suppress
         suppressed_warnings = [
-          'Frame not found during evaluation',
-          'Protocol error',
-          'Target closed',
-          'Target destroyed',
-          'No target with given id found',
-          'Frame was detached',
-          'Frame was removed',
-          'Frame was not found'
+          # 'Frame not found during evaluation',
+          # 'Protocol error',
+          # 'Target closed',
+          # 'Target destroyed',
+          # 'No target with given id found',
+          # 'Frame was detached',
+          # 'Frame was removed',
+          # 'Frame was not found'
         ]
         
         # Skip if this is a suppressed warning

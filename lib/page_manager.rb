@@ -20,6 +20,22 @@ module PageManager
       return if page.closed?
 
       begin
+        # Disable console logging from the page
+        page.on('console') do |msg|
+          # Only log errors and warnings
+          if msg.type == 'error' || msg.type == 'warning'
+            $file_logger.error("Request #{request_id}: Browser #{msg.type}: #{msg.text}")
+          end
+        end
+
+        # Disable network request logging
+        page.on('response') do |response|
+          # Only log failed responses
+          if response.status >= 400
+            $file_logger.error("Request #{request_id}: Failed response from #{response.url}: #{response.status}")
+          end
+        end
+
         # Set viewport
         page.viewport = Puppeteer::Viewport.new(
           width: 1920,

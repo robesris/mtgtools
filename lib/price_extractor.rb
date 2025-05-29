@@ -266,6 +266,9 @@ module PriceExtractor
             titleText: titleElement?.textContent?.trim(),
             priceText: priceElement?.textContent?.trim(),
             linkHref: linkElement?.href,
+            titleHTML: titleElement?.outerHTML,
+            priceHTML: priceElement?.outerHTML,
+            linkHTML: linkElement?.outerHTML,
             html: card.outerHTML.slice(0, 500)
           });
 
@@ -278,9 +281,12 @@ module PriceExtractor
             return null;
           }
 
-          // Get the text content
+          // Get the text content and HTML
           const title = titleElement.textContent.trim();
           const priceText = priceElement.textContent.trim();
+          const titleHTML = titleElement.outerHTML;
+          const priceHTML = priceElement.outerHTML;
+          const linkHTML = linkElement?.outerHTML;
           
           console.log('Extracted content:', {
             title,
@@ -334,6 +340,9 @@ module PriceExtractor
               title, 
               price, 
               url,
+              titleHTML,
+              priceHTML,
+              linkHTML,
               validationDetails: {
                 titleMatch: isMatch,
                 priceValid: hasValidPrice,
@@ -348,7 +357,14 @@ module PriceExtractor
                 }
               }
             });
-            return { title, price, url };
+            return { 
+              title, 
+              price, 
+              url,
+              titleHTML,
+              priceHTML,
+              linkHTML
+            };
           } else {
             // Log detailed rejection reason
             const rejectionReason = !isMatch ? 'title does not match' : 'invalid price';
@@ -564,6 +580,7 @@ module PriceExtractor
         end
         
         $file_logger.info("Request #{request_id}: Found lowest priced product: #{lowest_priced_product['title']} at $#{lowest_priced_product['price']}")
+        $file_logger.info("Request #{request_id}: Chosen Card:\nName: #{lowest_priced_product['title']}\nName Element: #{lowest_priced_product['titleHTML']}\nPrice: $#{lowest_priced_product['price']}\nPrice Element: #{lowest_priced_product['priceHTML']}\nURL: #{lowest_priced_product['url']}\nURL Element: #{lowest_priced_product['linkHTML']}")
         lowest_priced_product
       rescue => e
         $file_logger.error("Request #{request_id}: Error extracting lowest priced product: #{e.message}")

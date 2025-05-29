@@ -1092,12 +1092,9 @@ class CommanderCardScraper
             display: flex;
             align-items: center;
             gap: 8px;
-            width: 100%;
           }
           .price-info .price-content {
             flex: 1;
-            min-width: 0; /* Allow content to shrink */
-            padding-right: 24px; /* Leave space for the reload icon */
           }
           .price-info .reload-icon {
             opacity: 0.6;
@@ -1105,22 +1102,11 @@ class CommanderCardScraper
             transition: opacity 0.2s, transform 0.2s;
             font-size: 1.1em;
             user-select: none;
-            flex-shrink: 0;
-            width: 20px; /* Fixed width for the icon */
-            text-align: center;
-            position: absolute;
-            right: 10px;
-            top: 0;
+            margin-left: 4px;
           }
-          .price-info .price-row {
-            position: relative; /* For absolute positioning of reload icon */
-          }
-          .price-info a {
-            color: #0066cc;
-            text-decoration: none;
-          }
-          .price-info a:hover {
-            text-decoration: underline;
+          .price-info .reload-icon:hover {
+            opacity: 1;
+            transform: rotate(180deg);
           }
           /* Make timestamp styling more specific and forceful */
           .price-info .price-timestamp {
@@ -1273,11 +1259,11 @@ class CommanderCardScraper
           else
             'recent'
           end
-          "<span class=\"price-timestamp #{timestamp_class}\">Updated #{hours_ago} hours ago</span>"
+          "<span class=\"price-timestamp #{timestamp_class}\">Updated #{hours_ago} hours ago<span class=\"reload-icon\" title=\"Reload prices\">🔄</span></span>"
         end
-        "<div class=\"price-row\"><div class=\"price-content\">#{price_content.join(' | ') || 'No prices found'}</div><span class=\"reload-icon\" title=\"Reload prices\">🔄</span></div>#{timestamp}"
+        "<div class=\"price-row\"><div class=\"price-content\">#{price_content.join(' | ') || 'No prices found'}</div></div>#{timestamp}"
       else
-        "<div class=\"price-row\"><div class=\"price-content\">Click here to load prices</div><span class=\"reload-icon\" title=\"Load prices\">🔄</span></div>"
+        "<div class=\"price-row\"><div class=\"price-content\">Click here to load prices<span class=\"reload-icon\" title=\"Load prices\">🔄</span></div></div>"
       end
       
       # Get the colors for this card from our mapping
@@ -1350,7 +1336,7 @@ class CommanderCardScraper
               const priceInfo = cardElement.querySelector('.price-info');
               
               try {
-                priceInfo.innerHTML = '<div class="price-row"><div class="price-content"><span class="loading">Fetching prices</span></div><span class="reload-icon" title="Loading...">🔄</span></div>';
+                priceInfo.innerHTML = '<div class="price-row"><div class="price-content"><span class="loading">Fetching prices</span><span class="reload-icon" title="Loading...">🔄</span></div></div>';
                 const ellipsisInterval = animateEllipsis(priceInfo.querySelector('.loading'), 'Fetching prices');
                 
                 const response = await fetch('/card_info', {
@@ -1404,11 +1390,11 @@ class CommanderCardScraper
                     if (hoursAgo > 24) {
                       timestampClass = hoursAgo > 48 ? 'very-old' : 'old';
                     }
-                    timestamp = `<span class="price-timestamp ${timestampClass}">Updated ${hoursAgo} hours ago</span>`;
+                    timestamp = `<span class="price-timestamp ${timestampClass}">Updated ${hoursAgo} hours ago<span class="reload-icon" title="Reload prices">🔄</span></span>`;
                   }
-                  priceInfo.innerHTML = `<div class="price-row"><div class="price-content">${price_content.join(' | ') || 'No prices found'}</div><span class="reload-icon" title="Reload prices">🔄</span></div>${timestamp}`;
+                  priceInfo.innerHTML = `<div class="price-row"><div class="price-content">${price_content.join(' | ') || 'No prices found'}</div></div>${timestamp}`;
                 } else {
-                  priceInfo.innerHTML = '<div class="price-row"><div class="price-content">No prices found</div><span class="reload-icon" title="Reload prices">🔄</span></div>';
+                  priceInfo.innerHTML = '<div class="price-row"><div class="price-content">No prices found<span class="reload-icon" title="Reload prices">🔄</span></div></div>';
                 }
               } catch (error) {
                 console.error('Error fetching prices for', cardName, ':', error);
@@ -1417,13 +1403,13 @@ class CommanderCardScraper
                 // Retry logic for session closure errors
                 if (error.message.includes('Session closed') && retryCount < maxRetries) {
                   console.log(`Retrying ${cardName} (attempt ${retryCount + 1}/${maxRetries})...`);
-                  priceInfo.innerHTML = '<div class="price-row"><div class="price-content"><span class="loading">Retrying...</span></div><span class="reload-icon" title="Retrying...">🔄</span></div>';
+                  priceInfo.innerHTML = '<div class="price-row"><div class="price-content"><span class="loading">Retrying...</span><span class="reload-icon" title="Retrying...">🔄</span></div></div>';
                   // Wait before retrying (exponential backoff)
                   await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
                   return fetchCardPrices(cardElement, retryCount + 1);
                 }
                 
-                priceInfo.innerHTML = '<div class="price-row"><div class="price-content">Click to load prices</div><span class="reload-icon" title="Load prices">🔄</span></div>';
+                priceInfo.innerHTML = '<div class="price-row"><div class="price-content">Click to load prices<span class="reload-icon" title="Load prices">🔄</span></div></div>';
               }
             }
             

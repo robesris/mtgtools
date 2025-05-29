@@ -51,10 +51,13 @@ module PageManager
         page.default_navigation_timeout = default_timeout
         page.default_timeout = default_timeout
         
-        # Set up request handling with proper timeout
-        setup_request_handling(page, request_id, default_timeout)
+        # Set request timeout at the page level
+        page.set_default_timeout(default_timeout * 2)  # Double the timeout for requests
         
-        $file_logger.info("Request #{request_id}: Set default navigation timeout to #{default_timeout}ms")
+        # Set up request handling
+        setup_request_handling(page, request_id)
+        
+        $file_logger.info("Request #{request_id}: Set default timeouts - navigation: #{default_timeout}ms, requests: #{default_timeout * 2}ms")
 
         # Add error handling
         setup_error_handling(page, request_id)
@@ -71,7 +74,7 @@ module PageManager
 
     private
 
-    def setup_request_handling(page, request_id, default_timeout)
+    def setup_request_handling(page, request_id)
       page.request_interception = true
       
       page.on('request') do |request|
@@ -91,11 +94,11 @@ module PageManager
             request.abort
           else
             $file_logger.info("Request #{request_id}: Allowing redirect to: #{request.url}")
-            request.continue(headers: headers, timeout: default_timeout * 2)  # Double the timeout for requests
+            request.continue(headers: headers)
           end
         else
-          # Allow all other requests with increased timeout
-          request.continue(headers: headers, timeout: default_timeout * 2)  # Double the timeout for requests
+          # Allow all other requests
+          request.continue(headers: headers)
         end
       end
     end

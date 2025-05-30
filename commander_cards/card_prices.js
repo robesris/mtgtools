@@ -40,7 +40,7 @@ function addTimestampToPriceInfo(priceInfo, timestamp) {
     display: 'block',
     textAlign: 'center'  // Center the text horizontally
   });
-  timestampDiv.textContent = `Prices found on ${formatTimestamp(timestamp)} 🔄`;
+  timestampDiv.textContent = `Prices retrieved on ${formatTimestamp(timestamp)} 🔄`;
   priceInfo.appendChild(timestampDiv);
 }
 

@@ -1250,7 +1250,7 @@ class CommanderCardScraper
         timestamp = if prices['timestamp']
           t = Time.at(prices['timestamp'])
           formatted = t.strftime('%-m/%-d/%Y at %H:%M')
-          "<span class=\"price-timestamp\">Prices fetched on #{formatted}  <span class=\"reload-icon\" title=\"Reload prices\">&#x1F504;</span></span>"
+          "<span class=\"price-timestamp\">Prices retrieved on #{formatted}  <span class=\"reload-icon\" title=\"Reload prices\">&#x1F504;</span></span>"
         end
         "<div class=\"price-row\"><div class=\"price-content\">#{price_content.join(' | ') || 'No prices found'}</div></div>#{timestamp}"
       else
